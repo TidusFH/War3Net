@@ -18,16 +18,16 @@ namespace War3Net.IO.Mpq
     {
         private static readonly Lazy<MpqZLibCompressor> _defaultInstance = new Lazy<MpqZLibCompressor>(() => new MpqZLibCompressor());
 
-        private readonly CompressionLevel _compressionLevel;
+        private readonly Ionic.Zlib.CompressionLevel _compressionLevel;
 
-        public MpqZLibCompressor(CompressionLevel compressionLevel)
+        public MpqZLibCompressor(Ionic.Zlib.CompressionLevel compressionLevel)
         {
             _compressionLevel = compressionLevel;
         }
 
         private MpqZLibCompressor()
         {
-            _compressionLevel = CompressionLevel.BestCompression;
+            _compressionLevel = Ionic.Zlib.CompressionLevel.BestCompression;
         }
 
         public static MpqZLibCompressor Default => _defaultInstance.Value;
