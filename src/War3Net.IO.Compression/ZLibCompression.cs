@@ -28,7 +28,7 @@ namespace War3Net.IO.Compression
         /// <returns>A <see cref="Stream"/> containing the compressed data.</returns>
         public static Stream Compress(Stream inputStream, int bytesToCompress, bool leaveOpen)
         {
-            return Compress(inputStream, bytesToCompress, CompressionLevel.BestCompression, leaveOpen);
+            return Compress(inputStream, bytesToCompress, Ionic.Zlib.CompressionLevel.BestCompression, leaveOpen);
         }
 
         /// <summary>
@@ -39,7 +39,7 @@ namespace War3Net.IO.Compression
         /// <param name="compressionLevel">A tuning knob to trade speed for effectiveness.</param>
         /// <param name="leaveOpen"><see langword="true"/> to leave the <paramref name="inputStream"/> open; otherwise, <see langword="false"/>.</param>
         /// <returns>A <see cref="Stream"/> containing the compressed data.</returns>
-        public static Stream Compress(Stream inputStream, int bytesToCompress, CompressionLevel compressionLevel, bool leaveOpen)
+        public static Stream Compress(Stream inputStream, int bytesToCompress, Ionic.Zlib.CompressionLevel compressionLevel, bool leaveOpen)
         {
             _ = inputStream ?? throw new ArgumentNullException(nameof(inputStream));
 
