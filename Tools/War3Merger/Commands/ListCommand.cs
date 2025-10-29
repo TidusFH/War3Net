@@ -65,62 +65,78 @@ namespace War3Net.Tools.TriggerMerger.Commands
                 Console.WriteLine($"Trigger Categories and Triggers ({triggers.TriggerItems.Count} items):");
                 Console.WriteLine();
 
-                // In .wtg files, categories are NOT nested - they're all at the same level
-                // Triggers simply belong to the most recently encountered category
-                string? currentCategoryName = null;
+                // IMPORTANT: In .wtg files, ALL categories come first, then ALL triggers
+                // Triggers reference their parent category via ParentId property
+                // We need to group triggers by their ParentId and display them under their category
 
-                foreach (var item in triggers.TriggerItems)
+                // Get all categories and triggers separately
+                var categories = triggers.TriggerItems
+                    .OfType<War3Net.Build.Script.TriggerCategoryDefinition>()
+                    .ToList();
+
+                var allTriggers = triggers.TriggerItems
+                    .OfType<War3Net.Build.Script.TriggerDefinition>()
+                    .ToList();
+
+                // Build a dictionary mapping category ID to its triggers
+                var triggersByCategory = allTriggers
+                    .GroupBy(t => t.ParentId)
+                    .ToDictionary(g => g.Key, g => g.ToList());
+
+                // Display each category with its triggers
+                foreach (var category in categories)
                 {
-                    if (item is War3Net.Build.Script.TriggerCategoryDefinition category)
+                    // Show the category at root level
+                    var commentMarker = category.IsComment ? " [COMMENT]" : string.Empty;
+                    var expandedMarker = category.IsExpanded ? "[-]" : "[+]";
+
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.WriteLine($"{expandedMarker} {category.Name}{commentMarker}");
+                    Console.ResetColor();
+
+                    if (detailed)
                     {
-                        // Show the category at root level
-                        var commentMarker = category.IsComment ? " [COMMENT]" : string.Empty;
-                        var expandedMarker = category.IsExpanded ? "[-]" : "[+]";
-
-                        Console.ForegroundColor = ConsoleColor.Cyan;
-                        Console.WriteLine($"{expandedMarker} {category.Name}{commentMarker}");
+                        Console.ForegroundColor = ConsoleColor.DarkGray;
+                        Console.WriteLine($"    Type: Category, ID: {category.Id}, ParentId: {category.ParentId}");
                         Console.ResetColor();
-
-                        if (detailed)
-                        {
-                            Console.ForegroundColor = ConsoleColor.DarkGray;
-                            Console.WriteLine($"    Type: Category, ID: {category.Id}");
-                            Console.ResetColor();
-                        }
-
-                        // Track this as the current category for subsequent triggers
-                        currentCategoryName = category.Name;
                     }
-                    else if (item is War3Net.Build.Script.TriggerDefinition trigger)
+
+                    // Display all triggers that belong to this category (by ParentId)
+                    if (triggersByCategory.TryGetValue(category.Id, out var categoryTriggers))
                     {
-                        // Show triggers indented under their category
-                        var indent = "  "; // Simple 2-space indent under category
-                        var enabledMarker = trigger.IsEnabled ? "" : " [DISABLED]";
-                        var commentMarker = trigger.IsComment ? " [COMMENT]" : string.Empty;
-                        var initMarker = trigger.RunOnMapInit ? " [INIT]" : string.Empty;
-
-                        Console.ForegroundColor = trigger.IsEnabled ? ConsoleColor.Green : ConsoleColor.DarkGray;
-                        Console.WriteLine($"{indent}• {trigger.Name}{enabledMarker}{commentMarker}{initMarker}");
-                        Console.ResetColor();
-
-                        if (detailed)
+                        foreach (var trigger in categoryTriggers)
                         {
-                            Console.ForegroundColor = ConsoleColor.DarkGray;
-                            if (!string.IsNullOrEmpty(trigger.Description))
-                            {
-                                Console.WriteLine($"{indent}    Description: {trigger.Description}");
-                            }
+                            // Show triggers indented under their category
+                            var indent = "  "; // Simple 2-space indent under category
+                            var enabledMarker = trigger.IsEnabled ? "" : " [DISABLED]";
+                            var commentMarker = trigger.IsComment ? " [COMMENT]" : string.Empty;
+                            var initMarker = trigger.RunOnMapInit ? " [INIT]" : string.Empty;
 
-                            if (trigger.Functions != null && trigger.Functions.Any())
-                            {
-                                var events = trigger.Functions.Count(f => f.Type == War3Net.Build.Script.TriggerFunctionType.Event);
-                                var conditions = trigger.Functions.Count(f => f.Type == War3Net.Build.Script.TriggerFunctionType.Condition);
-                                var actions = trigger.Functions.Count(f => f.Type == War3Net.Build.Script.TriggerFunctionType.Action);
-
-                                Console.WriteLine($"{indent}    Functions: {events} events, {conditions} conditions, {actions} actions");
-                            }
-
+                            Console.ForegroundColor = trigger.IsEnabled ? ConsoleColor.Green : ConsoleColor.DarkGray;
+                            Console.WriteLine($"{indent}• {trigger.Name}{enabledMarker}{commentMarker}{initMarker}");
                             Console.ResetColor();
+
+                            if (detailed)
+                            {
+                                Console.ForegroundColor = ConsoleColor.DarkGray;
+                                Console.WriteLine($"{indent}    Type: Trigger, ID: {trigger.Id}, ParentId: {trigger.ParentId}");
+
+                                if (!string.IsNullOrEmpty(trigger.Description))
+                                {
+                                    Console.WriteLine($"{indent}    Description: {trigger.Description}");
+                                }
+
+                                if (trigger.Functions != null && trigger.Functions.Any())
+                                {
+                                    var events = trigger.Functions.Count(f => f.Type == War3Net.Build.Script.TriggerFunctionType.Event);
+                                    var conditions = trigger.Functions.Count(f => f.Type == War3Net.Build.Script.TriggerFunctionType.Condition);
+                                    var actions = trigger.Functions.Count(f => f.Type == War3Net.Build.Script.TriggerFunctionType.Action);
+
+                                    Console.WriteLine($"{indent}    Functions: {events} events, {conditions} conditions, {actions} actions");
+                                }
+
+                                Console.ResetColor();
+                            }
                         }
                     }
                 }

@@ -84,7 +84,7 @@ namespace War3Net.Tools.TriggerMerger.Services
                     continue;
                 }
 
-                // Get all triggers that belong to this category
+                // Get all triggers that belong to this category (by ParentId)
                 var categoryTriggers = GetTriggersInCategory(source, sourceCategory);
 
                 if (existingCategory != null)
@@ -116,38 +116,18 @@ namespace War3Net.Tools.TriggerMerger.Services
 
         private List<TriggerDefinition> GetTriggersInCategory(MapTriggers triggers, TriggerCategoryDefinition category)
         {
-            var categoryTriggers = new List<TriggerDefinition>();
-
             if (triggers.TriggerItems == null)
             {
-                return categoryTriggers;
+                return new List<TriggerDefinition>();
             }
 
-            // Find the index of the category
-            var categoryIndex = triggers.TriggerItems.IndexOf(category);
-            if (categoryIndex == -1)
-            {
-                return categoryTriggers;
-            }
-
-            // Get all triggers that come after this category until the next category or end
-            for (var i = categoryIndex + 1; i < triggers.TriggerItems.Count; i++)
-            {
-                var item = triggers.TriggerItems[i];
-
-                // Stop if we hit another category (categories at the same level)
-                if (item is TriggerCategoryDefinition)
-                {
-                    break;
-                }
-
-                if (item is TriggerDefinition trigger)
-                {
-                    categoryTriggers.Add(trigger);
-                }
-            }
-
-            return categoryTriggers;
+            // CORRECT: Triggers reference their parent category via ParentId
+            // The .wtg file structure is: all categories first, then all triggers
+            // Triggers are NOT sequentially after their category!
+            return triggers.TriggerItems
+                .OfType<TriggerDefinition>()
+                .Where(trigger => trigger.ParentId == category.Id)
+                .ToList();
         }
 
         private void RemoveCategory(MapTriggers triggers, TriggerCategoryDefinition category)
@@ -157,7 +137,7 @@ namespace War3Net.Tools.TriggerMerger.Services
                 return;
             }
 
-            // Get all triggers in this category
+            // Get all triggers in this category (by ParentId)
             var triggersToRemove = GetTriggersInCategory(triggers, category);
 
             // Remove the category
@@ -181,11 +161,17 @@ namespace War3Net.Tools.TriggerMerger.Services
             }
 
             // Create a new category with a new ID
+            // We need to assign a unique ID that doesn't conflict with existing IDs
+            var maxId = target.TriggerItems.Any() ? target.TriggerItems.Max(item => item.Id) : 0;
+            var newCategoryId = maxId + 1;
+
             var newCategory = new TriggerCategoryDefinition
             {
                 Name = sourceCategory.Name,
                 IsComment = sourceCategory.IsComment,
                 IsExpanded = sourceCategory.IsExpanded,
+                Id = newCategoryId,
+                ParentId = sourceCategory.ParentId,  // Preserve parent relationship
             };
 
             // Add the category to the target
@@ -194,12 +180,13 @@ namespace War3Net.Tools.TriggerMerger.Services
             // Copy all triggers in the category
             foreach (var trigger in categoryTriggers)
             {
-                var newTrigger = CopyTrigger(trigger);
+                maxId++;
+                var newTrigger = CopyTrigger(trigger, maxId, newCategoryId);
                 target.TriggerItems.Add(newTrigger);
             }
         }
 
-        private TriggerDefinition CopyTrigger(TriggerDefinition source)
+        private TriggerDefinition CopyTrigger(TriggerDefinition source, int newId, int newParentId)
         {
             var copy = new TriggerDefinition
             {
@@ -210,6 +197,8 @@ namespace War3Net.Tools.TriggerMerger.Services
                 IsCustomTextTrigger = source.IsCustomTextTrigger,
                 IsInitiallyOn = source.IsInitiallyOn,
                 RunOnMapInit = source.RunOnMapInit,
+                Id = newId,
+                ParentId = newParentId,  // Point to the new category
             };
 
             // Copy all functions (events, conditions, actions)
