@@ -44,10 +44,10 @@ if [ $? -eq 0 ]; then
     echo "========================================"
     echo ""
     echo "The executable is located at:"
-    echo "  bin/Release/net5.0/TriggerMerger"
+    echo "  bin/Release/net8.0/TriggerMerger"
     echo ""
     echo "Run it with:"
-    echo "  cd bin/Release/net5.0"
+    echo "  cd bin/Release/net8.0"
     echo "  ./TriggerMerger --help"
     echo ""
 else

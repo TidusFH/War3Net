@@ -15,17 +15,33 @@ A robust CLI tool for managing and copying trigger categories (folders) with all
 
 ## Requirements
 
-- .NET 5.0 SDK or later
+- .NET 8.0 SDK or later
 - Warcraft 3 map files (.w3x or .w3m)
+- **No git submodules needed** - Fully self-contained!
 
 ## Building
 
+**Using the build script (recommended):**
+
+Windows:
+```batch
+cd Tools\War3Merger
+build.bat
+```
+
+Linux/Mac:
 ```bash
-cd /home/user/War3Net/tools/War3Net.Tools.TriggerMerger
+cd Tools/War3Merger
+./build.sh
+```
+
+**Or manually:**
+```bash
+cd Tools/War3Merger
 dotnet build -c Release
 ```
 
-The compiled executable will be in `bin/Release/net5.0/TriggerMerger.exe` (or `TriggerMerger` on Linux/Mac).
+The compiled executable will be in `bin/Release/net8.0/TriggerMerger.exe` (or `TriggerMerger` on Linux/Mac).
 
 ## Usage
 

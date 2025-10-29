@@ -2,11 +2,11 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net5.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <RootNamespace>War3Net.Tools.TriggerMerger</RootNamespace>
     <AssemblyName>TriggerMerger</AssemblyName>
     <Nullable>enable</Nullable>
-    <LangVersion>9.0</LangVersion>
+    <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -15,8 +15,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Only reference the minimal dependencies needed for reading/writing .wtg files -->
+    <!-- War3Net.Build.Core contains MapTriggers and trigger parsing/serialization -->
+    <!-- War3Net.IO.Mpq contains MPQ archive reading/writing -->
+    <!-- We DO NOT need War3Net.Build (transpilation) or War3Net.CodeAnalysis.* (JASS parsing/conversion) -->
     <ProjectReference Include="..\..\src\War3Net.Build.Core\War3Net.Build.Core.csproj" />
-    <ProjectReference Include="..\..\src\War3Net.Build\War3Net.Build.csproj" />
     <ProjectReference Include="..\..\src\War3Net.IO.Mpq\War3Net.IO.Mpq.csproj" />
   </ItemGroup>
 

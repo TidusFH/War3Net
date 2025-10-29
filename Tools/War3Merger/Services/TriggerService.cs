@@ -9,7 +9,6 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 
-using War3Net.Build;
 using War3Net.Build.Script;
 using War3Net.IO.Mpq;
 
