@@ -105,17 +105,16 @@ namespace War3Net.Tools.TriggerMerger.Services
                     }
 
                     // Create a new stream from the byte array for the MpqFile
-                    // This ensures the data persists until the builder saves
-                    var newTriggerStream = new MemoryStream(triggerData);
+                    // IMPORTANT: Keep the stream alive until after SaveWithPreArchiveData completes
+                    using var newTriggerStream = new MemoryStream(triggerData);
+                    newTriggerStream.Position = 0; // Reset position to start
                     var mpqFile = MpqFile.New(newTriggerStream, triggerFileName);
                     builder.AddFile(mpqFile);
 
-                    // Save to output path
-                    using var outputStream = File.Create(outputMapPath);
-                    builder.SaveTo(outputStream, leaveOpen: false);
-
-                    // Clean up the trigger stream
-                    newTriggerStream.Dispose();
+                    // CRITICAL: Use SaveWithPreArchiveData to preserve the map header
+                    // Without this, the map won't be recognized as a valid Warcraft 3 map!
+                    // This extension method reads the MapInfo and writes the header before the MPQ data
+                    builder.SaveWithPreArchiveData(outputMapPath);
                 }
                 catch (Exception ex)
                 {
