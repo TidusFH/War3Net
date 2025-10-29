@@ -108,12 +108,12 @@ namespace War3Net.Tools.TriggerMerger.Commands
                         {
                             // Show triggers indented under their category
                             var indent = "  "; // Simple 2-space indent under category
-                            var enabledMarker = trigger.IsEnabled ? "" : " [DISABLED]";
-                            var commentMarker = trigger.IsComment ? " [COMMENT]" : string.Empty;
-                            var initMarker = trigger.RunOnMapInit ? " [INIT]" : string.Empty;
+                            var triggerEnabledMarker = trigger.IsEnabled ? "" : " [DISABLED]";
+                            var triggerCommentMarker = trigger.IsComment ? " [COMMENT]" : string.Empty;
+                            var triggerInitMarker = trigger.RunOnMapInit ? " [INIT]" : string.Empty;
 
                             Console.ForegroundColor = trigger.IsEnabled ? ConsoleColor.Green : ConsoleColor.DarkGray;
-                            Console.WriteLine($"{indent}• {trigger.Name}{enabledMarker}{commentMarker}{initMarker}");
+                            Console.WriteLine($"{indent}• {trigger.Name}{triggerEnabledMarker}{triggerCommentMarker}{triggerInitMarker}");
                             Console.ResetColor();
 
                             if (detailed)
