@@ -65,33 +65,36 @@ namespace War3Net.Tools.TriggerMerger.Commands
                 Console.WriteLine($"Trigger Categories and Triggers ({triggers.TriggerItems.Count} items):");
                 Console.WriteLine();
 
-                var categoryStack = new System.Collections.Generic.Stack<(string Prefix, int Level)>();
-                categoryStack.Push(("", 0));
+                // In .wtg files, categories are NOT nested - they're all at the same level
+                // Triggers simply belong to the most recently encountered category
+                string? currentCategoryName = null;
 
                 foreach (var item in triggers.TriggerItems)
                 {
                     if (item is War3Net.Build.Script.TriggerCategoryDefinition category)
                     {
-                        var indent = new string(' ', categoryStack.Peek().Level * 2);
+                        // Show the category at root level
                         var commentMarker = category.IsComment ? " [COMMENT]" : string.Empty;
                         var expandedMarker = category.IsExpanded ? "[-]" : "[+]";
 
                         Console.ForegroundColor = ConsoleColor.Cyan;
-                        Console.WriteLine($"{indent}{expandedMarker} {category.Name}{commentMarker}");
+                        Console.WriteLine($"{expandedMarker} {category.Name}{commentMarker}");
                         Console.ResetColor();
 
                         if (detailed)
                         {
                             Console.ForegroundColor = ConsoleColor.DarkGray;
-                            Console.WriteLine($"{indent}    Type: Category, ID: {category.Id}");
+                            Console.WriteLine($"    Type: Category, ID: {category.Id}");
                             Console.ResetColor();
                         }
 
-                        categoryStack.Push(($"{categoryStack.Peek().Prefix}{category.Name}/", categoryStack.Peek().Level + 1));
+                        // Track this as the current category for subsequent triggers
+                        currentCategoryName = category.Name;
                     }
                     else if (item is War3Net.Build.Script.TriggerDefinition trigger)
                     {
-                        var indent = new string(' ', categoryStack.Peek().Level * 2);
+                        // Show triggers indented under their category
+                        var indent = "  "; // Simple 2-space indent under category
                         var enabledMarker = trigger.IsEnabled ? "" : " [DISABLED]";
                         var commentMarker = trigger.IsComment ? " [COMMENT]" : string.Empty;
                         var initMarker = trigger.RunOnMapInit ? " [INIT]" : string.Empty;
