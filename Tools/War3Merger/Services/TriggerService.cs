@@ -7,8 +7,10 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 
+using War3Net.Build.Extensions;
 using War3Net.Build.Script;
 using War3Net.IO.Mpq;
 
@@ -35,8 +37,8 @@ namespace War3Net.Tools.TriggerMerger.Services
                         throw new FileNotFoundException($"Map file not found: {mapPath}");
                     }
 
-                    // Try to open as MPQ archive (standard .w3x/.w3m)
-                    using var archive = MpqArchive.Open(mapPath, true);
+                    // Open as MPQ archive (standard .w3x/.w3m)
+                    using var archive = MpqArchive.Open(mapPath, loadListFile: true);
 
                     // Try to find the triggers file
                     var triggerFileName = MapTriggers.FileName; // "war3map.wtg"
@@ -50,7 +52,7 @@ namespace War3Net.Tools.TriggerMerger.Services
                     using var triggerStream = archive.OpenFile(triggerFileName);
                     using var reader = new BinaryReader(triggerStream);
 
-                    // Read triggers using War3Net's built-in deserialization
+                    // Read triggers using War3Net's extension method
                     var triggers = reader.ReadMapTriggers();
 
                     return triggers;
@@ -79,57 +81,37 @@ namespace War3Net.Tools.TriggerMerger.Services
                         throw new FileNotFoundException($"Original map file not found: {originalMapPath}");
                     }
 
-                    // Create a temporary directory for working with files
-                    var tempDir = Path.Combine(Path.GetTempPath(), $"War3NetTriggerMerger_{Guid.NewGuid():N}");
-                    Directory.CreateDirectory(tempDir);
+                    // Open the original archive
+                    using var originalArchive = MpqArchive.Open(originalMapPath, loadListFile: true);
 
-                    try
+                    // Create a builder to modify the archive
+                    var builder = new MpqArchiveBuilder(originalArchive);
+
+                    // Serialize the triggers to a memory stream
+                    using var triggerStream = new MemoryStream();
+                    using var writer = new BinaryWriter(triggerStream);
+
+                    // Use the extension method to write triggers
+                    writer.Write(triggers);
+                    writer.Flush();
+
+                    // Reset stream position
+                    triggerStream.Position = 0;
+
+                    // Remove old trigger file if it exists
+                    var triggerFileName = MapTriggers.FileName;
+                    if (originalArchive.FileExists(triggerFileName))
                     {
-                        // Copy original map to output location if they're different
-                        if (!string.Equals(originalMapPath, outputMapPath, StringComparison.OrdinalIgnoreCase))
-                        {
-                            File.Copy(originalMapPath, outputMapPath, true);
-                        }
-
-                        // Open the map archive in read-write mode
-                        using (var archive = MpqArchive.Open(outputMapPath, false))
-                        {
-                            // Serialize the triggers to a memory stream
-                            using var triggerStream = new MemoryStream();
-                            using var writer = new BinaryWriter(triggerStream);
-                            writer.Write(triggers);
-                            writer.Flush();
-
-                            // Get the byte array
-                            var triggerData = triggerStream.ToArray();
-
-                            // Remove old trigger file if it exists
-                            var triggerFileName = MapTriggers.FileName;
-                            if (archive.FileExists(triggerFileName))
-                            {
-                                archive.RemoveFile(triggerFileName);
-                            }
-
-                            // Add the new trigger file
-                            using var dataStream = new MemoryStream(triggerData);
-                            archive.AddFile(MpqFile.New(dataStream, triggerFileName));
-                        }
+                        builder.RemoveFile(triggerFileName);
                     }
-                    finally
-                    {
-                        // Clean up temp directory
-                        if (Directory.Exists(tempDir))
-                        {
-                            try
-                            {
-                                Directory.Delete(tempDir, true);
-                            }
-                            catch
-                            {
-                                // Ignore cleanup errors
-                            }
-                        }
-                    }
+
+                    // Add the new trigger file
+                    var mpqFile = MpqFile.New(triggerStream, triggerFileName);
+                    builder.AddFile(mpqFile);
+
+                    // Save to output path
+                    using var outputStream = File.Create(outputMapPath);
+                    builder.SaveTo(outputStream, leaveOpen: false);
                 }
                 catch (Exception ex)
                 {

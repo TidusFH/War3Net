@@ -1,5 +1,5 @@
 // ------------------------------------------------------------------------------
-// <copyright file="TriggerMerger.cs" company="Drake53">
+// <copyright file="TriggerCategoryMerger.cs" company="Drake53">
 // Licensed under the MIT license.
 // See the LICENSE file in the project root for more information.
 // </copyright>
@@ -16,7 +16,7 @@ namespace War3Net.Tools.TriggerMerger.Services
     /// <summary>
     /// Service for merging trigger categories between maps.
     /// </summary>
-    internal class TriggerMerger
+    internal class TriggerCategoryMerger
     {
         /// <summary>
         /// Copies specified categories from source to target triggers.
@@ -47,9 +47,11 @@ namespace War3Net.Tools.TriggerMerger.Services
                 return result;
             }
 
+            // TriggerItems is always initialized, but check anyway for safety
             if (target.TriggerItems == null)
             {
-                target.TriggerItems = new List<TriggerItem>();
+                result.ErrorMessage = "Target map triggers are not properly initialized.";
+                return result;
             }
 
             // Find all categories in source
@@ -92,7 +94,7 @@ namespace War3Net.Tools.TriggerMerger.Services
                 }
 
                 // Copy the category and its triggers
-                CopyCategory(source, target, sourceCategory, categoryTriggers);
+                CopyCategory(target, sourceCategory, categoryTriggers);
 
                 result.CopiedCategories.Add(new CopiedCategoryInfo
                 {
@@ -169,14 +171,13 @@ namespace War3Net.Tools.TriggerMerger.Services
         }
 
         private void CopyCategory(
-            MapTriggers source,
             MapTriggers target,
             TriggerCategoryDefinition sourceCategory,
             List<TriggerDefinition> categoryTriggers)
         {
             if (target.TriggerItems == null)
             {
-                target.TriggerItems = new List<TriggerItem>();
+                return;
             }
 
             // Create a new category with a new ID
