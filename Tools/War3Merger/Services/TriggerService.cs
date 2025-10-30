@@ -81,6 +81,11 @@ namespace War3Net.Tools.TriggerMerger.Services
                         throw new FileNotFoundException($"Original map file not found: {originalMapPath}");
                     }
 
+                    Console.WriteLine($"DEBUG: Serializing triggers...");
+                    Console.WriteLine($"  - TriggerItems count: {triggers.TriggerItems?.Count ?? 0}");
+                    Console.WriteLine($"  - Variables count: {triggers.Variables?.Count ?? 0}");
+                    Console.WriteLine($"  - Format version: {triggers.FormatVersion}");
+
                     // Serialize the triggers to a byte array first
                     byte[] triggerData;
                     using (var triggerStream = new MemoryStream())
@@ -91,30 +96,65 @@ namespace War3Net.Tools.TriggerMerger.Services
                         triggerData = triggerStream.ToArray();
                     }
 
+                    Console.WriteLine($"  - Serialized trigger data size: {triggerData.Length} bytes");
+
+                    if (triggerData.Length == 0)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine("ERROR: Trigger data is empty! Cannot write to map.");
+                        Console.ResetColor();
+                        throw new InvalidOperationException("Trigger data is empty after serialization.");
+                    }
+
                     // Open the original archive
+                    Console.WriteLine($"DEBUG: Opening original archive: {originalMapPath}");
                     using var originalArchive = MpqArchive.Open(originalMapPath, loadListFile: true);
+                    Console.WriteLine($"  - Archive contains {originalArchive.Count} files");
 
                     // Create a builder to modify the archive
                     var builder = new MpqArchiveBuilder(originalArchive);
 
                     // Remove old trigger file if it exists
                     var triggerFileName = MapTriggers.FileName;
+                    Console.WriteLine($"DEBUG: Checking for existing trigger file: {triggerFileName}");
                     if (originalArchive.FileExists(triggerFileName))
                     {
+                        Console.WriteLine($"  - Removing old {triggerFileName}");
                         builder.RemoveFile(triggerFileName);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"  - No existing {triggerFileName} found");
                     }
 
                     // Create a new stream from the byte array for the MpqFile
                     // IMPORTANT: Keep the stream alive until after SaveWithPreArchiveData completes
+                    Console.WriteLine($"DEBUG: Adding new trigger file to builder");
                     using var newTriggerStream = new MemoryStream(triggerData);
                     newTriggerStream.Position = 0; // Reset position to start
-                    var mpqFile = MpqFile.New(newTriggerStream, triggerFileName);
+                    var mpqFile = MpqFile.New(newTriggerStream, triggerFileName, leaveOpen: true);
                     builder.AddFile(mpqFile);
+                    Console.WriteLine($"  - Added {triggerFileName} ({triggerData.Length} bytes)");
 
                     // CRITICAL: Use SaveWithPreArchiveData to preserve the map header
                     // Without this, the map won't be recognized as a valid Warcraft 3 map!
                     // This extension method reads the MapInfo and writes the header before the MPQ data
+                    Console.WriteLine($"DEBUG: Saving to: {outputMapPath}");
                     builder.SaveWithPreArchiveData(outputMapPath);
+                    Console.WriteLine($"DEBUG: Save completed successfully");
+
+                    // Verify the output file was created
+                    if (File.Exists(outputMapPath))
+                    {
+                        var fileInfo = new FileInfo(outputMapPath);
+                        Console.WriteLine($"  - Output file size: {fileInfo.Length} bytes");
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine("ERROR: Output file was not created!");
+                        Console.ResetColor();
+                    }
                 }
                 catch (Exception ex)
                 {
