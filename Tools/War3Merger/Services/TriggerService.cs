@@ -114,18 +114,23 @@ namespace War3Net.Tools.TriggerMerger.Services
                     // Create a builder to modify the archive
                     var builder = new MpqArchiveBuilder(originalArchive);
 
-                    // Remove old trigger file if it exists
                     var triggerFileName = MapTriggers.FileName;
                     Console.WriteLine($"DEBUG: Checking for existing trigger file: {triggerFileName}");
-                    if (originalArchive.FileExists(triggerFileName))
+                    var triggerExists = originalArchive.FileExists(triggerFileName);
+                    if (triggerExists)
                     {
-                        Console.WriteLine($"  - Removing old {triggerFileName}");
-                        builder.RemoveFile(triggerFileName);
+                        Console.WriteLine($"  - Found existing {triggerFileName} (will be overwritten)");
                     }
                     else
                     {
-                        Console.WriteLine($"  - No existing {triggerFileName} found");
+                        Console.WriteLine($"  - No existing {triggerFileName} found (will be added)");
                     }
+
+                    // CRITICAL FIX: Do NOT call RemoveFile() before AddFile()!
+                    // If we call RemoveFile, the hashed filename is added to _removedFiles.
+                    // Then when GetMpqFiles() runs, it filters out files in _removedFiles,
+                    // which includes our newly added file with the same name!
+                    // Solution: Just call AddFile() - it automatically overrides the original.
 
                     // Create a new stream from the byte array for the MpqFile
                     // IMPORTANT: Keep the stream alive until after SaveWithPreArchiveData completes
