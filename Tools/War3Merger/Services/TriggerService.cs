@@ -189,6 +189,59 @@ namespace War3Net.Tools.TriggerMerger.Services
                                 // Also verify size
                                 using var verifyStream = verifyArchive.OpenFile(triggerFileName);
                                 Console.WriteLine($"  - {triggerFileName} size in output: {verifyStream.Length} bytes");
+
+                                // CRITICAL: Try to READ BACK the .wtg to verify it's valid!
+                                Console.WriteLine($"DEBUG: Reading back the .wtg to verify it's parseable...");
+                                try
+                                {
+                                    verifyStream.Position = 0;
+                                    using var verifyReader = new BinaryReader(verifyStream);
+                                    var readBackTriggers = verifyReader.ReadMapTriggers();
+
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine($"  ✓ SUCCESS: Read back triggers from output map!");
+                                    Console.ResetColor();
+                                    Console.WriteLine($"  - Format version: {readBackTriggers.FormatVersion}");
+                                    Console.WriteLine($"  - TriggerItems count: {readBackTriggers.TriggerItems?.Count ?? 0}");
+                                    Console.WriteLine($"  - Variables count: {readBackTriggers.Variables?.Count ?? 0}");
+
+                                    // Verify "Spels Heroes" is in there
+                                    if (readBackTriggers.TriggerItems != null)
+                                    {
+                                        var categories = readBackTriggers.TriggerItems.OfType<War3Net.Build.Script.TriggerCategoryDefinition>().ToList();
+                                        var spelsHeroes = categories.FirstOrDefault(c => c.Name.Equals("Spels Heroes", StringComparison.OrdinalIgnoreCase));
+                                        if (spelsHeroes != null)
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Green;
+                                            Console.WriteLine($"  ✓ 'Spels Heroes' category CONFIRMED in output .wtg!");
+                                            Console.ResetColor();
+
+                                            var allTriggers = readBackTriggers.TriggerItems.OfType<War3Net.Build.Script.TriggerDefinition>().ToList();
+                                            var spelsHeroesTriggers = allTriggers.Where(t => t.ParentId == spelsHeroes.Id).ToList();
+                                            Console.WriteLine($"  - Triggers in 'Spels Heroes': {spelsHeroesTriggers.Count}");
+                                            if (spelsHeroesTriggers.Any())
+                                            {
+                                                Console.WriteLine($"  - First 3: {string.Join(", ", spelsHeroesTriggers.Take(3).Select(t => t.Name))}");
+                                            }
+                                        }
+                                        else
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Red;
+                                            Console.WriteLine($"  ✗ ERROR: 'Spels Heroes' NOT FOUND in output .wtg!");
+                                            Console.WriteLine($"  - This means the serialization wrote WRONG data!");
+                                            Console.ResetColor();
+                                        }
+                                    }
+                                }
+                                catch (Exception readEx)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine($"  ✗ ERROR: Cannot parse the .wtg we just wrote!");
+                                    Console.WriteLine($"  - Error: {readEx.Message}");
+                                    Console.WriteLine($"  - This means the .wtg is CORRUPTED or INVALID!");
+                                    Console.WriteLine($"  - World Editor won't be able to open this map!");
+                                    Console.ResetColor();
+                                }
                             }
                             else
                             {
