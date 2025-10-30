@@ -111,8 +111,11 @@ namespace War3Net.Tools.TriggerMerger.Services
                     using var originalArchive = MpqArchive.Open(originalMapPath, loadListFile: true);
                     Console.WriteLine($"  - Archive contains {originalArchive.Count()} files");
 
-                    // Create a builder to modify the archive
-                    var builder = new MpqArchiveBuilder(originalArchive);
+                    // Create a CUSTOM builder that handles duplicate filenames correctly
+                    // When we add a file with the same name as an existing file,
+                    // our custom builder keeps the NEW file (from _modifiedFiles)
+                    // instead of keeping both and letting MpqArchive.Create choose wrong one
+                    var builder = new CustomMpqArchiveBuilder(originalArchive);
 
                     var triggerFileName = MapTriggers.FileName;
                     Console.WriteLine($"DEBUG: Checking for existing trigger file: {triggerFileName}");
