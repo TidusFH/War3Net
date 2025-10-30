@@ -132,13 +132,13 @@ namespace War3Net.Tools.TriggerMerger.Commands
                 // Count categories and triggers separately
                 if (result.ModifiedTriggers.TriggerItems != null)
                 {
-                    var categories = result.ModifiedTriggers.TriggerItems.OfType<War3Net.Build.Script.TriggerCategoryDefinition>().ToList();
-                    var triggers = result.ModifiedTriggers.TriggerItems.OfType<War3Net.Build.Script.TriggerDefinition>().ToList();
-                    Console.WriteLine($"  - Categories in modified triggers: {categories.Count}");
-                    Console.WriteLine($"  - Actual triggers in modified triggers: {triggers.Count}");
+                    var allCategories = result.ModifiedTriggers.TriggerItems.OfType<War3Net.Build.Script.TriggerCategoryDefinition>().ToList();
+                    var allTriggers = result.ModifiedTriggers.TriggerItems.OfType<War3Net.Build.Script.TriggerDefinition>().ToList();
+                    Console.WriteLine($"  - Categories in modified triggers: {allCategories.Count}");
+                    Console.WriteLine($"  - Actual triggers in modified triggers: {allTriggers.Count}");
 
                     // Check if the specific category exists
-                    var spelsHeroes = categories.FirstOrDefault(c => c.Name.Equals("Spels Heroes", StringComparison.OrdinalIgnoreCase));
+                    var spelsHeroes = allCategories.FirstOrDefault(c => c.Name.Equals("Spels Heroes", StringComparison.OrdinalIgnoreCase));
                     if (spelsHeroes != null)
                     {
                         Console.ForegroundColor = ConsoleColor.Green;
@@ -146,7 +146,7 @@ namespace War3Net.Tools.TriggerMerger.Commands
                         Console.ResetColor();
 
                         // Count triggers that belong to this category
-                        var spelsHeroesTriggers = triggers.Where(t => t.ParentId == spelsHeroes.Id).ToList();
+                        var spelsHeroesTriggers = allTriggers.Where(t => t.ParentId == spelsHeroes.Id).ToList();
                         Console.WriteLine($"  - Triggers with ParentId={spelsHeroes.Id}: {spelsHeroesTriggers.Count}");
                         if (spelsHeroesTriggers.Any())
                         {
