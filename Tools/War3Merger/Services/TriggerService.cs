@@ -148,6 +148,38 @@ namespace War3Net.Tools.TriggerMerger.Services
                     {
                         var fileInfo = new FileInfo(outputMapPath);
                         Console.WriteLine($"  - Output file size: {fileInfo.Length} bytes");
+
+                        // VERIFICATION: Open the output file and check if .wtg actually exists
+                        Console.WriteLine($"DEBUG: Verifying .wtg was actually written to output...");
+                        try
+                        {
+                            using var verifyArchive = MpqArchive.Open(outputMapPath, loadListFile: true);
+                            if (verifyArchive.FileExists(triggerFileName))
+                            {
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.WriteLine($"  ✓ CONFIRMED: {triggerFileName} exists in output map");
+                                Console.ResetColor();
+
+                                // Also verify size
+                                using var verifyStream = verifyArchive.OpenFile(triggerFileName);
+                                Console.WriteLine($"  - {triggerFileName} size in output: {verifyStream.Length} bytes");
+                            }
+                            else
+                            {
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.WriteLine($"  ✗ ERROR: {triggerFileName} NOT FOUND in output map!");
+                                Console.WriteLine($"  - This means SaveWithPreArchiveData didn't save the file properly");
+                                Console.ResetColor();
+                            }
+
+                            Console.WriteLine($"  - Output archive contains {verifyArchive.Count()} files total");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine($"  ✗ ERROR verifying output: {ex.Message}");
+                            Console.ResetColor();
+                        }
                     }
                     else
                     {
