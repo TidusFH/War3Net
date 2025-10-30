@@ -129,6 +129,11 @@ namespace War3Net.Tools.TriggerMerger.Commands
                 Console.WriteLine($"  - Original target TriggerItems count: {targetTriggers.TriggerItems?.Count ?? 0}");
                 Console.WriteLine($"  - Are they the same object? {ReferenceEquals(result.ModifiedTriggers, targetTriggers)}");
 
+                // CRITICAL: Check variable counts
+                Console.WriteLine($"  - Source variables count: {sourceTriggers.Variables?.Count ?? 0}");
+                Console.WriteLine($"  - Target variables count: {targetTriggers.Variables?.Count ?? 0}");
+                Console.WriteLine($"  - Modified variables count: {result.ModifiedTriggers.Variables?.Count ?? 0}");
+
                 // Count categories and triggers separately
                 if (result.ModifiedTriggers.TriggerItems != null)
                 {
@@ -151,6 +156,23 @@ namespace War3Net.Tools.TriggerMerger.Commands
                         if (spelsHeroesTriggers.Any())
                         {
                             Console.WriteLine($"  - First 3 trigger names: {string.Join(", ", spelsHeroesTriggers.Take(3).Select(t => t.Name))}");
+                        }
+
+                        // WARNING: Check if source has variables that target doesn't
+                        if (sourceTriggers.Variables != null && sourceTriggers.Variables.Any())
+                        {
+                            var sourceVarNames = new HashSet<string>(sourceTriggers.Variables.Select(v => v.Name), StringComparer.OrdinalIgnoreCase);
+                            var targetVarNames = new HashSet<string>(targetTriggers.Variables?.Select(v => v.Name) ?? Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+
+                            var missingVars = sourceVarNames.Except(targetVarNames).ToList();
+                            if (missingVars.Any())
+                            {
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.WriteLine($"  ✗ WARNING: Source has {missingVars.Count} variables that target doesn't have!");
+                                Console.WriteLine($"  - Missing variables: {string.Join(", ", missingVars.Take(5))}");
+                                Console.WriteLine($"  - This will cause 'trigger data invalid' in World Editor!");
+                                Console.ResetColor();
+                            }
                         }
                     }
                     else
