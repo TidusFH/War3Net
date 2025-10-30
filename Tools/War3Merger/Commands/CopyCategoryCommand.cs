@@ -223,6 +223,74 @@ namespace War3Net.Tools.TriggerMerger.Commands
                 Console.WriteLine($"Writing modified map to: {outputPath}");
                 await triggerService.WriteTriggersAsync(targetFile.FullName, outputPath, result.ModifiedTriggers);
 
+                // CRITICAL: Merge trigger strings (.wts) if needed
+                Console.WriteLine();
+                Console.WriteLine("Checking for trigger string references...");
+                var stringService = new TriggerStringService();
+
+                // Get all copied triggers
+                var copiedTriggers = new List<War3Net.Build.Script.TriggerDefinition>();
+                foreach (var copiedCategory in result.CopiedCategories)
+                {
+                    var category = result.ModifiedTriggers.TriggerItems?
+                        .OfType<War3Net.Build.Script.TriggerCategoryDefinition>()
+                        .FirstOrDefault(c => c.Name.Equals(copiedCategory.CategoryName, StringComparison.OrdinalIgnoreCase));
+
+                    if (category != null && result.ModifiedTriggers.TriggerItems != null)
+                    {
+                        var categoryTriggers = result.ModifiedTriggers.TriggerItems
+                            .OfType<War3Net.Build.Script.TriggerDefinition>()
+                            .Where(t => t.ParentId == category.Id)
+                            .ToList();
+                        copiedTriggers.AddRange(categoryTriggers);
+                    }
+                }
+
+                // Scan copied triggers for TRIGSTR_ references
+                var requiredStringIds = stringService.GetRequiredStringIds(copiedTriggers);
+
+                if (requiredStringIds.Any())
+                {
+                    Console.WriteLine($"  Found {requiredStringIds.Count} trigger string references in copied triggers");
+                    Console.WriteLine($"  Reading trigger strings from maps...");
+
+                    // Read trigger strings from both maps
+                    var sourceTriggerStrings = stringService.ReadTriggerStrings(sourceFile.FullName);
+                    var targetTriggerStrings = stringService.ReadTriggerStrings(outputPath); // Read from output
+
+                    // Merge required strings
+                    var mergedStrings = stringService.MergeTriggerStrings(
+                        sourceTriggerStrings,
+                        targetTriggerStrings,
+                        requiredStringIds);
+
+                    // Write back to output if we added any strings
+                    var addedCount = mergedStrings.Strings.Count - (targetTriggerStrings?.Strings.Count ?? 0);
+                    if (addedCount > 0)
+                    {
+                        Console.WriteLine($"  Adding {addedCount} trigger strings to output map...");
+                        // Need to create a temporary file to avoid reading/writing same file
+                        var tempPath = outputPath + ".tmp";
+                        stringService.WriteTriggerStrings(outputPath, tempPath, mergedStrings);
+
+                        // Replace original output with the one that has merged strings
+                        File.Delete(outputPath);
+                        File.Move(tempPath, outputPath);
+
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"  ✓ Added {addedCount} trigger strings to output map");
+                        Console.ResetColor();
+                    }
+                    else
+                    {
+                        Console.WriteLine($"  All required trigger strings already exist in target map");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"  No trigger string references found (triggers use inline strings)");
+                }
+
                 Console.WriteLine();
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine("✓ Successfully copied trigger categories!");
