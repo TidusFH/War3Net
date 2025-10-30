@@ -141,6 +141,24 @@ namespace War3Net.Tools.TriggerMerger.Services
                     builder.AddFile(mpqFile);
                     Console.WriteLine($"  - Added {triggerFileName} ({triggerData.Length} bytes)");
 
+                    // CRITICAL DEBUG: Check if builder has duplicate files
+                    Console.WriteLine($"DEBUG: Checking builder contents...");
+                    var allFiles = builder.ToList();
+                    Console.WriteLine($"  - Total files in builder: {allFiles.Count}");
+
+                    var wtgFiles = allFiles.Where(f => {
+                        var fileName = MpqHash.GetHashedFileName(triggerFileName);
+                        return f.Name == fileName;
+                    }).ToList();
+                    Console.WriteLine($"  - Files with name hash matching '{triggerFileName}': {wtgFiles.Count}");
+
+                    if (wtgFiles.Count > 1)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"  ✗ WARNING: Found {wtgFiles.Count} files with same name! MpqArchive.Create might use the wrong one!");
+                        Console.ResetColor();
+                    }
+
                     // CRITICAL: Use SaveWithPreArchiveData to preserve the map header
                     // Without this, the map won't be recognized as a valid Warcraft 3 map!
                     // This extension method reads the MapInfo and writes the header before the MPQ data

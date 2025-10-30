@@ -121,6 +121,47 @@ namespace War3Net.Tools.TriggerMerger.Commands
                     Console.WriteLine($"    Action: {(copiedCategory.WasOverwritten ? "Overwrite" : "Add New")}");
                 }
 
+                // CRITICAL DEBUG: Verify the modified triggers actually have the new items
+                Console.WriteLine();
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("DEBUG: Verifying merge result...");
+                Console.WriteLine($"  - ModifiedTriggers TriggerItems count: {result.ModifiedTriggers.TriggerItems?.Count ?? 0}");
+                Console.WriteLine($"  - Original target TriggerItems count: {targetTriggers.TriggerItems?.Count ?? 0}");
+                Console.WriteLine($"  - Are they the same object? {ReferenceEquals(result.ModifiedTriggers, targetTriggers)}");
+
+                // Count categories and triggers separately
+                if (result.ModifiedTriggers.TriggerItems != null)
+                {
+                    var categories = result.ModifiedTriggers.TriggerItems.OfType<War3Net.Build.Script.TriggerCategoryDefinition>().ToList();
+                    var triggers = result.ModifiedTriggers.TriggerItems.OfType<War3Net.Build.Script.TriggerDefinition>().ToList();
+                    Console.WriteLine($"  - Categories in modified triggers: {categories.Count}");
+                    Console.WriteLine($"  - Actual triggers in modified triggers: {triggers.Count}");
+
+                    // Check if the specific category exists
+                    var spelsHeroes = categories.FirstOrDefault(c => c.Name.Equals("Spels Heroes", StringComparison.OrdinalIgnoreCase));
+                    if (spelsHeroes != null)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"  ✓ 'Spels Heroes' category found with ID: {spelsHeroes.Id}");
+                        Console.ResetColor();
+
+                        // Count triggers that belong to this category
+                        var spelsHeroesTriggers = triggers.Where(t => t.ParentId == spelsHeroes.Id).ToList();
+                        Console.WriteLine($"  - Triggers with ParentId={spelsHeroes.Id}: {spelsHeroesTriggers.Count}");
+                        if (spelsHeroesTriggers.Any())
+                        {
+                            Console.WriteLine($"  - First 3 trigger names: {string.Join(", ", spelsHeroesTriggers.Take(3).Select(t => t.Name))}");
+                        }
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"  ✗ 'Spels Heroes' category NOT FOUND in modified triggers!");
+                        Console.ResetColor();
+                    }
+                }
+                Console.ResetColor();
+
                 if (result.SkippedCategories.Any())
                 {
                     Console.WriteLine();
