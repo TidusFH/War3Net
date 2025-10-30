@@ -109,7 +109,7 @@ namespace War3Net.Tools.TriggerMerger.Services
                     // Open the original archive
                     Console.WriteLine($"DEBUG: Opening original archive: {originalMapPath}");
                     using var originalArchive = MpqArchive.Open(originalMapPath, loadListFile: true);
-                    Console.WriteLine($"  - Archive contains {originalArchive.Count} files");
+                    Console.WriteLine($"  - Archive contains {originalArchive.Count()} files");
 
                     // Create a builder to modify the archive
                     var builder = new MpqArchiveBuilder(originalArchive);
