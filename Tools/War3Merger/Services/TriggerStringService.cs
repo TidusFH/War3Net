@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 
+using War3Net.Build.Extensions;
 using War3Net.Build.Script;
 using War3Net.IO.Mpq;
 
@@ -39,12 +40,6 @@ namespace War3Net.Tools.TriggerMerger.Services
                 if (!string.IsNullOrEmpty(trigger.Description))
                 {
                     ExtractStringIds(trigger.Description, stringIds);
-                }
-
-                // Scan custom text
-                if (!string.IsNullOrEmpty(trigger.CustomTextTriggerFunctionText))
-                {
-                    ExtractStringIds(trigger.CustomTextTriggerFunctionText, stringIds);
                 }
 
                 // Scan all trigger functions (events, conditions, actions)
@@ -147,7 +142,7 @@ namespace War3Net.Tools.TriggerMerger.Services
                 // Serialize trigger strings to text
                 using var stringStream = new MemoryStream();
                 using var writer = new StreamWriter(stringStream);
-                triggerStrings.WriteTo(writer);
+                writer.WriteTriggerStrings(triggerStrings);
                 writer.Flush();
 
                 var stringData = stringStream.ToArray();
@@ -160,7 +155,8 @@ namespace War3Net.Tools.TriggerMerger.Services
                 builder.AddFile(mpqFile);
 
                 // Save with pre-archive data
-                builder.SaveWithPreArchiveData(outputPath);
+                // Cast to MpqArchiveBuilder to use extension method
+                ((MpqArchiveBuilder)builder).SaveWithPreArchiveData(outputPath);
             }
             catch (Exception ex)
             {

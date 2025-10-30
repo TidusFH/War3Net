@@ -232,15 +232,15 @@ namespace War3Net.Tools.TriggerMerger.Commands
                 var copiedTriggers = new List<War3Net.Build.Script.TriggerDefinition>();
                 foreach (var copiedCategory in result.CopiedCategories)
                 {
-                    var category = result.ModifiedTriggers.TriggerItems?
+                    var foundCategory = result.ModifiedTriggers.TriggerItems?
                         .OfType<War3Net.Build.Script.TriggerCategoryDefinition>()
                         .FirstOrDefault(c => c.Name.Equals(copiedCategory.CategoryName, StringComparison.OrdinalIgnoreCase));
 
-                    if (category != null && result.ModifiedTriggers.TriggerItems != null)
+                    if (foundCategory != null && result.ModifiedTriggers.TriggerItems != null)
                     {
                         var categoryTriggers = result.ModifiedTriggers.TriggerItems
                             .OfType<War3Net.Build.Script.TriggerDefinition>()
-                            .Where(t => t.ParentId == category.Id)
+                            .Where(t => t.ParentId == foundCategory.Id)
                             .ToList();
                         copiedTriggers.AddRange(categoryTriggers);
                     }
