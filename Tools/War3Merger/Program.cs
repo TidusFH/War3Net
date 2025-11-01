@@ -27,6 +27,7 @@ namespace War3Net.Tools.TriggerMerger
             {
                 CreateListCommand(),
                 CreateCopyCategoryCommand(),
+                CreateDiagnoseCommand(),
             };
 
             return await rootCommand.InvokeAsync(args);
@@ -147,6 +148,35 @@ namespace War3Net.Tools.TriggerMerger
             {
                 await CopyCategoryCommand.ExecuteAsync(source, target, output, category, categories, dryRun, backup, overwrite);
             }, sourceOption, targetOption, outputOption, categoryOption, categoriesOption, dryRunOption, backupOption, overwriteOption);
+
+            return command;
+        }
+
+        private static Command CreateDiagnoseCommand()
+        {
+            var command = new Command("diagnose", "Diagnose a map file and show MapInfo details (player count, etc.)");
+
+            var mapOption = new Option<FileInfo>(
+                aliases: new[] { "--map", "-m" },
+                description: "Path to the Warcraft 3 map file (.w3x or .w3m) or war3map.w3i file")
+            {
+                IsRequired = true,
+            };
+            mapOption.AddValidator(result =>
+            {
+                var file = result.GetValueForOption(mapOption);
+                if (file != null && !file.Exists)
+                {
+                    result.ErrorMessage = $"File not found: {file.FullName}";
+                }
+            });
+
+            command.AddOption(mapOption);
+
+            command.SetHandler(async (FileInfo map) =>
+            {
+                await DiagnoseMapCommand.ExecuteAsync(map);
+            }, mapOption);
 
             return command;
         }
