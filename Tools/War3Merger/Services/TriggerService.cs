@@ -203,19 +203,19 @@ namespace War3Net.Tools.TriggerMerger.Services
                     var filesInBuilder = builder.ToList();
                     Console.WriteLine($"  - Total files in builder: {filesInBuilder.Count}");
 
-                    // Group by filename to find duplicates
-                    var filesByName = filesInBuilder
-                        .GroupBy(f => f.FileName ?? f.Name.ToString())
+                    // Group by file hash to find duplicates
+                    var filesByHash = filesInBuilder
+                        .GroupBy(f => f.Name)
                         .ToList();
 
-                    var duplicateFiles = filesByName.Where(g => g.Count() > 1).ToList();
+                    var duplicateFiles = filesByHash.Where(g => g.Count() > 1).ToList();
                     if (duplicateFiles.Any())
                     {
                         Console.ForegroundColor = ConsoleColor.Red;
                         Console.WriteLine($"  ✗ FOUND {duplicateFiles.Count} DUPLICATE FILES:");
                         foreach (var dup in duplicateFiles)
                         {
-                            Console.WriteLine($"    - {dup.Key}: {dup.Count()} copies");
+                            Console.WriteLine($"    - Hash {dup.Key}: {dup.Count()} copies");
                         }
                         Console.ResetColor();
                     }
@@ -227,8 +227,9 @@ namespace War3Net.Tools.TriggerMerger.Services
                     }
 
                     // CRITICAL: Check war3map.w3i specifically (this controls player count!)
-                    var w3iFiles = filesByName.FirstOrDefault(g =>
-                        g.Key.Equals("war3map.w3i", StringComparison.OrdinalIgnoreCase));
+                    // Get the hash for war3map.w3i
+                    var w3iHash = MpqHash.GetHashedFileName("war3map.w3i");
+                    var w3iFiles = filesByHash.FirstOrDefault(g => g.Key == w3iHash);
 
                     if (w3iFiles != null)
                     {
@@ -274,21 +275,10 @@ namespace War3Net.Tools.TriggerMerger.Services
                         Console.ResetColor();
                     }
 
-                    // List all files for comparison
-                    Console.WriteLine($"  - Files in builder:");
-                    var sortedFiles = filesInBuilder
-                        .Select(f => f.FileName ?? f.Name.ToString())
-                        .Distinct()
-                        .OrderBy(f => f)
-                        .ToList();
-                    foreach (var file in sortedFiles.Take(20))
-                    {
-                        Console.WriteLine($"    {file}");
-                    }
-                    if (sortedFiles.Count > 20)
-                    {
-                        Console.WriteLine($"    ... and {sortedFiles.Count - 20} more files");
-                    }
+                    // List file count comparison with original
+                    Console.WriteLine($"  - Original archive files: {originalArchive.Count()}");
+                    Console.WriteLine($"  - Builder total files (before dedup): {filesInBuilder.Count}");
+                    Console.WriteLine($"  - Builder unique files (after dedup): {filesByHash.Count}");
 
                     // CRITICAL: Use SaveWithPreArchiveData to preserve the map header
                     // Without this, the map won't be recognized as a valid Warcraft 3 map!
