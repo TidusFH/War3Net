@@ -300,6 +300,29 @@ namespace War3Net.Tools.TriggerMerger.Commands
                     Console.ForegroundColor = ConsoleColor.Green;
                     Console.WriteLine("✓ Backup created");
                     Console.ResetColor();
+
+                    // DIAGNOSTIC: Compare original .wtg size
+                    try
+                    {
+                        using var originalArchive = MpqArchive.Open(targetFile.FullName, loadListFile: true);
+                        if (originalArchive.FileExists(MapTriggers.FileName))
+                        {
+                            using var originalWtgStream = originalArchive.OpenFile(MapTriggers.FileName);
+                            var originalSize = originalWtgStream.Length;
+                            Console.WriteLine($"");
+                            Console.ForegroundColor = ConsoleColor.Cyan;
+                            Console.WriteLine($"DIAGNOSTIC: Original target.w3x analysis:");
+                            Console.WriteLine($"  - Original .wtg size: {originalSize} bytes");
+                            Console.WriteLine($"  - After merge will be: ~{originalSize + (54 * 2000)} bytes (estimated)");
+                            Console.ResetColor();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"  Warning: Could not read original .wtg: {ex.Message}");
+                        Console.ResetColor();
+                    }
                 }
 
                 // Write the modified triggers

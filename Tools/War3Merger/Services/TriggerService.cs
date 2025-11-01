@@ -306,6 +306,47 @@ namespace War3Net.Tools.TriggerMerger.Services
                             }
 
                             Console.WriteLine($"  - Output archive contains {verifyArchive.Count()} files total");
+
+                            // CRITICAL: Verify other important map files weren't lost
+                            Console.WriteLine($"");
+                            Console.WriteLine($"STEP 8: Verifying map integrity...");
+                            var criticalFiles = new[]
+                            {
+                                "war3map.j",
+                                "war3map.w3i",
+                                "war3map.doo",
+                                "war3map.w3e",
+                                "war3map.w3u",
+                                "war3map.w3t",
+                                "war3map.w3a"
+                            };
+
+                            var missingFiles = new List<string>();
+                            foreach (var file in criticalFiles)
+                            {
+                                if (!verifyArchive.FileExists(file))
+                                {
+                                    missingFiles.Add(file);
+                                }
+                            }
+
+                            if (missingFiles.Any())
+                            {
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.WriteLine($"  ✗ ERROR: {missingFiles.Count} critical files MISSING from output!");
+                                foreach (var missing in missingFiles)
+                                {
+                                    Console.WriteLine($"    - {missing}");
+                                }
+                                Console.WriteLine($"  - This explains why World Editor crashes!");
+                                Console.ResetColor();
+                            }
+                            else
+                            {
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.WriteLine($"  ✓ All critical map files preserved");
+                                Console.ResetColor();
+                            }
                         }
                         catch (Exception ex)
                         {
