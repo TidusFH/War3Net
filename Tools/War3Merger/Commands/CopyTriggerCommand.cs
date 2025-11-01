@@ -218,7 +218,7 @@ namespace War3Net.Tools.TriggerMerger.Commands
                         Description = sourceTrigger.Description,
                         IsComment = sourceTrigger.IsComment,
                         IsEnabled = sourceTrigger.IsEnabled,
-                        IsCustom = sourceTrigger.IsCustom,
+                        IsCustomTextTrigger = sourceTrigger.IsCustomTextTrigger,
                         IsInitiallyOn = sourceTrigger.IsInitiallyOn,
                         RunOnMapInit = sourceTrigger.RunOnMapInit,
                         ParentId = targetCategory?.Id ?? sourceTrigger.ParentId,
