@@ -28,6 +28,7 @@ namespace War3Net.Tools.TriggerMerger
                 CreateListCommand(),
                 CreateCopyCategoryCommand(),
                 CreateDiagnoseCommand(),
+                CreateCompareCommand(),
             };
 
             return await rootCommand.InvokeAsync(args);
@@ -177,6 +178,51 @@ namespace War3Net.Tools.TriggerMerger
             {
                 await DiagnoseMapCommand.ExecuteAsync(map);
             }, mapOption);
+
+            return command;
+        }
+
+        private static Command CreateCompareCommand()
+        {
+            var command = new Command("compare", "Compare two map files and show differences (files, sizes, .wtg/.j sync)");
+
+            var map1Option = new Option<FileInfo>(
+                aliases: new[] { "--map1", "-1" },
+                description: "Path to the first Warcraft 3 map file (.w3x or .w3m)")
+            {
+                IsRequired = true,
+            };
+            map1Option.AddValidator(result =>
+            {
+                var file = result.GetValueForOption(map1Option);
+                if (file != null && !file.Exists)
+                {
+                    result.ErrorMessage = $"Map 1 file not found: {file.FullName}";
+                }
+            });
+
+            var map2Option = new Option<FileInfo>(
+                aliases: new[] { "--map2", "-2" },
+                description: "Path to the second Warcraft 3 map file (.w3x or .w3m)")
+            {
+                IsRequired = true,
+            };
+            map2Option.AddValidator(result =>
+            {
+                var file = result.GetValueForOption(map2Option);
+                if (file != null && !file.Exists)
+                {
+                    result.ErrorMessage = $"Map 2 file not found: {file.FullName}";
+                }
+            });
+
+            command.AddOption(map1Option);
+            command.AddOption(map2Option);
+
+            command.SetHandler(async (FileInfo map1, FileInfo map2) =>
+            {
+                await CompareMapCommand.ExecuteAsync(map1, map2);
+            }, map1Option, map2Option);
 
             return command;
         }
