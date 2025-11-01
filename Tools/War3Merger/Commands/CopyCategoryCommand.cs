@@ -210,6 +210,67 @@ namespace War3Net.Tools.TriggerMerger.Commands
                     Console.ResetColor();
                 }
 
+                // CRITICAL: Merge required variables from source to target
+                Console.WriteLine();
+                Console.WriteLine("Checking for required variables...");
+                var variableService = new VariableMergeService();
+
+                // Get all copied triggers for variable scanning
+                var copiedTriggersForVars = new List<War3Net.Build.Script.TriggerDefinition>();
+                foreach (var copiedCategory in result.CopiedCategories)
+                {
+                    var foundCat = result.ModifiedTriggers.TriggerItems?
+                        .OfType<War3Net.Build.Script.TriggerCategoryDefinition>()
+                        .FirstOrDefault(c => c.Name.Equals(copiedCategory.CategoryName, StringComparison.OrdinalIgnoreCase));
+
+                    if (foundCat != null && result.ModifiedTriggers.TriggerItems != null)
+                    {
+                        var catTriggers = result.ModifiedTriggers.TriggerItems
+                            .OfType<War3Net.Build.Script.TriggerDefinition>()
+                            .Where(t => t.ParentId == foundCat.Id)
+                            .ToList();
+                        copiedTriggersForVars.AddRange(catTriggers);
+                    }
+                }
+
+                // Scan copied triggers for variable references
+                var referencedVars = variableService.GetReferencedVariables(
+                    copiedTriggersForVars,
+                    sourceTriggers.Variables?.ToList() ?? new List<War3Net.Build.Script.VariableDefinition>());
+
+                if (referencedVars.Any())
+                {
+                    Console.WriteLine($"  Found {referencedVars.Count} variable references in copied triggers");
+
+                    // Check which variables are missing in target
+                    var targetVarNames = new HashSet<string>(
+                        targetTriggers.Variables?.Select(v => v.Name) ?? Enumerable.Empty<string>(),
+                        StringComparer.OrdinalIgnoreCase);
+
+                    var missingVars = referencedVars.Where(v => !targetVarNames.Contains(v)).ToList();
+
+                    if (missingVars.Any())
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"  Adding {missingVars.Count} missing variables from source map...");
+                        Console.ResetColor();
+
+                        var addedCount = variableService.MergeVariables(sourceTriggers, result.ModifiedTriggers, referencedVars);
+
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"  ✓ Added {addedCount} variables to target map");
+                        Console.ResetColor();
+                    }
+                    else
+                    {
+                        Console.WriteLine($"  All required variables already exist in target map");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"  No variable references found in copied triggers");
+                }
+
                 Console.WriteLine();
 
                 if (dryRun)
