@@ -58,9 +58,15 @@ namespace War3Net.Tools.TriggerMerger.Services
                 return 0;
             }
 
+            // Ensure target has a Variables collection
+            if (target.Variables == null)
+            {
+                target.Variables = new System.Collections.Generic.List<VariableDefinition>();
+            }
+
             // Build a dictionary of existing target variables for quick lookup
             var existingVarNames = new HashSet<string>(
-                target.Variables?.Select(v => v.Name) ?? Enumerable.Empty<string>(),
+                target.Variables.Select(v => v.Name),
                 StringComparer.OrdinalIgnoreCase);
 
             int addedCount = 0;
