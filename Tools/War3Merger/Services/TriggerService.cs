@@ -239,9 +239,21 @@ namespace War3Net.Tools.TriggerMerger.Services
                         try
                         {
                             var w3iFile = w3iFiles.First();
-                            using var w3iStream = w3iFile.MpqStream;
+                            var w3iStream = w3iFile.MpqStream;
+
+                            // CRITICAL: Copy to MemoryStream so we don't dispose the original stream
+                            // or change its position (SaveWithPreArchiveData needs it later!)
+                            var originalPosition = w3iStream.Position;
                             w3iStream.Position = 0;
-                            using var w3iReader = new BinaryReader(w3iStream);
+
+                            using var copyStream = new MemoryStream();
+                            w3iStream.CopyTo(copyStream);
+                            copyStream.Position = 0;
+
+                            // Restore original position so SaveWithPreArchiveData isn't affected
+                            w3iStream.Position = originalPosition;
+
+                            using var w3iReader = new BinaryReader(copyStream);
                             var mapInfo = w3iReader.ReadMapInfo();
 
                             Console.ForegroundColor = ConsoleColor.Cyan;
@@ -255,8 +267,8 @@ namespace War3Net.Tools.TriggerMerger.Services
                             {
                                 Console.ForegroundColor = ConsoleColor.Red;
                                 Console.WriteLine($"  ✗ WARNING: MapInfo shows {mapInfo.Players?.Count ?? 0} players, not 1!");
-                                Console.WriteLine($"  ✗ This explains the 12-player bug!");
-                                Console.WriteLine($"  ✗ The war3map.w3i in the builder is WRONG!");
+                                Console.WriteLine($"  ✗ This is coming from your target.w3x map!");
+                                Console.WriteLine($"  ✗ Your target map is a 12-player map, not a 1-player map!");
                                 Console.ResetColor();
                             }
                         }
