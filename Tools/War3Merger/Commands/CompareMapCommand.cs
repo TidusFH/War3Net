@@ -59,9 +59,17 @@ namespace War3Net.Tools.TriggerMerger.Commands
                     Console.WriteLine("================");
                     Console.WriteLine();
 
-                    // Get file lists
-                    var files1 = archive1.Select(f => f.FileName ?? f.Name.ToString()).OrderBy(f => f).ToList();
-                    var files2 = archive2.Select(f => f.FileName ?? f.Name.ToString()).OrderBy(f => f).ToList();
+                    // Get file lists - MpqArchive enumerates MpqEntry objects
+                    var files1 = archive1
+                        .Where(entry => entry.FileName != null)
+                        .Select(entry => entry.FileName!)
+                        .OrderBy(f => f)
+                        .ToList();
+                    var files2 = archive2
+                        .Where(entry => entry.FileName != null)
+                        .Select(entry => entry.FileName!)
+                        .OrderBy(f => f)
+                        .ToList();
 
                     var files1Set = new HashSet<string>(files1);
                     var files2Set = new HashSet<string>(files2);
