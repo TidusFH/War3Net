@@ -30,6 +30,7 @@ namespace War3Net.Tools.TriggerMerger
                 CreateCopyTriggerCommand(),
                 CreateDiagnoseCommand(),
                 CreateCompareCommand(),
+                CreateTestWtgCommand(),
             };
 
             return await rootCommand.InvokeAsync(args);
@@ -300,6 +301,35 @@ namespace War3Net.Tools.TriggerMerger
             {
                 await CompareMapCommand.ExecuteAsync(map1, map2);
             }, map1Option, map2Option);
+
+            return command;
+        }
+
+        private static Command CreateTestWtgCommand()
+        {
+            var command = new Command("test-wtg", "Test if War3Net can read/write .wtg files without corruption");
+
+            var mapOption = new Option<FileInfo>(
+                aliases: new[] { "--map", "-m" },
+                description: "Path to the Warcraft 3 map file (.w3x or .w3m)")
+            {
+                IsRequired = true,
+            };
+            mapOption.AddValidator(result =>
+            {
+                var file = result.GetValueForOption(mapOption);
+                if (file != null && !file.Exists)
+                {
+                    result.ErrorMessage = $"Map file not found: {file.FullName}";
+                }
+            });
+
+            command.AddOption(mapOption);
+
+            command.SetHandler(async (FileInfo map) =>
+            {
+                await TestWtgCommand.ExecuteAsync(map);
+            }, mapOption);
 
             return command;
         }
