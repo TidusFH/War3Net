@@ -11,6 +11,8 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
+using War3Net.Build.Script;
+using War3Net.IO.Mpq;
 using War3Net.Tools.TriggerMerger.Services;
 
 namespace War3Net.Tools.TriggerMerger.Commands
