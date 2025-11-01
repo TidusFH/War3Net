@@ -27,6 +27,7 @@ namespace War3Net.Tools.TriggerMerger
             {
                 CreateListCommand(),
                 CreateCopyCategoryCommand(),
+                CreateCopyTriggerCommand(),
                 CreateDiagnoseCommand(),
                 CreateCompareCommand(),
             };
@@ -149,6 +150,82 @@ namespace War3Net.Tools.TriggerMerger
             {
                 await CopyCategoryCommand.ExecuteAsync(source, target, output, category, categories, dryRun, backup, overwrite);
             }, sourceOption, targetOption, outputOption, categoryOption, categoriesOption, dryRunOption, backupOption, overwriteOption);
+
+            return command;
+        }
+
+        private static Command CreateCopyTriggerCommand()
+        {
+            var command = new Command("copy-trigger", "Copy specific individual triggers from one map to another");
+
+            var sourceOption = new Option<FileInfo>(
+                aliases: new[] { "--source", "-s" },
+                description: "Path to the source Warcraft 3 map file (.w3x or .w3m)")
+            {
+                IsRequired = true,
+            };
+            sourceOption.AddValidator(result =>
+            {
+                var file = result.GetValueForOption(sourceOption);
+                if (file != null && !file.Exists)
+                {
+                    result.ErrorMessage = $"Source map file not found: {file.FullName}";
+                }
+            });
+
+            var targetOption = new Option<FileInfo>(
+                aliases: new[] { "--target", "-t" },
+                description: "Path to the target Warcraft 3 map file (.w3x or .w3m)")
+            {
+                IsRequired = true,
+            };
+            targetOption.AddValidator(result =>
+            {
+                var file = result.GetValueForOption(targetOption);
+                if (file != null && !file.Exists)
+                {
+                    result.ErrorMessage = $"Target map file not found: {file.FullName}";
+                }
+            });
+
+            var outputOption = new Option<FileInfo>(
+                aliases: new[] { "--output", "-o" },
+                description: "Path for the output map file (defaults to target path with _merged suffix)");
+
+            var categoryOption = new Option<string>(
+                aliases: new[] { "--category", "-c" },
+                description: "Category name to search for triggers (optional)");
+
+            var triggersOption = new Option<string[]>(
+                aliases: new[] { "--triggers" },
+                description: "Names of specific triggers to copy (e.g., 'Book of Archlich' 'Book of Archdemon')")
+            {
+                IsRequired = true,
+                AllowMultipleArgumentsPerToken = true,
+            };
+
+            var dryRunOption = new Option<bool>(
+                aliases: new[] { "--dry-run" },
+                description: "Preview the changes without modifying any files",
+                getDefaultValue: () => false);
+
+            var backupOption = new Option<bool>(
+                aliases: new[] { "--backup" },
+                description: "Create a backup of the target file before modifying",
+                getDefaultValue: () => true);
+
+            command.AddOption(sourceOption);
+            command.AddOption(targetOption);
+            command.AddOption(outputOption);
+            command.AddOption(categoryOption);
+            command.AddOption(triggersOption);
+            command.AddOption(dryRunOption);
+            command.AddOption(backupOption);
+
+            command.SetHandler(async (FileInfo source, FileInfo target, FileInfo? output, string? category, string[] triggers, bool dryRun, bool backup) =>
+            {
+                await CopyTriggerCommand.ExecuteAsync(source, target, output, category, triggers, dryRun, backup);
+            }, sourceOption, targetOption, outputOption, categoryOption, triggersOption, dryRunOption, backupOption);
 
             return command;
         }
