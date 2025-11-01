@@ -31,6 +31,7 @@ namespace War3Net.Tools.TriggerMerger
                 CreateDiagnoseCommand(),
                 CreateCompareCommand(),
                 CreateTestWtgCommand(),
+                CreateValidateWtgCommand(),
             };
 
             return await rootCommand.InvokeAsync(args);
@@ -329,6 +330,35 @@ namespace War3Net.Tools.TriggerMerger
             command.SetHandler(async (FileInfo map) =>
             {
                 await TestWtgCommand.ExecuteAsync(map);
+            }, mapOption);
+
+            return command;
+        }
+
+        private static Command CreateValidateWtgCommand()
+        {
+            var command = new Command("validate-wtg", "Validate .wtg file structure and find errors (invalid IDs, references, etc.)");
+
+            var mapOption = new Option<FileInfo>(
+                aliases: new[] { "--map", "-m" },
+                description: "Path to the Warcraft 3 map file (.w3x or .w3m)")
+            {
+                IsRequired = true,
+            };
+            mapOption.AddValidator(result =>
+            {
+                var file = result.GetValueForOption(mapOption);
+                if (file != null && !file.Exists)
+                {
+                    result.ErrorMessage = $"Map file not found: {file.FullName}";
+                }
+            });
+
+            command.AddOption(mapOption);
+
+            command.SetHandler(async (FileInfo map) =>
+            {
+                await ValidateWtgCommand.ExecuteAsync(map);
             }, mapOption);
 
             return command;
