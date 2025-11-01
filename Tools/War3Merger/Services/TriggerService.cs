@@ -81,10 +81,25 @@ namespace War3Net.Tools.TriggerMerger.Services
                         throw new FileNotFoundException($"Original map file not found: {originalMapPath}");
                     }
 
-                    Console.WriteLine($"DEBUG: Serializing triggers...");
+                    Console.WriteLine($"");
+                    Console.WriteLine($"STEP 1: Serializing triggers to binary...");
                     Console.WriteLine($"  - TriggerItems count: {triggers.TriggerItems?.Count ?? 0}");
                     Console.WriteLine($"  - Variables count: {triggers.Variables?.Count ?? 0}");
                     Console.WriteLine($"  - Format version: {triggers.FormatVersion}");
+
+                    // CRITICAL: Verify variables are actually in the list
+                    if (triggers.Variables != null && triggers.Variables.Any())
+                    {
+                        Console.WriteLine($"  - First 5 variables: {string.Join(", ", triggers.Variables.Take(5).Select(v => $"{v.Name}({v.Type})"))}");
+                        var lastVar = triggers.Variables.Last();
+                        Console.WriteLine($"  - Last variable: {lastVar.Name} ({lastVar.Type})");
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"  ✗ ERROR: No variables in triggers object!");
+                        Console.ResetColor();
+                    }
 
                     // Serialize the triggers to a byte array first
                     byte[] triggerData;
@@ -96,7 +111,9 @@ namespace War3Net.Tools.TriggerMerger.Services
                         triggerData = triggerStream.ToArray();
                     }
 
-                    Console.WriteLine($"  - Serialized trigger data size: {triggerData.Length} bytes");
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"  ✓ Serialized to {triggerData.Length} bytes");
+                    Console.ResetColor();
 
                     if (triggerData.Length == 0)
                     {
@@ -107,26 +124,33 @@ namespace War3Net.Tools.TriggerMerger.Services
                     }
 
                     // Open the original archive
-                    Console.WriteLine($"DEBUG: Opening original archive: {originalMapPath}");
+                    Console.WriteLine($"");
+                    Console.WriteLine($"STEP 2: Opening target map archive...");
                     using var originalArchive = MpqArchive.Open(originalMapPath, loadListFile: true);
-                    Console.WriteLine($"  - Archive contains {originalArchive.Count()} files");
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"  ✓ Opened archive with {originalArchive.Count()} files");
+                    Console.ResetColor();
 
                     // Create a CUSTOM builder that handles duplicate filenames correctly
                     // When we add a file with the same name as an existing file,
                     // our custom builder keeps the NEW file (from _modifiedFiles)
                     // instead of keeping both and letting MpqArchive.Create choose wrong one
+                    Console.WriteLine($"");
+                    Console.WriteLine($"STEP 3: Creating MPQ builder...");
                     var builder = new CustomMpqArchiveBuilder(originalArchive);
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"  ✓ Custom builder created (deduplicates files)");
+                    Console.ResetColor();
 
                     var triggerFileName = MapTriggers.FileName;
-                    Console.WriteLine($"DEBUG: Checking for existing trigger file: {triggerFileName}");
                     var triggerExists = originalArchive.FileExists(triggerFileName);
                     if (triggerExists)
                     {
-                        Console.WriteLine($"  - Found existing {triggerFileName} (will be overwritten)");
+                        Console.WriteLine($"  - Found existing {triggerFileName} in original (will be replaced)");
                     }
                     else
                     {
-                        Console.WriteLine($"  - No existing {triggerFileName} found (will be added)");
+                        Console.WriteLine($"  - No existing {triggerFileName} (will be added as new)");
                     }
 
                     // CRITICAL FIX: Do NOT call RemoveFile() before AddFile()!
@@ -137,15 +161,17 @@ namespace War3Net.Tools.TriggerMerger.Services
 
                     // Create a new stream from the byte array for the MpqFile
                     // IMPORTANT: Keep the stream alive until after SaveWithPreArchiveData completes
-                    Console.WriteLine($"DEBUG: Adding new trigger file to builder");
+                    Console.WriteLine($"");
+                    Console.WriteLine($"STEP 4: Adding .wtg file to builder...");
                     using var newTriggerStream = new MemoryStream(triggerData);
                     newTriggerStream.Position = 0; // Reset position to start
                     var mpqFile = MpqFile.New(newTriggerStream, triggerFileName, leaveOpen: true);
                     builder.AddFile(mpqFile);
-                    Console.WriteLine($"  - Added {triggerFileName} ({triggerData.Length} bytes)");
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"  ✓ Added {triggerFileName} ({triggerData.Length} bytes)");
+                    Console.ResetColor();
 
                     // CRITICAL DEBUG: Check if builder has duplicate files
-                    Console.WriteLine($"DEBUG: Checking builder contents...");
                     var allFiles = builder.ToList();
                     Console.WriteLine($"  - Total files in builder: {allFiles.Count}");
 
@@ -153,21 +179,30 @@ namespace War3Net.Tools.TriggerMerger.Services
                         var fileName = MpqHash.GetHashedFileName(triggerFileName);
                         return f.Name == fileName;
                     }).ToList();
-                    Console.WriteLine($"  - Files with name hash matching '{triggerFileName}': {wtgFiles.Count}");
 
-                    if (wtgFiles.Count > 1)
+                    if (wtgFiles.Count == 1)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"  ✓ Deduplication working: Only 1 {triggerFileName} file");
+                        Console.ResetColor();
+                    }
+                    else if (wtgFiles.Count > 1)
                     {
                         Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine($"  ✗ WARNING: Found {wtgFiles.Count} files with same name! MpqArchive.Create might use the wrong one!");
+                        Console.WriteLine($"  ✗ ERROR: Found {wtgFiles.Count} .wtg files! Deduplication failed!");
                         Console.ResetColor();
                     }
 
                     // CRITICAL: Use SaveWithPreArchiveData to preserve the map header
                     // Without this, the map won't be recognized as a valid Warcraft 3 map!
                     // This extension method reads the MapInfo and writes the header before the MPQ data
-                    Console.WriteLine($"DEBUG: Saving to: {outputMapPath}");
+                    Console.WriteLine($"");
+                    Console.WriteLine($"STEP 5: Saving map with pre-archive header...");
+                    Console.WriteLine($"  - Output path: {outputMapPath}");
                     builder.SaveWithPreArchiveData(outputMapPath);
-                    Console.WriteLine($"DEBUG: Save completed successfully");
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"  ✓ Save completed");
+                    Console.ResetColor();
 
                     // Verify the output file was created
                     if (File.Exists(outputMapPath))
@@ -176,22 +211,24 @@ namespace War3Net.Tools.TriggerMerger.Services
                         Console.WriteLine($"  - Output file size: {fileInfo.Length} bytes");
 
                         // VERIFICATION: Open the output file and check if .wtg actually exists
-                        Console.WriteLine($"DEBUG: Verifying .wtg was actually written to output...");
+                        Console.WriteLine($"");
+                        Console.WriteLine($"STEP 6: Verifying .wtg exists in output...");
                         try
                         {
                             using var verifyArchive = MpqArchive.Open(outputMapPath, loadListFile: true);
                             if (verifyArchive.FileExists(triggerFileName))
                             {
                                 Console.ForegroundColor = ConsoleColor.Green;
-                                Console.WriteLine($"  ✓ CONFIRMED: {triggerFileName} exists in output map");
+                                Console.WriteLine($"  ✓ {triggerFileName} exists in output map");
                                 Console.ResetColor();
 
                                 // Also verify size
                                 using var verifyStream = verifyArchive.OpenFile(triggerFileName);
-                                Console.WriteLine($"  - {triggerFileName} size in output: {verifyStream.Length} bytes");
+                                Console.WriteLine($"  - File size: {verifyStream.Length} bytes");
 
                                 // CRITICAL: Try to READ BACK the .wtg to verify it's valid!
-                                Console.WriteLine($"DEBUG: Reading back the .wtg to verify it's parseable...");
+                                Console.WriteLine($"");
+                                Console.WriteLine($"STEP 7: Reading back .wtg to verify it's parseable...");
                                 try
                                 {
                                     verifyStream.Position = 0;
@@ -199,11 +236,28 @@ namespace War3Net.Tools.TriggerMerger.Services
                                     var readBackTriggers = verifyReader.ReadMapTriggers();
 
                                     Console.ForegroundColor = ConsoleColor.Green;
-                                    Console.WriteLine($"  ✓ SUCCESS: Read back triggers from output map!");
+                                    Console.WriteLine($"  ✓ Successfully parsed .wtg from output!");
                                     Console.ResetColor();
                                     Console.WriteLine($"  - Format version: {readBackTriggers.FormatVersion}");
                                     Console.WriteLine($"  - TriggerItems count: {readBackTriggers.TriggerItems?.Count ?? 0}");
                                     Console.WriteLine($"  - Variables count: {readBackTriggers.Variables?.Count ?? 0}");
+
+                                    // CRITICAL: Verify variables were actually written!
+                                    if (readBackTriggers.Variables != null && readBackTriggers.Variables.Any())
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Green;
+                                        Console.WriteLine($"  ✓ Variables preserved in output:");
+                                        Console.ResetColor();
+                                        Console.WriteLine($"    - First 5: {string.Join(", ", readBackTriggers.Variables.Take(5).Select(v => v.Name))}");
+                                        Console.WriteLine($"    - Last: {readBackTriggers.Variables.Last().Name}");
+                                    }
+                                    else
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"  ✗ ERROR: No variables in output .wtg!");
+                                        Console.WriteLine($"  - This will cause World Editor to reject the map!");
+                                        Console.ResetColor();
+                                    }
 
                                     // Verify "Spels Heroes" is in there
                                     if (readBackTriggers.TriggerItems != null)
