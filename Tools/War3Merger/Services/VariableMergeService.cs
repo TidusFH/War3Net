@@ -58,10 +58,13 @@ namespace War3Net.Tools.TriggerMerger.Services
                 return 0;
             }
 
-            // Ensure target has a Variables collection
+            // Check if target has a Variables collection (it should always have one from ReadMapTriggers)
             if (target.Variables == null)
             {
-                target.Variables = new System.Collections.Generic.List<VariableDefinition>();
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("ERROR: Target map has no Variables collection!");
+                Console.ResetColor();
+                return 0;
             }
 
             // Build a dictionary of existing target variables for quick lookup
