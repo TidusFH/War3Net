@@ -1,0 +1,28 @@
+[Categories]
+MechanicalClass=|c00FF7F00Mechanical|r
+TaurenClass=|c00FF0000Dangerous Enemy|r
+UndeadClass=|c000042FFSpawn of Darkness|r
+
+
+[CustomSkin]
+CinematicBorder=BlackCinematicBorder.blp
+DefaultButton=ReplaceableTextures\CommandButtons\BTNGatherGold.blp
+EscMenuBackground=BlackCinematicBorder.blp
+IdlePeon=ReplaceableTextures\CommandButtons\BTNGatherGold.blp
+
+
+[FrameDef]
+ARMORTIP_DIVINE=Divine creatures can only be attacked by dark creatures and units with hero attack power.
+ARMORTIP_DIVINE_V0C=Divine creatures can only be attacked by dark creatures and units with hero attack power.
+ARMORTIP_DIVINE_V0M=Divine creatures can only be attacked by dark creatures and units with hero attack power.
+ARMORTIP_FORT=Fortified objects receive significantly less damage from melee and ranged attacks, as well as from magical attacks. They receive more damage from siege weapons.
+ARMORTIP_FORT_V0C=Fortified objects receive significantly less damage from melee and ranged attacks, as well as from magical attacks. They receive more damage from siege weapons.
+ARMORTIP_FORT_V0M=Fortified objects receive significantly less damage from melee and ranged attacks, as well as from magical attacks. They receive more damage from siege weapons.
+DAMAGETIP_CHAOS=The Power of Darkness deals maximum damage to enemies with any type of defense.
+DAMAGETIP_HERO=The hero deals maximum damage to enemies with any type of protection.
+DAMAGETIP_HERO_V0C=The hero deals maximum damage to enemies with any type of protection.
+DAMAGETIP_HERO_V0M=The hero deals maximum damage to enemies with any type of protection.
+ITEM_PAWN_TOOLTIP=|cff808080Sell.|R
+ITEM_USE_TOOLTIP=|CFFFED312Use.|R|n
+=
+
