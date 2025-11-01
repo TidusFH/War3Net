@@ -194,6 +194,102 @@ namespace War3Net.Tools.TriggerMerger.Services
                         Console.ResetColor();
                     }
 
+                    // CRITICAL DIAGNOSTIC: Check what files are in the builder BEFORE saving
+                    Console.WriteLine($"");
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"DIAGNOSTIC: Analyzing builder contents BEFORE save...");
+                    Console.ResetColor();
+
+                    var filesInBuilder = builder.ToList();
+                    Console.WriteLine($"  - Total files in builder: {filesInBuilder.Count}");
+
+                    // Group by filename to find duplicates
+                    var filesByName = filesInBuilder
+                        .GroupBy(f => f.FileName ?? f.Name.ToString())
+                        .ToList();
+
+                    var duplicateFiles = filesByName.Where(g => g.Count() > 1).ToList();
+                    if (duplicateFiles.Any())
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"  ✗ FOUND {duplicateFiles.Count} DUPLICATE FILES:");
+                        foreach (var dup in duplicateFiles)
+                        {
+                            Console.WriteLine($"    - {dup.Key}: {dup.Count()} copies");
+                        }
+                        Console.ResetColor();
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"  ✓ No duplicate files found");
+                        Console.ResetColor();
+                    }
+
+                    // CRITICAL: Check war3map.w3i specifically (this controls player count!)
+                    var w3iFiles = filesByName.FirstOrDefault(g =>
+                        g.Key.Equals("war3map.w3i", StringComparison.OrdinalIgnoreCase));
+
+                    if (w3iFiles != null)
+                    {
+                        Console.WriteLine($"  - war3map.w3i found: {w3iFiles.Count()} instance(s)");
+
+                        // Read and display the MapInfo to see player count
+                        try
+                        {
+                            var w3iFile = w3iFiles.First();
+                            using var w3iStream = w3iFile.MpqStream;
+                            w3iStream.Position = 0;
+                            using var w3iReader = new BinaryReader(w3iStream);
+                            var mapInfo = w3iReader.ReadMapInfo();
+
+                            Console.ForegroundColor = ConsoleColor.Cyan;
+                            Console.WriteLine($"  - MapInfo from builder:");
+                            Console.WriteLine($"    - Map name: {mapInfo.MapName}");
+                            Console.WriteLine($"    - Players: {mapInfo.Players?.Count ?? 0}");
+                            Console.WriteLine($"    - Recommended players: {mapInfo.RecommendedPlayers}");
+                            Console.ResetColor();
+
+                            if (mapInfo.Players?.Count != 1 && mapInfo.RecommendedPlayers != "1")
+                            {
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.WriteLine($"  ✗ WARNING: MapInfo shows {mapInfo.Players?.Count ?? 0} players, not 1!");
+                                Console.WriteLine($"  ✗ This explains the 12-player bug!");
+                                Console.WriteLine($"  ✗ The war3map.w3i in the builder is WRONG!");
+                                Console.ResetColor();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Yellow;
+                            Console.WriteLine($"  Warning: Could not read MapInfo: {ex.Message}");
+                            Console.ResetColor();
+                        }
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"  ✗ ERROR: war3map.w3i NOT FOUND in builder!");
+                        Console.WriteLine($"  ✗ SaveWithPreArchiveData will fail!");
+                        Console.ResetColor();
+                    }
+
+                    // List all files for comparison
+                    Console.WriteLine($"  - Files in builder:");
+                    var sortedFiles = filesInBuilder
+                        .Select(f => f.FileName ?? f.Name.ToString())
+                        .Distinct()
+                        .OrderBy(f => f)
+                        .ToList();
+                    foreach (var file in sortedFiles.Take(20))
+                    {
+                        Console.WriteLine($"    {file}");
+                    }
+                    if (sortedFiles.Count > 20)
+                    {
+                        Console.WriteLine($"    ... and {sortedFiles.Count - 20} more files");
+                    }
+
                     // CRITICAL: Use SaveWithPreArchiveData to preserve the map header
                     // Without this, the map won't be recognized as a valid Warcraft 3 map!
                     // This extension method reads the MapInfo and writes the header before the MPQ data
