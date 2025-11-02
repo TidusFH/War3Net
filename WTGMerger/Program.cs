@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using War3Net.Build.Script;
-using War3Net.Build.Core.Extensions;
 
 namespace WTGMerger
 {
@@ -71,6 +70,7 @@ namespace WTGMerger
 
         /// <summary>
         /// Reads a raw WTG file and returns MapTriggers object
+        /// Uses reflection to access internal constructor
         /// </summary>
         static MapTriggers ReadWTGFile(string filePath)
         {
@@ -82,20 +82,42 @@ namespace WTGMerger
             using var fileStream = File.OpenRead(filePath);
             using var reader = new BinaryReader(fileStream);
 
-            // Use War3Net's built-in WTG parser extension method
-            return reader.ReadMapTriggers(TriggerData.Default);
+            // Use reflection to call internal constructor: MapTriggers(BinaryReader, TriggerData)
+            var constructorInfo = typeof(MapTriggers).GetConstructor(
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+                null,
+                new[] { typeof(BinaryReader), typeof(TriggerData) },
+                null);
+
+            if (constructorInfo == null)
+            {
+                throw new InvalidOperationException("Could not find internal MapTriggers constructor");
+            }
+
+            var triggers = (MapTriggers)constructorInfo.Invoke(new object[] { reader, TriggerData.Default });
+            return triggers;
         }
 
         /// <summary>
         /// Writes MapTriggers object to a WTG file
+        /// Uses reflection to access internal WriteTo method
         /// </summary>
         static void WriteWTGFile(string filePath, MapTriggers triggers)
         {
             using var fileStream = File.Create(filePath);
             using var writer = new BinaryWriter(fileStream);
 
-            // Use War3Net's built-in WTG serialization extension method
-            writer.Write(triggers);
+            // Use reflection to call internal WriteTo method
+            var writeToMethod = typeof(MapTriggers).GetMethod(
+                "WriteTo",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+            if (writeToMethod == null)
+            {
+                throw new InvalidOperationException("Could not find internal WriteTo method");
+            }
+
+            writeToMethod.Invoke(triggers, new object[] { writer });
         }
 
         /// <summary>
