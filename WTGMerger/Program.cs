@@ -12,12 +12,21 @@ namespace WTGMerger
         {
             try
             {
-                // Paths to your WTG files
-                var sourcePath = "../Source/war3map.wtg";
-                var targetPath = "../Target/war3map.wtg";
-                var outputPath = "../Target/war3map_merged.wtg";
+                // Paths to your WTG files (can be overridden by command line arguments)
+                var sourcePath = args.Length > 0 ? args[0] : "../Source/war3map.wtg";
+                var targetPath = args.Length > 1 ? args[1] : "../Target/war3map.wtg";
+                var outputPath = args.Length > 2 ? args[2] : "../Target/war3map_merged.wtg";
 
                 Console.WriteLine("=== War3Net WTG Trigger Merger ===\n");
+
+                if (args.Length > 0)
+                {
+                    Console.WriteLine("Using command line arguments:");
+                    Console.WriteLine($"  Source: {sourcePath}");
+                    Console.WriteLine($"  Target: {targetPath}");
+                    Console.WriteLine($"  Output: {outputPath}");
+                    Console.WriteLine();
+                }
 
                 // Read source WTG file
                 Console.WriteLine($"Reading source WTG: {sourcePath}");
