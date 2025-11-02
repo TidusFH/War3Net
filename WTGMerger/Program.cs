@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using War3Net.Build.Script;
+using War3Net.Build.Core.Extensions;
 
 namespace WTGMerger
 {
@@ -81,8 +82,8 @@ namespace WTGMerger
             using var fileStream = File.OpenRead(filePath);
             using var reader = new BinaryReader(fileStream);
 
-            // Use War3Net's built-in WTG parser with default TriggerData
-            return new MapTriggers(reader, TriggerData.Default);
+            // Use War3Net's built-in WTG parser extension method
+            return reader.ReadMapTriggers(TriggerData.Default);
         }
 
         /// <summary>
@@ -93,8 +94,8 @@ namespace WTGMerger
             using var fileStream = File.Create(filePath);
             using var writer = new BinaryWriter(fileStream);
 
-            // Use War3Net's built-in WTG serialization
-            triggers.WriteTo(writer);
+            // Use War3Net's built-in WTG serialization extension method
+            writer.Write(triggers);
         }
 
         /// <summary>
@@ -188,10 +189,9 @@ namespace WTGMerger
                 RemoveCategory(target, categoryName);
             }
 
-            // Create new category in target
-            var newCategory = new TriggerCategoryDefinition
+            // Create new category in target (Type must be set via constructor)
+            var newCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
             {
-                Type = TriggerItemType.Category,
                 Id = GetNextId(target),
                 Name = sourceCategory.Name,
                 IsComment = sourceCategory.IsComment,
@@ -266,9 +266,9 @@ namespace WTGMerger
         /// </summary>
         static TriggerDefinition CopyTrigger(TriggerDefinition source, int newId)
         {
-            var copy = new TriggerDefinition
+            // Type must be set via constructor (it's read-only)
+            var copy = new TriggerDefinition(source.Type)
             {
-                Type = source.Type,
                 Id = newId,
                 Name = source.Name,
                 Description = source.Description,
