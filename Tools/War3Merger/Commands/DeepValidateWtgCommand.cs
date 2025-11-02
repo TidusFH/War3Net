@@ -35,12 +35,12 @@ namespace War3Net.Tools.TriggerMerger.Commands
                 {
                     using var archive = MpqArchive.Open(file.FullName);
                     using var stream = archive.OpenFile("war3map.wtg");
-                    triggers = MapTriggers.Parse(stream);
+                    triggers = new MapTriggers(stream);
                 }
                 else
                 {
                     using var stream = File.OpenRead(file.FullName);
-                    triggers = MapTriggers.Parse(stream);
+                    triggers = new MapTriggers(stream);
                 }
 
                 // Validation counters
