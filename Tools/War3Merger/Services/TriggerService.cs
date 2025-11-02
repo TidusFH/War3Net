@@ -49,9 +49,10 @@ namespace War3Net.Tools.TriggerMerger.Services
                     }
 
                     using var triggerStream = archive.OpenFile(triggerFileName);
+                    using var reader = new BinaryReader(triggerStream);
 
-                    // Read triggers using constructor
-                    var triggers = new MapTriggers(triggerStream);
+                    // Read triggers using BinaryReader extension method
+                    var triggers = reader.ReadMapTriggers();
 
                     return triggers;
                 }
@@ -96,8 +97,9 @@ namespace War3Net.Tools.TriggerMerger.Services
                         var tempTriggerPath = Path.Combine(tempDir, triggerFileName);
 
                         using (var fileStream = File.Create(tempTriggerPath))
+                        using (var writer = new BinaryWriter(fileStream))
                         {
-                            triggers.WriteTo(fileStream);
+                            writer.Write(triggers);
                         }
 
                         // Create new archive with updated triggers
@@ -108,7 +110,7 @@ namespace War3Net.Tools.TriggerMerger.Services
                         {
                             foreach (var mpqEntry in sourceArchive)
                             {
-                                var fileName = mpqEntry.Name;
+                                var fileName = mpqEntry.FileName;
                                 if (fileName != triggerFileName)
                                 {
                                     using var mpqStream = sourceArchive.OpenFile(fileName);
