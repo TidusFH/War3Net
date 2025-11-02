@@ -28,6 +28,7 @@ namespace War3Net.Tools.TriggerMerger
                 CreateListCommand(),
                 CreateCopyCategoryCommand(),
                 CreateCopyTriggerCommand(),
+                CreateMergeWtgFilesCommand(),
                 CreateDiagnoseCommand(),
                 CreateCompareCommand(),
                 CreateTestWtgCommand(),
@@ -228,6 +229,60 @@ namespace War3Net.Tools.TriggerMerger
             {
                 await CopyTriggerCommand.ExecuteAsync(source, target, output, category, triggers, dryRun, backup);
             }, sourceOption, targetOption, outputOption, categoryOption, triggersOption, dryRunOption, backupOption);
+
+            return command;
+        }
+
+        private static Command CreateMergeWtgFilesCommand()
+        {
+            var command = new Command("merge-wtg", "Merge .wtg files directly (no MPQ manipulation - you manually insert result)");
+
+            var sourceOption = new Option<FileInfo>(
+                aliases: new[] { "--source", "-s" },
+                description: "Path to the source war3map.wtg file")
+            {
+                IsRequired = true,
+            };
+
+            var targetOption = new Option<FileInfo>(
+                aliases: new[] { "--target", "-t" },
+                description: "Path to the target war3map.wtg file")
+            {
+                IsRequired = true,
+            };
+
+            var outputOption = new Option<FileInfo>(
+                aliases: new[] { "--output", "-o" },
+                description: "Path for the merged war3map.wtg file")
+            {
+                IsRequired = true,
+            };
+
+            var categoryOption = new Option<string>(
+                aliases: new[] { "--category", "-c" },
+                description: "Category name to merge");
+
+            var triggersOption = new Option<string[]>(
+                aliases: new[] { "--triggers" },
+                description: "Specific trigger names to merge",
+                getDefaultValue: () => Array.Empty<string>());
+
+            var validateOption = new Option<bool>(
+                aliases: new[] { "--validate" },
+                description: "Validate the merged .wtg file",
+                getDefaultValue: () => true);
+
+            command.AddOption(sourceOption);
+            command.AddOption(targetOption);
+            command.AddOption(outputOption);
+            command.AddOption(categoryOption);
+            command.AddOption(triggersOption);
+            command.AddOption(validateOption);
+
+            command.SetHandler(async (FileInfo source, FileInfo target, FileInfo output, string? category, string[] triggers, bool validate) =>
+            {
+                await MergeWtgFilesCommand.ExecuteAsync(source, target, output, category, triggers, validate);
+            }, sourceOption, targetOption, outputOption, categoryOption, triggersOption, validateOption);
 
             return command;
         }
