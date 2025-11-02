@@ -29,6 +29,7 @@ namespace War3Net.Tools.TriggerMerger
                 CreateCopyCategoryCommand(),
                 CreateCopyTriggerCommand(),
                 CreateMergeWtgFilesCommand(),
+                CreateDiffWtgCommand(),
                 CreateDiagnoseCommand(),
                 CreateCompareCommand(),
                 CreateTestWtgCommand(),
@@ -283,6 +284,35 @@ namespace War3Net.Tools.TriggerMerger
             {
                 await MergeWtgFilesCommand.ExecuteAsync(source, target, output, category, triggers, validate);
             }, sourceOption, targetOption, outputOption, categoryOption, triggersOption, validateOption);
+
+            return command;
+        }
+
+        private static Command CreateDiffWtgCommand()
+        {
+            var command = new Command("diff-wtg", "Show differences between two .wtg files (find what was added/changed)");
+
+            var wtg1Option = new Option<FileInfo>(
+                aliases: new[] { "--wtg1", "-1" },
+                description: "Path to the first .wtg file (original)")
+            {
+                IsRequired = true,
+            };
+
+            var wtg2Option = new Option<FileInfo>(
+                aliases: new[] { "--wtg2", "-2" },
+                description: "Path to the second .wtg file (modified)")
+            {
+                IsRequired = true,
+            };
+
+            command.AddOption(wtg1Option);
+            command.AddOption(wtg2Option);
+
+            command.SetHandler(async (FileInfo wtg1, FileInfo wtg2) =>
+            {
+                await DiffWtgCommand.ExecuteAsync(wtg1, wtg2);
+            }, wtg1Option, wtg2Option);
 
             return command;
         }
