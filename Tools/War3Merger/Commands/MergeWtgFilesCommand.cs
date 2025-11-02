@@ -158,7 +158,7 @@ namespace War3Net.Tools.TriggerMerger.Commands
         private static void MergeCategory(MapTriggers source, MapTriggers target, string categoryName)
         {
             var merger = new TriggerCategoryMerger();
-            var result = merger.CopyCategories(source, target, new[] { categoryName }, overwrite: false);
+            var result = merger.CopyCategories(source, target, new List<string> { categoryName }, overwrite: false);
 
             if (!result.Success)
             {
