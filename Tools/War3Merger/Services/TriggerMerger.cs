@@ -47,9 +47,10 @@ namespace War3Net.Tools.TriggerMerger.Services
                 return result;
             }
 
+            // Ensure TriggerItems is not null
             if (target.TriggerItems == null)
             {
-                target.TriggerItems = new List<TriggerItem>();
+                throw new InvalidOperationException("Target MapTriggers.TriggerItems is null. Cannot modify triggers.");
             }
 
             // Find all categories in source
@@ -58,9 +59,9 @@ namespace War3Net.Tools.TriggerMerger.Services
                 .ToList();
 
             // Find all categories in target
-            var targetCategories = target.TriggerItems
+            var targetCategories = target.TriggerItems?
                 .OfType<TriggerCategoryDefinition>()
-                .ToList();
+                .ToList() ?? new List<TriggerCategoryDefinition>();
 
             foreach (var categoryName in categoryNames)
             {
@@ -174,9 +175,10 @@ namespace War3Net.Tools.TriggerMerger.Services
             TriggerCategoryDefinition sourceCategory,
             List<TriggerDefinition> categoryTriggers)
         {
+            // Ensure TriggerItems is not null
             if (target.TriggerItems == null)
             {
-                target.TriggerItems = new List<TriggerItem>();
+                throw new InvalidOperationException("Target MapTriggers.TriggerItems is null. Cannot modify triggers.");
             }
 
             // Create a new category with a new ID
@@ -188,13 +190,13 @@ namespace War3Net.Tools.TriggerMerger.Services
             };
 
             // Add the category to the target
-            target.TriggerItems.Add(newCategory);
+            target.TriggerItems!.Add(newCategory);
 
             // Copy all triggers in the category
             foreach (var trigger in categoryTriggers)
             {
                 var newTrigger = CopyTrigger(trigger);
-                target.TriggerItems.Add(newTrigger);
+                target.TriggerItems!.Add(newTrigger);
             }
         }
 

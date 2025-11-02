@@ -97,7 +97,7 @@ namespace War3Net.Tools.TriggerMerger.Commands
 
                 // Copy categories
                 Console.WriteLine("Processing categories...");
-                var merger = new TriggerMerger();
+                var merger = new Services.TriggerMerger();
                 var result = merger.CopyCategories(sourceTriggers, targetTriggers, categoriesToCopy, overwrite);
 
                 if (!result.Success)
