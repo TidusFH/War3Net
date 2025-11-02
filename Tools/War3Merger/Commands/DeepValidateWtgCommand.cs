@@ -1,5 +1,7 @@
 using System.CommandLine;
 using System.CommandLine.Invocation;
+using System.Collections.Generic;
+using System.Linq;
 using War3Net.Build.Widget;
 using War3Net.IO.Mpq;
 
