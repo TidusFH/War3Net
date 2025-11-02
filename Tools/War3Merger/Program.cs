@@ -34,6 +34,7 @@ namespace War3Net.Tools.TriggerMerger
                 CreateCompareCommand(),
                 CreateTestWtgCommand(),
                 CreateValidateWtgCommand(),
+                new DeepValidateWtgCommand(),
             };
 
             return await rootCommand.InvokeAsync(args);
