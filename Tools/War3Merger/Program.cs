@@ -27,6 +27,7 @@ namespace War3Net.Tools.TriggerMerger
             {
                 CreateListCommand(),
                 CreateCopyCategoryCommand(),
+                CreateDeepValidateWtgCommand(),
             };
 
             return await rootCommand.InvokeAsync(args);
@@ -147,6 +148,35 @@ namespace War3Net.Tools.TriggerMerger
             {
                 await CopyCategoryCommand.ExecuteAsync(source, target, output, category, categories, dryRun, backup, overwrite);
             }, sourceOption, targetOption, outputOption, categoryOption, categoriesOption, dryRunOption, backupOption, overwriteOption);
+
+            return command;
+        }
+
+        private static Command CreateDeepValidateWtgCommand()
+        {
+            var command = new Command("deep-validate-wtg", "Perform deep validation of trigger file structure");
+
+            var fileOption = new Option<FileInfo>(
+                aliases: new[] { "--file", "-f" },
+                description: "Path to the WTG file or map file to validate (.wtg, .w3x, or .w3m)")
+            {
+                IsRequired = true,
+            };
+            fileOption.AddValidator(result =>
+            {
+                var file = result.GetValueForOption(fileOption);
+                if (file != null && !file.Exists)
+                {
+                    result.ErrorMessage = $"File not found: {file.FullName}";
+                }
+            });
+
+            command.AddOption(fileOption);
+
+            command.SetHandler(async (FileInfo file) =>
+            {
+                await DeepValidateWtgCommand.ExecuteAsync(file);
+            }, fileOption);
 
             return command;
         }
