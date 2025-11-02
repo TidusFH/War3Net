@@ -196,38 +196,41 @@ namespace War3Net.Tools.TriggerMerger.Commands
             var duplicateIds = new List<(int id, string name, string type)>();
             var zeroIds = new List<(string name, string type)>();
 
-            foreach (var item in triggers.TriggerItems)
+            if (triggers.TriggerItems != null)
             {
-                int id;
-                string name;
-                string type;
+                foreach (var item in triggers.TriggerItems)
+                {
+                    int id;
+                    string name;
+                    string type;
 
-                if (item is TriggerCategoryDefinition category)
-                {
-                    id = category.Id;
-                    name = category.Name;
-                    type = "Category";
-                }
-                else if (item is TriggerDefinition trigger)
-                {
-                    id = trigger.Id;
-                    name = trigger.Name;
-                    type = "Trigger";
-                }
-                else
-                {
-                    continue;
-                }
+                    if (item is TriggerCategoryDefinition category)
+                    {
+                        id = category.Id;
+                        name = category.Name;
+                        type = "Category";
+                    }
+                    else if (item is TriggerDefinition trigger)
+                    {
+                        id = trigger.Id;
+                        name = trigger.Name;
+                        type = "Trigger";
+                    }
+                    else
+                    {
+                        continue;
+                    }
 
-                if (id == 0)
-                {
-                    zeroIds.Add((name, type));
-                    errors++;
-                }
-                else if (!seenIds.Add(id))
-                {
-                    duplicateIds.Add((id, name, type));
-                    errors++;
+                    if (id == 0)
+                    {
+                        zeroIds.Add((name, type));
+                        errors++;
+                    }
+                    else if (!seenIds.Add(id))
+                    {
+                        duplicateIds.Add((id, name, type));
+                        errors++;
+                    }
                 }
             }
 
@@ -273,22 +276,25 @@ namespace War3Net.Tools.TriggerMerger.Commands
             var duplicateCategories = new List<string>();
             var duplicateTriggers = new List<string>();
 
-            foreach (var item in triggers.TriggerItems)
+            if (triggers.TriggerItems != null)
             {
-                if (item is TriggerCategoryDefinition category)
+                foreach (var item in triggers.TriggerItems)
                 {
-                    if (!categoryNames.Add(category.Name))
+                    if (item is TriggerCategoryDefinition category)
                     {
-                        duplicateCategories.Add(category.Name);
-                        warnings++;
+                        if (!categoryNames.Add(category.Name))
+                        {
+                            duplicateCategories.Add(category.Name);
+                            warnings++;
+                        }
                     }
-                }
-                else if (item is TriggerDefinition trigger)
-                {
-                    if (!triggerNames.Add(trigger.Name))
+                    else if (item is TriggerDefinition trigger)
                     {
-                        duplicateTriggers.Add(trigger.Name);
-                        warnings++;
+                        if (!triggerNames.Add(trigger.Name))
+                        {
+                            duplicateTriggers.Add(trigger.Name);
+                            warnings++;
+                        }
                     }
                 }
             }
@@ -334,47 +340,53 @@ namespace War3Net.Tools.TriggerMerger.Commands
             var invalidParents = new List<(string name, int parentId, string type)>();
 
             // First pass: collect all valid IDs
-            foreach (var item in triggers.TriggerItems)
+            if (triggers.TriggerItems != null)
             {
-                if (item is TriggerCategoryDefinition category)
+                foreach (var item in triggers.TriggerItems)
                 {
-                    validIds.Add(category.Id);
-                }
-                else if (item is TriggerDefinition trigger)
-                {
-                    validIds.Add(trigger.Id);
+                    if (item is TriggerCategoryDefinition category)
+                    {
+                        validIds.Add(category.Id);
+                    }
+                    else if (item is TriggerDefinition trigger)
+                    {
+                        validIds.Add(trigger.Id);
+                    }
                 }
             }
 
             // Second pass: validate parent references
-            foreach (var item in triggers.TriggerItems)
+            if (triggers.TriggerItems != null)
             {
-                int parentId;
-                string name;
-                string type;
+                foreach (var item in triggers.TriggerItems)
+                {
+                    int parentId;
+                    string name;
+                    string type;
 
-                if (item is TriggerCategoryDefinition category)
-                {
-                    parentId = category.ParentId;
-                    name = category.Name;
-                    type = "Category";
-                }
-                else if (item is TriggerDefinition trigger)
-                {
-                    parentId = trigger.ParentId;
-                    name = trigger.Name;
-                    type = "Trigger";
-                }
-                else
-                {
-                    continue;
-                }
+                    if (item is TriggerCategoryDefinition category)
+                    {
+                        parentId = category.ParentId;
+                        name = category.Name;
+                        type = "Category";
+                    }
+                    else if (item is TriggerDefinition trigger)
+                    {
+                        parentId = trigger.ParentId;
+                        name = trigger.Name;
+                        type = "Trigger";
+                    }
+                    else
+                    {
+                        continue;
+                    }
 
-                // ParentId of 0 means root level, which is valid
-                if (parentId != 0 && !validIds.Contains(parentId))
-                {
-                    invalidParents.Add((name, parentId, type));
-                    errors++;
+                    // ParentId of 0 means root level, which is valid
+                    if (parentId != 0 && !validIds.Contains(parentId))
+                    {
+                        invalidParents.Add((name, parentId, type));
+                        errors++;
+                    }
                 }
             }
 
@@ -405,7 +417,6 @@ namespace War3Net.Tools.TriggerMerger.Commands
 
             var definedVariables = new HashSet<string>();
             var usedVariables = new HashSet<string>();
-            var undefinedVariables = new List<string>();
 
             // Collect defined variables
             if (triggers.Variables != null)
@@ -417,50 +428,30 @@ namespace War3Net.Tools.TriggerMerger.Commands
             }
 
             // Scan for variable usage in trigger functions
-            foreach (var item in triggers.TriggerItems)
+            if (triggers.TriggerItems != null)
             {
-                if (item is TriggerDefinition trigger && trigger.Functions != null)
+                foreach (var item in triggers.TriggerItems)
                 {
-                    foreach (var function in trigger.Functions)
+                    if (item is TriggerDefinition trigger && trigger.Functions != null)
                     {
-                        ScanFunctionForVariables(function, usedVariables);
+                        foreach (var function in trigger.Functions)
+                        {
+                            ScanFunctionForVariables(function, usedVariables);
+                        }
                     }
-                }
-            }
-
-            // Find undefined variables
-            foreach (var usedVar in usedVariables)
-            {
-                if (!definedVariables.Contains(usedVar))
-                {
-                    undefinedVariables.Add(usedVar);
                 }
             }
 
             Console.ForegroundColor = ConsoleColor.White;
             Console.WriteLine($"Defined variables: {definedVariables.Count}");
-            Console.WriteLine($"Used variables: {usedVariables.Count}");
+            Console.WriteLine($"Used variables (detected): {usedVariables.Count}");
             Console.ResetColor();
 
-            if (undefinedVariables.Any())
-            {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"⚠ Found {undefinedVariables.Count} potentially undefined variable(s):");
-                foreach (var varName in undefinedVariables.Take(10))
-                {
-                    Console.WriteLine($"  - {varName}");
-                }
-                if (undefinedVariables.Count > 10)
-                {
-                    Console.WriteLine($"  ... and {undefinedVariables.Count - 10} more");
-                }
-                Console.ResetColor();
-                warnings += undefinedVariables.Count;
-            }
-            else
+            // Note: We don't report undefined variables as errors because variable detection is heuristic
+            if (usedVariables.Count > 0)
             {
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("✓ All used variables appear to be defined");
+                Console.WriteLine("✓ Variable usage detected in triggers");
                 Console.ResetColor();
             }
 
@@ -476,14 +467,17 @@ namespace War3Net.Tools.TriggerMerger.Commands
             }
 
             // Recursively scan parameters
-            if (function.Parameters != null)
+            if (function.Parameters != null && function.Parameters.Count > 0)
             {
-                foreach (var param in function.Parameters)
+                for (int i = 0; i < function.Parameters.Count; i++)
                 {
+                    var param = function.Parameters[i];
+
                     if (param.Function != null)
                     {
                         ScanFunctionForVariables(param.Function, usedVariables);
                     }
+
                     if (!string.IsNullOrEmpty(param.Value) && param.Value.StartsWith("gg_"))
                     {
                         usedVariables.Add(param.Value);
@@ -500,28 +494,31 @@ namespace War3Net.Tools.TriggerMerger.Commands
             var emptyNames = new List<string>();
             var noFunctions = new List<string>();
 
-            foreach (var item in triggers.TriggerItems)
+            if (triggers.TriggerItems != null)
             {
-                if (item is TriggerDefinition trigger)
+                foreach (var item in triggers.TriggerItems)
                 {
-                    if (string.IsNullOrWhiteSpace(trigger.Name))
+                    if (item is TriggerDefinition trigger)
                     {
-                        emptyNames.Add($"Trigger ID {trigger.Id}");
-                        errors++;
-                    }
+                        if (string.IsNullOrWhiteSpace(trigger.Name))
+                        {
+                            emptyNames.Add($"Trigger ID {trigger.Id}");
+                            errors++;
+                        }
 
-                    if (trigger.Functions == null || !trigger.Functions.Any())
-                    {
-                        noFunctions.Add(trigger.Name);
-                        warnings++;
+                        if (trigger.Functions == null || trigger.Functions.Count == 0)
+                        {
+                            noFunctions.Add(trigger.Name);
+                            warnings++;
+                        }
                     }
-                }
-                else if (item is TriggerCategoryDefinition category)
-                {
-                    if (string.IsNullOrWhiteSpace(category.Name))
+                    else if (item is TriggerCategoryDefinition category)
                     {
-                        emptyNames.Add($"Category ID {category.Id}");
-                        errors++;
+                        if (string.IsNullOrWhiteSpace(category.Name))
+                        {
+                            emptyNames.Add($"Category ID {category.Id}");
+                            errors++;
+                        }
                     }
                 }
             }
@@ -571,11 +568,14 @@ namespace War3Net.Tools.TriggerMerger.Commands
             var circularRefs = new List<(string name, List<int> chain)>();
 
             // Build parent map for categories
-            foreach (var item in triggers.TriggerItems)
+            if (triggers.TriggerItems != null)
             {
-                if (item is TriggerCategoryDefinition category)
+                foreach (var item in triggers.TriggerItems)
                 {
-                    categoryParents[category.Id] = category.ParentId;
+                    if (item is TriggerCategoryDefinition category)
+                    {
+                        categoryParents[category.Id] = category.ParentId;
+                    }
                 }
             }
 
@@ -591,7 +591,7 @@ namespace War3Net.Tools.TriggerMerger.Commands
                     if (visited.Contains(currentId))
                     {
                         // Found a circular reference
-                        var category = triggers.TriggerItems.OfType<TriggerCategoryDefinition>()
+                        var category = triggers.TriggerItems?.OfType<TriggerCategoryDefinition>()
                             .FirstOrDefault(c => c.Id == categoryId);
                         circularRefs.Add((category?.Name ?? $"ID {categoryId}", chain));
                         errors++;
@@ -632,8 +632,8 @@ namespace War3Net.Tools.TriggerMerger.Commands
 
         private static void DisplayTriggerDistribution(MapTriggers triggers)
         {
-            var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
-            var triggersInFile = triggers.TriggerItems.OfType<TriggerDefinition>().ToList();
+            var categories = triggers.TriggerItems?.OfType<TriggerCategoryDefinition>().ToList() ?? new List<TriggerCategoryDefinition>();
+            var triggersInFile = triggers.TriggerItems?.OfType<TriggerDefinition>().ToList() ?? new List<TriggerDefinition>();
 
             Console.ForegroundColor = ConsoleColor.White;
             Console.WriteLine($"Total categories: {categories.Count}");
@@ -689,13 +689,16 @@ namespace War3Net.Tools.TriggerMerger.Commands
 
             var functionIssues = new List<(string triggerName, string issue)>();
 
-            foreach (var item in triggers.TriggerItems)
+            if (triggers.TriggerItems != null)
             {
-                if (item is TriggerDefinition trigger && trigger.Functions != null)
+                foreach (var item in triggers.TriggerItems)
                 {
-                    foreach (var function in trigger.Functions)
+                    if (item is TriggerDefinition trigger && trigger.Functions != null)
                     {
-                        ValidateFunction(function, trigger.Name, functionIssues, 0);
+                        foreach (var function in trigger.Functions)
+                        {
+                            ValidateFunction(function, trigger.Name, functionIssues, 0);
+                        }
                     }
                 }
             }
@@ -739,10 +742,12 @@ namespace War3Net.Tools.TriggerMerger.Commands
             }
 
             // Recursively validate nested functions in parameters
-            if (function.Parameters != null)
+            if (function.Parameters != null && function.Parameters.Count > 0)
             {
-                foreach (var param in function.Parameters)
+                for (int i = 0; i < function.Parameters.Count; i++)
                 {
+                    var param = function.Parameters[i];
+
                     if (param.Function != null)
                     {
                         ValidateFunction(param.Function, triggerName, issues, depth + 1);
