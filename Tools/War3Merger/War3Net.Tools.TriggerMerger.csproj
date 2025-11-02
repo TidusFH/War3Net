@@ -14,29 +14,29 @@
     <Version>1.0.0</Version>
   </PropertyGroup>
 
-  <!-- Use DLL references if available in libs folder, otherwise use project references -->
-  <ItemGroup Condition="Exists('..\..\libs\War3Net.Build.Core.dll')">
+  <!-- Use DLL references if available in Libs folder, otherwise use project references -->
+  <ItemGroup Condition="Exists('..\..\Libs\War3Net.Build.Core.dll')">
     <Reference Include="War3Net.Build.Core">
-      <HintPath>..\..\libs\War3Net.Build.Core.dll</HintPath>
+      <HintPath>..\..\Libs\War3Net.Build.Core.dll</HintPath>
     </Reference>
     <Reference Include="War3Net.Build">
-      <HintPath>..\..\libs\War3Net.Build.dll</HintPath>
+      <HintPath>..\..\Libs\War3Net.Build.dll</HintPath>
     </Reference>
     <Reference Include="War3Net.IO.Mpq">
-      <HintPath>..\..\libs\War3Net.IO.Mpq.dll</HintPath>
+      <HintPath>..\..\Libs\War3Net.IO.Mpq.dll</HintPath>
     </Reference>
     <Reference Include="War3Net.CodeAnalysis.Jass">
-      <HintPath>..\..\libs\War3Net.CodeAnalysis.Jass.dll</HintPath>
+      <HintPath>..\..\Libs\War3Net.CodeAnalysis.Jass.dll</HintPath>
     </Reference>
     <Reference Include="War3Net.IO.Compression">
-      <HintPath>..\..\libs\War3Net.IO.Compression.dll</HintPath>
+      <HintPath>..\..\Libs\War3Net.IO.Compression.dll</HintPath>
     </Reference>
     <Reference Include="War3Net.Common">
-      <HintPath>..\..\libs\War3Net.Common.dll</HintPath>
+      <HintPath>..\..\Libs\War3Net.Common.dll</HintPath>
     </Reference>
   </ItemGroup>
 
-  <ItemGroup Condition="!Exists('..\..\libs\War3Net.Build.Core.dll')">
+  <ItemGroup Condition="!Exists('..\..\Libs\War3Net.Build.Core.dll')">
     <ProjectReference Include="..\..\src\War3Net.Build.Core\War3Net.Build.Core.csproj" />
     <ProjectReference Include="..\..\src\War3Net.Build\War3Net.Build.csproj" />
     <ProjectReference Include="..\..\src\War3Net.IO.Mpq\War3Net.IO.Mpq.csproj" />
