@@ -1,8 +1,11 @@
+using System;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using War3Net.Build.Widget;
+using War3Net.Build.Extensions;
+using War3Net.Build.Script;
 using War3Net.IO.Mpq;
 
 namespace War3Net.Tools.TriggerMerger.Commands;
