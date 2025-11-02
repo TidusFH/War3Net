@@ -199,6 +199,38 @@ namespace War3Net.Tools.TriggerMerger.Commands
                 ? target.TriggerItems.Max(item => item.Id)
                 : 0;
 
+            // Find or create target category if specified
+            TriggerCategoryDefinition? targetCategory = null;
+            if (!string.IsNullOrEmpty(categoryName))
+            {
+                var sourceCategory = source.TriggerItems?
+                    .OfType<TriggerCategoryDefinition>()
+                    .FirstOrDefault(c => c.Name.Equals(categoryName, StringComparison.OrdinalIgnoreCase));
+
+                if (sourceCategory != null)
+                {
+                    // Try to find existing category in target
+                    targetCategory = target.TriggerItems?
+                        .OfType<TriggerCategoryDefinition>()
+                        .FirstOrDefault(c => c.Name.Equals(categoryName, StringComparison.OrdinalIgnoreCase));
+
+                    // Create category if it doesn't exist
+                    if (targetCategory == null)
+                    {
+                        var newCategoryId = ++maxId;
+                        targetCategory = new TriggerCategoryDefinition
+                        {
+                            Id = newCategoryId,
+                            Name = sourceCategory.Name,
+                            IsComment = sourceCategory.IsComment,
+                            ParentId = 0, // Put in root
+                        };
+                        target.TriggerItems?.Add(targetCategory);
+                        Console.WriteLine($"✓ Created category: {categoryName} (ID: {newCategoryId})");
+                    }
+                }
+            }
+
             var copiedCount = 0;
 
             foreach (var triggerName in triggerNames)
@@ -215,25 +247,36 @@ namespace War3Net.Tools.TriggerMerger.Commands
                     continue;
                 }
 
-                // Copy trigger
+                // Create new trigger with proper ID and ParentId
                 var newTriggerId = ++maxId;
-                var newTrigger = new TriggerDefinition
+
+                // CRITICAL: Cannot use object initializer with init-only properties!
+                // Must set properties after construction
+                var newTrigger = new TriggerDefinition();
+                newTrigger.Id = newTriggerId;
+                newTrigger.Name = sourceTrigger.Name;
+                newTrigger.Description = sourceTrigger.Description;
+                newTrigger.IsComment = sourceTrigger.IsComment;
+                newTrigger.IsEnabled = sourceTrigger.IsEnabled;
+                newTrigger.IsCustomTextTrigger = sourceTrigger.IsCustomTextTrigger;
+                newTrigger.IsInitiallyOn = sourceTrigger.IsInitiallyOn;
+                newTrigger.RunOnMapInit = sourceTrigger.RunOnMapInit;
+
+                // Use target category ID, or root if not found
+                newTrigger.ParentId = targetCategory?.Id ?? 0;
+
+                // Copy functions (can't assign directly due to init-only)
+                if (sourceTrigger.Functions != null)
                 {
-                    Id = newTriggerId,
-                    Name = sourceTrigger.Name,
-                    Description = sourceTrigger.Description,
-                    IsComment = sourceTrigger.IsComment,
-                    IsEnabled = sourceTrigger.IsEnabled,
-                    IsCustomTextTrigger = sourceTrigger.IsCustomTextTrigger,
-                    IsInitiallyOn = sourceTrigger.IsInitiallyOn,
-                    RunOnMapInit = sourceTrigger.RunOnMapInit,
-                    ParentId = sourceTrigger.ParentId, // Keep original parent for now
-                    Functions = sourceTrigger.Functions,
-                };
+                    foreach (var function in sourceTrigger.Functions)
+                    {
+                        newTrigger.Functions.Add(function);
+                    }
+                }
 
                 target.TriggerItems?.Add(newTrigger);
                 copiedCount++;
-                Console.WriteLine($"✓ Copied trigger: {triggerName}");
+                Console.WriteLine($"✓ Copied trigger: {triggerName} (ID: {newTriggerId}, ParentId: {newTrigger.ParentId})");
             }
 
             Console.WriteLine($"✓ Copied {copiedCount} triggers");
