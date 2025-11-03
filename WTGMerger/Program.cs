@@ -379,10 +379,11 @@ namespace WTGMerger
 
             if (destCategory == null)
             {
-                // Create new category
+                // Create new category at root level
                 destCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
                 {
                     Id = GetNextId(target),
+                    ParentId = -1,  // CRITICAL: Root-level category
                     Name = destCategoryName,
                     IsComment = false,
                     IsExpanded = true
@@ -470,9 +471,11 @@ namespace WTGMerger
             }
 
             // Create new category in target (Type must be set via constructor)
+            // Preserve ParentId from source to maintain nesting structure
             var newCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
             {
                 Id = GetNextId(target),
+                ParentId = sourceCategory.ParentId,  // Preserve nesting structure
                 Name = sourceCategory.Name,
                 IsComment = sourceCategory.IsComment,
                 IsExpanded = sourceCategory.IsExpanded
@@ -539,15 +542,53 @@ namespace WTGMerger
             // Validate ParentIds
             var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
             var categoryIds = new HashSet<int>(categories.Select(c => c.Id));
+
+            // Check category hierarchy
+            Console.WriteLine($"\nCategory Hierarchy:");
+            var rootCategories = categories.Where(c => c.ParentId < 0).ToList();
+            var nestedCategories = categories.Where(c => c.ParentId >= 0).ToList();
+            Console.WriteLine($"  Root-level categories: {rootCategories.Count}");
+            Console.WriteLine($"  Nested categories: {nestedCategories.Count}");
+
+            foreach (var cat in rootCategories.Take(5))
+            {
+                Console.WriteLine($"    - {cat.Name} (ID={cat.Id}, ParentId={cat.ParentId})");
+            }
+            if (rootCategories.Count > 5)
+            {
+                Console.WriteLine($"    ... and {rootCategories.Count - 5} more");
+            }
+
+            // Check for orphaned categories
+            var orphanedCategories = nestedCategories
+                .Where(c => !categoryIds.Contains(c.ParentId))
+                .ToList();
+
+            if (orphanedCategories.Count > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"\n⚠ WARNING: {orphanedCategories.Count} orphaned categories (ParentId points to non-existent category):");
+                foreach (var cat in orphanedCategories.Take(5))
+                {
+                    Console.WriteLine($"  - {cat.Name} (ID={cat.Id}, ParentId={cat.ParentId})");
+                }
+                if (orphanedCategories.Count > 5)
+                {
+                    Console.WriteLine($"  ... and {orphanedCategories.Count - 5} more");
+                }
+                Console.ResetColor();
+            }
+
+            // Check for orphaned triggers
             var orphanedTriggers = triggers.TriggerItems
                 .OfType<TriggerDefinition>()
-                .Where(t => t.ParentId != 0 && !categoryIds.Contains(t.ParentId))
+                .Where(t => t.ParentId >= 0 && !categoryIds.Contains(t.ParentId))
                 .ToList();
 
             if (orphanedTriggers.Count > 0)
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"\n⚠ WARNING: {orphanedTriggers.Count} orphaned triggers found (ParentId points to non-existent category):");
+                Console.WriteLine($"\n⚠ WARNING: {orphanedTriggers.Count} orphaned triggers (ParentId points to non-existent category):");
                 foreach (var trigger in orphanedTriggers.Take(5))
                 {
                     Console.WriteLine($"  - {trigger.Name} (ParentId={trigger.ParentId})");
@@ -622,21 +663,25 @@ namespace WTGMerger
                 triggers.TriggerItems[i].Id = i;
             }
 
-            // Update ParentIds to match new IDs
             // Build a mapping of old ID -> new ID
-            var idMapping = new Dictionary<int, int>();
+            var oldIdToNewId = new Dictionary<int, int>();
             for (int i = 0; i < triggers.TriggerItems.Count; i++)
             {
                 var item = triggers.TriggerItems[i];
-                if (item is TriggerCategoryDefinition category)
-                {
-                    idMapping[i] = category.Id; // New ID is the index
-                }
+                // Store mapping: we just reassigned IDs sequentially
+                // The item at index i now has ID = i
+                oldIdToNewId[i] = i;
             }
 
-            // Update ParentIds in triggers
+            // Update ParentIds in ALL items (both categories and triggers)
             foreach (var item in triggers.TriggerItems)
             {
+                // Skip root-level items (ParentId -1 or 0 should stay that way)
+                if (item.ParentId < 0)
+                {
+                    continue;
+                }
+
                 if (item is TriggerDefinition trigger)
                 {
                     // Find the category this trigger belongs to
@@ -649,12 +694,35 @@ namespace WTGMerger
                         // ParentId should be the category's NEW ID (which is its index)
                         trigger.ParentId = triggers.TriggerItems.IndexOf(category);
                     }
+                    else
+                    {
+                        // No parent found, make it root-level
+                        trigger.ParentId = -1;
+                    }
+                }
+                else if (item is TriggerCategoryDefinition category)
+                {
+                    // Categories can also be nested - find parent category
+                    var parentCategory = triggers.TriggerItems
+                        .OfType<TriggerCategoryDefinition>()
+                        .FirstOrDefault(c => c.Id == category.ParentId);
+
+                    if (parentCategory != null)
+                    {
+                        // Update to parent's new ID
+                        category.ParentId = triggers.TriggerItems.IndexOf(parentCategory);
+                    }
+                    else
+                    {
+                        // No parent found, make it root-level
+                        category.ParentId = -1;
+                    }
                 }
             }
 
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"  ✓ Reassigned IDs: 0 to {triggers.TriggerItems.Count - 1}");
-            Console.WriteLine($"  ✓ Updated ParentIds to match new category IDs");
+            Console.WriteLine($"  ✓ Updated ParentIds for both categories and triggers");
             Console.ResetColor();
         }
 
