@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using War3Net.Build.Script;
+using War3Net.IO.Mpq;
+using War3Net.Build.Extensions;
 
 namespace WTGMerger
 {
@@ -36,15 +38,23 @@ namespace WTGMerger
                     Console.WriteLine();
                 }
 
-                // Read source WTG file
-                Console.WriteLine($"Reading source WTG: {sourcePath}");
-                MapTriggers sourceTriggers = ReadWTGFile(sourcePath);
+                // Read source (auto-detect .wtg or .w3x/.w3m)
+                Console.WriteLine($"Reading source: {sourcePath}");
+                MapTriggers sourceTriggers = ReadMapTriggersAuto(sourcePath);
                 Console.WriteLine($"✓ Source loaded: {sourceTriggers.TriggerItems.Count} items, {sourceTriggers.Variables.Count} variables");
 
-                // Read target WTG file
-                Console.WriteLine($"\nReading target WTG: {targetPath}");
-                MapTriggers targetTriggers = ReadWTGFile(targetPath);
+                // Read target (auto-detect .wtg or .w3x/.w3m)
+                Console.WriteLine($"\nReading target: {targetPath}");
+                MapTriggers targetTriggers = ReadMapTriggersAuto(targetPath);
                 Console.WriteLine($"✓ Target loaded: {targetTriggers.TriggerItems.Count} items, {targetTriggers.Variables.Count} variables");
+
+                // Auto-adjust output path based on target type
+                if (IsMapArchive(targetPath) && !IsMapArchive(outputPath))
+                {
+                    // If target is .w3x but output is .wtg, change output to .w3x
+                    outputPath = Path.ChangeExtension(outputPath, Path.GetExtension(targetPath));
+                    Console.WriteLine($"\n⚠ Output adjusted to match target type: {outputPath}");
+                }
 
                 // Fix duplicate IDs if they exist
                 FixDuplicateIds(targetTriggers);
@@ -136,8 +146,43 @@ namespace WTGMerger
                                 ValidateAndShowStats(targetTriggers);
 
                                 Console.WriteLine($"\nWriting file...");
-                                WriteWTGFile(outputPath, targetTriggers);
-                                Console.WriteLine("✓ Merge complete!");
+
+                                // Check if target is a map archive (.w3x/.w3m)
+                                if (IsMapArchive(targetPath))
+                                {
+                                    Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                                    Console.WriteLine("║           JASS CODE SYNCHRONIZATION                      ║");
+                                    Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                                    Console.WriteLine("\nIMPORTANT: The war3map.j file (JASS code) must be synchronized");
+                                    Console.WriteLine("with the war3map.wtg file (trigger structure).");
+                                    Console.WriteLine("\nDo you want to DELETE war3map.j from the output map?");
+                                    Console.WriteLine("(World Editor will regenerate it when you open the map)");
+                                    Console.WriteLine();
+                                    Console.WriteLine("1. YES - Delete war3map.j (RECOMMENDED)");
+                                    Console.WriteLine("2. NO  - Keep war3map.j (may cause 'trigger data invalid' error)");
+                                    Console.Write("\nChoice (1-2): ");
+
+                                    string? syncChoice = Console.ReadLine();
+                                    bool deleteJassFile = syncChoice == "1";
+
+                                    WriteMapArchive(targetPath, outputPath, targetTriggers, deleteJassFile);
+
+                                    if (deleteJassFile)
+                                    {
+                                        Console.WriteLine("\n✓ war3map.j has been removed from the output map");
+                                        Console.WriteLine("✓ World Editor will regenerate it when you open the map");
+                                    }
+                                }
+                                else
+                                {
+                                    WriteWTGFile(outputPath, targetTriggers);
+                                    Console.WriteLine("\n⚠ NOTE: You're working with raw .wtg files.");
+                                    Console.WriteLine("   Remember to delete war3map.j from your map archive");
+                                    Console.WriteLine("   so World Editor can regenerate it!");
+                                    Console.WriteLine("\n   See SYNCING-WTG-WITH-J.md for details.");
+                                }
+
+                                Console.WriteLine("\n✓ Merge complete!");
                                 Console.WriteLine("\n=== Final Target Categories ===");
                                 ListCategoriesDetailed(targetTriggers);
                             }
@@ -743,6 +788,146 @@ namespace WTGMerger
             }
 
             return copy;
+        }
+
+        /// <summary>
+        /// Checks if a file is a Warcraft 3 map archive (.w3x or .w3m)
+        /// </summary>
+        static bool IsMapArchive(string filePath)
+        {
+            var extension = Path.GetExtension(filePath).ToLowerInvariant();
+            return extension == ".w3x" || extension == ".w3m";
+        }
+
+        /// <summary>
+        /// Reads MapTriggers from either a raw .wtg file or a map archive (.w3x/.w3m)
+        /// </summary>
+        static MapTriggers ReadMapTriggersAuto(string filePath)
+        {
+            if (IsMapArchive(filePath))
+            {
+                return ReadMapArchiveFile(filePath);
+            }
+            else
+            {
+                return ReadWTGFile(filePath);
+            }
+        }
+
+        /// <summary>
+        /// Reads MapTriggers from a map archive (.w3x/.w3m)
+        /// </summary>
+        static MapTriggers ReadMapArchiveFile(string archivePath)
+        {
+            if (!File.Exists(archivePath))
+            {
+                throw new FileNotFoundException($"Map archive not found: {archivePath}");
+            }
+
+            Console.WriteLine($"  Opening MPQ archive...");
+            using var archive = MpqArchive.Open(archivePath, true);
+            archive.DiscoverFileNames();
+
+            var triggerFileName = MapTriggers.FileName; // "war3map.wtg"
+
+            if (!archive.FileExists(triggerFileName))
+            {
+                throw new FileNotFoundException($"Trigger file '{triggerFileName}' not found in map archive.");
+            }
+
+            Console.WriteLine($"  Extracting {triggerFileName}...");
+            using var triggerStream = archive.OpenFile(triggerFileName);
+            using var reader = new BinaryReader(triggerStream);
+
+            // Use reflection to call internal constructor
+            var constructorInfo = typeof(MapTriggers).GetConstructor(
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+                null,
+                new[] { typeof(BinaryReader), typeof(TriggerData) },
+                null);
+
+            if (constructorInfo == null)
+            {
+                throw new InvalidOperationException("Could not find internal MapTriggers constructor");
+            }
+
+            var triggers = (MapTriggers)constructorInfo.Invoke(new object[] { reader, TriggerData.Default });
+            return triggers;
+        }
+
+        /// <summary>
+        /// Writes MapTriggers to a map archive, optionally removing war3map.j
+        /// </summary>
+        static void WriteMapArchive(string originalArchivePath, string outputArchivePath, MapTriggers triggers, bool removeJassFile)
+        {
+            // Copy original to output if different
+            if (!string.Equals(originalArchivePath, outputArchivePath, StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"  Copying map archive...");
+                File.Copy(originalArchivePath, outputArchivePath, true);
+            }
+
+            Console.WriteLine($"  Opening output archive...");
+            using (var archive = MpqArchive.Open(outputArchivePath, false))
+            {
+                archive.DiscoverFileNames();
+
+                // Serialize triggers to memory
+                using var triggerStream = new MemoryStream();
+                using var writer = new BinaryWriter(triggerStream);
+
+                // Use reflection to call internal WriteTo method
+                var writeToMethod = typeof(MapTriggers).GetMethod(
+                    "WriteTo",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+                    null,
+                    new[] { typeof(BinaryWriter) },
+                    null);
+
+                if (writeToMethod == null)
+                {
+                    throw new InvalidOperationException("Could not find internal WriteTo(BinaryWriter) method");
+                }
+
+                writeToMethod.Invoke(triggers, new object[] { writer });
+                writer.Flush();
+
+                var triggerData = triggerStream.ToArray();
+
+                // Remove old trigger file if it exists
+                var triggerFileName = MapTriggers.FileName; // "war3map.wtg"
+                if (archive.FileExists(triggerFileName))
+                {
+                    Console.WriteLine($"  Removing old {triggerFileName}...");
+                    archive.RemoveFile(triggerFileName);
+                }
+
+                // Add the new trigger file
+                Console.WriteLine($"  Adding updated {triggerFileName}...");
+                using var dataStream = new MemoryStream(triggerData);
+                archive.AddFile(MpqFile.New(dataStream, triggerFileName));
+
+                // Optionally remove war3map.j to force regeneration
+                if (removeJassFile)
+                {
+                    var jassFileName = "war3map.j";
+                    if (archive.FileExists(jassFileName))
+                    {
+                        Console.WriteLine($"  Removing {jassFileName} for sync...");
+                        archive.RemoveFile(jassFileName);
+                    }
+
+                    // Also check for scripts/war3map.j
+                    var jassFileNameAlt = "scripts/war3map.j";
+                    if (archive.FileExists(jassFileNameAlt))
+                    {
+                        Console.WriteLine($"  Removing {jassFileNameAlt} for sync...");
+                        archive.RemoveFile(jassFileNameAlt);
+                    }
+                }
+            }
+
+            Console.WriteLine($"  Archive updated successfully!");
         }
     }
 }
