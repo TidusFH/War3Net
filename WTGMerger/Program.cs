@@ -195,14 +195,17 @@ namespace WTGMerger
             using var fileStream = File.Create(filePath);
             using var writer = new BinaryWriter(fileStream);
 
-            // Use reflection to call internal WriteTo method
+            // Use reflection to call internal WriteTo method with specific parameter type
             var writeToMethod = typeof(MapTriggers).GetMethod(
                 "WriteTo",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+                null,
+                new[] { typeof(BinaryWriter) },  // Specify the exact parameter type
+                null);
 
             if (writeToMethod == null)
             {
-                throw new InvalidOperationException("Could not find internal WriteTo method");
+                throw new InvalidOperationException("Could not find internal WriteTo(BinaryWriter) method");
             }
 
             writeToMethod.Invoke(triggers, new object[] { writer });
