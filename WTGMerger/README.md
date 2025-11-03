@@ -1,13 +1,35 @@
 # WTG Trigger Merger
 
-A simple console application to merge triggers between Warcraft 3 `.wtg` files using the War3Net libraries.
+A console application to merge triggers between Warcraft 3 maps using the War3Net libraries.
+
+## 🎉 NEW: Direct .w3x Map Support!
+
+**No more manual MPQ extraction!** The tool now works directly with `.w3x` and `.w3m` map files!
+
+```cmd
+# Just use your map files directly:
+dotnet run -- "SourceMap.w3x" "TargetMap.w3x" "Output.w3x"
+
+# The tool automatically:
+✓ Extracts war3map.wtg from the archives
+✓ Processes your trigger operations
+✓ Saves changes back to the map
+✓ Optionally removes war3map.j for proper synchronization
+```
+
+**See [W3X-SUPPORT.md](W3X-SUPPORT.md) for complete details!**
+
+---
 
 ## What This Does
 
 This tool allows you to:
-- Read raw `.wtg` (trigger) files directly
+- **NEW:** Work directly with `.w3x` and `.w3m` map archives
+- **NEW:** Automatically handle war3map.j synchronization
+- Read raw `.wtg` (trigger) files
 - List all trigger categories and their contents
-- Copy specific trigger categories from one `.wtg` file to another
+- Copy entire categories or specific triggers
+- Copy triggers to different categories
 - Properly handle trigger data using War3Net's built-in parsers
 
 ## Why Use War3Net DLLs?
