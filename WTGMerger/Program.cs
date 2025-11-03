@@ -243,9 +243,9 @@ namespace WTGMerger
             for (int i = 0; i < categories.Count; i++)
             {
                 var category = categories[i];
-                var triggers = GetTriggersInCategory(triggers, category.Name);
+                var categoryTriggers = GetTriggersInCategory(triggers, category.Name);
                 Console.WriteLine($"  [{i + 1}] {category.Name}");
-                Console.WriteLine($"      Triggers: {triggers.Count}");
+                Console.WriteLine($"      Triggers: {categoryTriggers.Count}");
                 Console.WriteLine($"      ID: {category.Id}");
                 Console.WriteLine();
             }
