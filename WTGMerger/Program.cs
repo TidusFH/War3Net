@@ -860,73 +860,63 @@ namespace WTGMerger
         /// </summary>
         static void WriteMapArchive(string originalArchivePath, string outputArchivePath, MapTriggers triggers, bool removeJassFile)
         {
-            // Copy original to output if different
-            if (!string.Equals(originalArchivePath, outputArchivePath, StringComparison.OrdinalIgnoreCase))
+            Console.WriteLine($"  Opening original archive...");
+            using var originalArchive = MpqArchive.Open(originalArchivePath, true);
+            originalArchive.DiscoverFileNames();
+
+            Console.WriteLine($"  Creating archive builder...");
+            var builder = new MpqArchiveBuilder(originalArchive);
+
+            // Serialize triggers to memory
+            using var triggerStream = new MemoryStream();
+            using var writer = new BinaryWriter(triggerStream);
+
+            // Use reflection to call internal WriteTo method
+            var writeToMethod = typeof(MapTriggers).GetMethod(
+                "WriteTo",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+                null,
+                new[] { typeof(BinaryWriter) },
+                null);
+
+            if (writeToMethod == null)
             {
-                Console.WriteLine($"  Copying map archive...");
-                File.Copy(originalArchivePath, outputArchivePath, true);
+                throw new InvalidOperationException("Could not find internal WriteTo(BinaryWriter) method");
             }
 
-            Console.WriteLine($"  Opening output archive...");
-            using (var archive = MpqArchive.Open(outputArchivePath, false))
+            writeToMethod.Invoke(triggers, new object[] { writer });
+            writer.Flush();
+
+            triggerStream.Position = 0;
+
+            // Remove old trigger file and add new one
+            var triggerFileName = MapTriggers.FileName; // "war3map.wtg"
+            Console.WriteLine($"  Replacing {triggerFileName}...");
+            builder.RemoveFile(triggerFileName);
+            builder.AddFile(MpqFile.New(triggerStream, triggerFileName));
+
+            // Optionally remove war3map.j to force regeneration
+            if (removeJassFile)
             {
-                archive.DiscoverFileNames();
-
-                // Serialize triggers to memory
-                using var triggerStream = new MemoryStream();
-                using var writer = new BinaryWriter(triggerStream);
-
-                // Use reflection to call internal WriteTo method
-                var writeToMethod = typeof(MapTriggers).GetMethod(
-                    "WriteTo",
-                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-                    null,
-                    new[] { typeof(BinaryWriter) },
-                    null);
-
-                if (writeToMethod == null)
+                var jassFileName = "war3map.j";
+                if (originalArchive.FileExists(jassFileName))
                 {
-                    throw new InvalidOperationException("Could not find internal WriteTo(BinaryWriter) method");
+                    Console.WriteLine($"  Removing {jassFileName} for sync...");
+                    builder.RemoveFile(jassFileName);
                 }
 
-                writeToMethod.Invoke(triggers, new object[] { writer });
-                writer.Flush();
-
-                var triggerData = triggerStream.ToArray();
-
-                // Remove old trigger file if it exists
-                var triggerFileName = MapTriggers.FileName; // "war3map.wtg"
-                if (archive.FileExists(triggerFileName))
+                // Also check for scripts/war3map.j
+                var jassFileNameAlt = "scripts/war3map.j";
+                if (originalArchive.FileExists(jassFileNameAlt))
                 {
-                    Console.WriteLine($"  Removing old {triggerFileName}...");
-                    archive.RemoveFile(triggerFileName);
-                }
-
-                // Add the new trigger file
-                Console.WriteLine($"  Adding updated {triggerFileName}...");
-                using var dataStream = new MemoryStream(triggerData);
-                archive.AddFile(MpqFile.New(dataStream, triggerFileName));
-
-                // Optionally remove war3map.j to force regeneration
-                if (removeJassFile)
-                {
-                    var jassFileName = "war3map.j";
-                    if (archive.FileExists(jassFileName))
-                    {
-                        Console.WriteLine($"  Removing {jassFileName} for sync...");
-                        archive.RemoveFile(jassFileName);
-                    }
-
-                    // Also check for scripts/war3map.j
-                    var jassFileNameAlt = "scripts/war3map.j";
-                    if (archive.FileExists(jassFileNameAlt))
-                    {
-                        Console.WriteLine($"  Removing {jassFileNameAlt} for sync...");
-                        archive.RemoveFile(jassFileNameAlt);
-                    }
+                    Console.WriteLine($"  Removing {jassFileNameAlt} for sync...");
+                    builder.RemoveFile(jassFileNameAlt);
                 }
             }
 
+            // Save the modified archive
+            Console.WriteLine($"  Saving to {outputArchivePath}...");
+            builder.SaveTo(outputArchivePath);
             Console.WriteLine($"  Archive updated successfully!");
         }
     }
