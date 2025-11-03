@@ -27,6 +27,14 @@ namespace WTGMerger
                     Console.WriteLine($"  Output: {outputPath}");
                     Console.WriteLine();
                 }
+                else
+                {
+                    Console.WriteLine("Using default paths:");
+                    Console.WriteLine($"  Source: {Path.GetFullPath(sourcePath)}");
+                    Console.WriteLine($"  Target: {Path.GetFullPath(targetPath)}");
+                    Console.WriteLine($"  Output: {Path.GetFullPath(outputPath)}");
+                    Console.WriteLine();
+                }
 
                 // Read source WTG file
                 Console.WriteLine($"Reading source WTG: {sourcePath}");
