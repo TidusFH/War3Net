@@ -125,6 +125,10 @@ namespace WTGMerger
                             if (modified)
                             {
                                 Console.WriteLine($"\nSaving merged WTG to: {outputPath}");
+
+                                // CRITICAL: Update trigger item counts before saving
+                                UpdateTriggerItemCounts(targetTriggers);
+
                                 WriteWTGFile(outputPath, targetTriggers);
                                 Console.WriteLine("✓ Merge complete!");
                                 Console.WriteLine("\n=== Final Target Categories ===");
@@ -355,6 +359,9 @@ namespace WTGMerger
                 insertIndex++;
                 Console.WriteLine($"    ✓ {copiedTrigger.Name}");
             }
+
+            // Update trigger item counts
+            UpdateTriggerItemCounts(target);
         }
 
         /// <summary>
@@ -429,6 +436,29 @@ namespace WTGMerger
                 var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), newCategory.Id);
                 target.TriggerItems.Add(copiedTrigger);
                 Console.WriteLine($"    + Copied trigger: {copiedTrigger.Name}");
+            }
+
+            // Update trigger item counts
+            UpdateTriggerItemCounts(target);
+        }
+
+        /// <summary>
+        /// Updates the TriggerItemCounts dictionary based on actual items
+        /// </summary>
+        static void UpdateTriggerItemCounts(MapTriggers triggers)
+        {
+            triggers.TriggerItemCounts.Clear();
+
+            foreach (var item in triggers.TriggerItems)
+            {
+                if (triggers.TriggerItemCounts.ContainsKey(item.Type))
+                {
+                    triggers.TriggerItemCounts[item.Type]++;
+                }
+                else
+                {
+                    triggers.TriggerItemCounts[item.Type] = 1;
+                }
             }
         }
 
