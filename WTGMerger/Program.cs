@@ -46,6 +46,9 @@ namespace WTGMerger
                 MapTriggers targetTriggers = ReadWTGFile(targetPath);
                 Console.WriteLine($"✓ Target loaded: {targetTriggers.TriggerItems.Count} items, {targetTriggers.Variables.Count} variables");
 
+                // Fix duplicate IDs if they exist
+                FixDuplicateIds(targetTriggers);
+
                 // Interactive menu
                 bool modified = false;
                 while (true)
@@ -543,6 +546,71 @@ namespace WTGMerger
             }
 
             Console.WriteLine();
+        }
+
+        /// <summary>
+        /// Fixes duplicate IDs by reassigning unique IDs to all trigger items
+        /// </summary>
+        static void FixDuplicateIds(MapTriggers triggers)
+        {
+            // Check if there are any duplicate IDs
+            var allIds = triggers.TriggerItems.Select(item => item.Id).ToList();
+            var duplicateIds = allIds.GroupBy(id => id)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+
+            if (duplicateIds.Count == 0)
+            {
+                return; // No duplicates, nothing to fix
+            }
+
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"\n⚠ WARNING: Found {duplicateIds.Count} duplicate ID(s) in target file!");
+            Console.WriteLine("  Reassigning unique IDs to all trigger items...");
+            Console.ResetColor();
+
+            // Reassign IDs to ALL items (0, 1, 2, 3, ...)
+            for (int i = 0; i < triggers.TriggerItems.Count; i++)
+            {
+                var oldId = triggers.TriggerItems[i].Id;
+                triggers.TriggerItems[i].Id = i;
+            }
+
+            // Update ParentIds to match new IDs
+            // Build a mapping of old ID -> new ID
+            var idMapping = new Dictionary<int, int>();
+            for (int i = 0; i < triggers.TriggerItems.Count; i++)
+            {
+                var item = triggers.TriggerItems[i];
+                if (item is TriggerCategoryDefinition category)
+                {
+                    idMapping[i] = category.Id; // New ID is the index
+                }
+            }
+
+            // Update ParentIds in triggers
+            foreach (var item in triggers.TriggerItems)
+            {
+                if (item is TriggerDefinition trigger)
+                {
+                    // Find the category this trigger belongs to
+                    var category = triggers.TriggerItems
+                        .OfType<TriggerCategoryDefinition>()
+                        .FirstOrDefault(c => c.Id == trigger.ParentId);
+
+                    if (category != null)
+                    {
+                        // ParentId should be the category's NEW ID (which is its index)
+                        trigger.ParentId = triggers.TriggerItems.IndexOf(category);
+                    }
+                }
+            }
+
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"  ✓ Reassigned IDs: 0 to {triggers.TriggerItems.Count - 1}");
+            Console.WriteLine($"  ✓ Updated ParentIds to match new category IDs");
+            Console.ResetColor();
         }
 
         /// <summary>
