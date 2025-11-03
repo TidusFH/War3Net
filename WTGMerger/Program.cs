@@ -38,33 +38,104 @@ namespace WTGMerger
                 MapTriggers targetTriggers = ReadWTGFile(targetPath);
                 Console.WriteLine($"✓ Target loaded: {targetTriggers.TriggerItems.Count} items, {targetTriggers.Variables.Count} variables");
 
-                // Display trigger categories from source
-                Console.WriteLine("\n=== Source Categories ===");
-                ListCategories(sourceTriggers);
-
-                Console.WriteLine("\n=== Target Categories (Before Merge) ===");
-                ListCategories(targetTriggers);
-
-                // Example: Copy a specific category from source to target
-                Console.Write("\nEnter category name to copy (or press Enter to skip): ");
-                string? categoryName = Console.ReadLine();
-
-                if (!string.IsNullOrWhiteSpace(categoryName))
+                // Interactive menu
+                bool modified = false;
+                while (true)
                 {
-                    Console.WriteLine($"\nMerging category '{categoryName}' from source to target...");
-                    MergeCategory(sourceTriggers, targetTriggers, categoryName);
+                    Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                    Console.WriteLine("║                    MERGE OPTIONS                         ║");
+                    Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                    Console.WriteLine("1. List all categories from SOURCE");
+                    Console.WriteLine("2. List all categories from TARGET");
+                    Console.WriteLine("3. List triggers in a specific category");
+                    Console.WriteLine("4. Copy ENTIRE category");
+                    Console.WriteLine("5. Copy SPECIFIC trigger(s)");
+                    Console.WriteLine("6. Save and exit");
+                    Console.WriteLine("7. Exit without saving");
+                    Console.WriteLine();
+                    Console.Write("Select option (1-7): ");
 
-                    // Save the merged result
-                    Console.WriteLine($"\nSaving merged WTG to: {outputPath}");
-                    WriteWTGFile(outputPath, targetTriggers);
-                    Console.WriteLine("✓ Merge complete!");
+                    string? choice = Console.ReadLine();
 
-                    Console.WriteLine("\n=== Target Categories (After Merge) ===");
-                    ListCategories(targetTriggers);
-                }
-                else
-                {
-                    Console.WriteLine("\nNo category specified. Exiting without merge.");
+                    switch (choice)
+                    {
+                        case "1":
+                            Console.WriteLine("\n=== Source Categories ===");
+                            ListCategoriesDetailed(sourceTriggers);
+                            break;
+
+                        case "2":
+                            Console.WriteLine("\n=== Target Categories ===");
+                            ListCategoriesDetailed(targetTriggers);
+                            break;
+
+                        case "3":
+                            Console.Write("\nEnter category name: ");
+                            string? catName = Console.ReadLine();
+                            if (!string.IsNullOrWhiteSpace(catName))
+                            {
+                                ListTriggersInCategory(sourceTriggers, catName);
+                            }
+                            break;
+
+                        case "4":
+                            Console.Write("\nEnter category name to copy: ");
+                            string? categoryName = Console.ReadLine();
+                            if (!string.IsNullOrWhiteSpace(categoryName))
+                            {
+                                Console.WriteLine($"\nMerging category '{categoryName}' from source to target...");
+                                MergeCategory(sourceTriggers, targetTriggers, categoryName);
+                                Console.WriteLine("✓ Category copied!");
+                                modified = true;
+                            }
+                            break;
+
+                        case "5":
+                            Console.Write("\nEnter category name where the trigger is: ");
+                            string? sourceCat = Console.ReadLine();
+                            if (!string.IsNullOrWhiteSpace(sourceCat))
+                            {
+                                ListTriggersInCategory(sourceTriggers, sourceCat);
+                                Console.Write("\nEnter trigger name to copy (or multiple separated by comma): ");
+                                string? triggerNames = Console.ReadLine();
+                                if (!string.IsNullOrWhiteSpace(triggerNames))
+                                {
+                                    Console.Write("Enter destination category name (leave empty to keep same): ");
+                                    string? destCat = Console.ReadLine();
+                                    if (string.IsNullOrWhiteSpace(destCat))
+                                        destCat = sourceCat;
+
+                                    var triggers = triggerNames.Split(',').Select(t => t.Trim()).ToArray();
+                                    CopySpecificTriggers(sourceTriggers, targetTriggers, sourceCat, triggers, destCat);
+                                    Console.WriteLine("✓ Trigger(s) copied!");
+                                    modified = true;
+                                }
+                            }
+                            break;
+
+                        case "6":
+                            if (modified)
+                            {
+                                Console.WriteLine($"\nSaving merged WTG to: {outputPath}");
+                                WriteWTGFile(outputPath, targetTriggers);
+                                Console.WriteLine("✓ Merge complete!");
+                                Console.WriteLine("\n=== Final Target Categories ===");
+                                ListCategoriesDetailed(targetTriggers);
+                            }
+                            else
+                            {
+                                Console.WriteLine("\nNo changes made.");
+                            }
+                            return;
+
+                        case "7":
+                            Console.WriteLine("\nExiting without saving changes.");
+                            return;
+
+                        default:
+                            Console.WriteLine("\n⚠ Invalid option. Please try again.");
+                            break;
+                    }
                 }
             }
             catch (Exception ex)
@@ -149,6 +220,129 @@ namespace WTGMerger
             {
                 var triggerCount = GetTriggersInCategory(triggers, category.Name).Count;
                 Console.WriteLine($"  - {category.Name} ({triggerCount} triggers)");
+            }
+        }
+
+        /// <summary>
+        /// Lists all categories with detailed information
+        /// </summary>
+        static void ListCategoriesDetailed(MapTriggers triggers)
+        {
+            var categories = triggers.TriggerItems
+                .Where(item => item is TriggerCategoryDefinition)
+                .Cast<TriggerCategoryDefinition>()
+                .ToList();
+
+            if (categories.Count == 0)
+            {
+                Console.WriteLine("  (No categories found)");
+                return;
+            }
+
+            Console.WriteLine($"\n  Total: {categories.Count} categories\n");
+            for (int i = 0; i < categories.Count; i++)
+            {
+                var category = categories[i];
+                var triggers = GetTriggersInCategory(triggers, category.Name);
+                Console.WriteLine($"  [{i + 1}] {category.Name}");
+                Console.WriteLine($"      Triggers: {triggers.Count}");
+                Console.WriteLine($"      ID: {category.Id}");
+                Console.WriteLine();
+            }
+        }
+
+        /// <summary>
+        /// Lists all triggers in a specific category
+        /// </summary>
+        static void ListTriggersInCategory(MapTriggers mapTriggers, string categoryName)
+        {
+            var triggers = GetTriggersInCategory(mapTriggers, categoryName);
+
+            if (triggers.Count == 0)
+            {
+                Console.WriteLine($"\n  No triggers found in category '{categoryName}'");
+                return;
+            }
+
+            Console.WriteLine($"\n  Triggers in '{categoryName}': {triggers.Count}\n");
+            for (int i = 0; i < triggers.Count; i++)
+            {
+                var trigger = triggers[i];
+                Console.WriteLine($"  [{i + 1}] {trigger.Name}");
+                Console.WriteLine($"      Enabled: {trigger.IsEnabled}");
+                Console.WriteLine($"      Events: {trigger.Functions.Count(f => f.Type == TriggerFunctionType.Event)}");
+                Console.WriteLine($"      Conditions: {trigger.Functions.Count(f => f.Type == TriggerFunctionType.Condition)}");
+                Console.WriteLine($"      Actions: {trigger.Functions.Count(f => f.Type == TriggerFunctionType.Action)}");
+                Console.WriteLine();
+            }
+        }
+
+        /// <summary>
+        /// Copies specific triggers from source to target
+        /// </summary>
+        static void CopySpecificTriggers(MapTriggers source, MapTriggers target, string sourceCategoryName, string[] triggerNames, string destCategoryName)
+        {
+            // Get source triggers
+            var sourceTriggers = GetTriggersInCategory(source, sourceCategoryName);
+            var triggersToCopy = new List<TriggerDefinition>();
+
+            foreach (var triggerName in triggerNames)
+            {
+                var trigger = sourceTriggers.FirstOrDefault(t => t.Name.Equals(triggerName, StringComparison.OrdinalIgnoreCase));
+                if (trigger != null)
+                {
+                    triggersToCopy.Add(trigger);
+                }
+                else
+                {
+                    Console.WriteLine($"  ⚠ Warning: Trigger '{triggerName}' not found in category '{sourceCategoryName}'");
+                }
+            }
+
+            if (triggersToCopy.Count == 0)
+            {
+                Console.WriteLine("\n  No triggers to copy.");
+                return;
+            }
+
+            // Find or create destination category
+            var destCategory = target.TriggerItems
+                .OfType<TriggerCategoryDefinition>()
+                .FirstOrDefault(c => c.Name.Equals(destCategoryName, StringComparison.OrdinalIgnoreCase));
+
+            if (destCategory == null)
+            {
+                // Create new category
+                destCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
+                {
+                    Id = GetNextId(target),
+                    Name = destCategoryName,
+                    IsComment = false,
+                    IsExpanded = true
+                };
+                target.TriggerItems.Add(destCategory);
+                Console.WriteLine($"\n  ✓ Created new category '{destCategoryName}'");
+            }
+
+            // Find insertion point (after the category)
+            var categoryIndex = target.TriggerItems.IndexOf(destCategory);
+            int insertIndex = categoryIndex + 1;
+
+            // Skip existing triggers in this category to insert at the end
+            while (insertIndex < target.TriggerItems.Count &&
+                   target.TriggerItems[insertIndex] is not TriggerCategoryDefinition)
+            {
+                insertIndex++;
+            }
+
+            // Copy triggers
+            Console.WriteLine($"\n  Copying {triggersToCopy.Count} trigger(s) to category '{destCategoryName}':");
+            foreach (var sourceTrigger in triggersToCopy)
+            {
+                var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target));
+                target.TriggerItems.Insert(insertIndex, copiedTrigger);
+                insertIndex++;
+                Console.WriteLine($"    ✓ {copiedTrigger.Name}");
             }
         }
 

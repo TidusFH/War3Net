@@ -1,8 +1,16 @@
 # WTGMerger - Guia Rápido de Uso
 
-## Problema: "Can't run WTGMerger.exe"
+## ⚠ Problema: Tela Azul "This app can't run on your PC"
 
-Se você está recebendo este erro, existem algumas soluções:
+Se você está vendo uma tela azul do Windows dizendo **"This app can't run on your PC"**, isso acontece porque:
+
+1. O .exe não é compatível com sua arquitetura do Windows (x64 vs x86)
+2. Você está tentando executar um .dll ao invés de um .exe
+3. O executável requer o .NET Runtime que não está instalado
+
+### ✅ SOLUÇÃO MAIS FÁCIL: Use o Script BAT (Não precisa de .exe!)
+
+**Você NÃO precisa de um .exe!** Use os scripts .bat que funcionam diretamente:
 
 ---
 
@@ -43,12 +51,19 @@ Se o script BAT não funcionar, você precisa instalar o .NET:
 
 ---
 
-## ✅ Solução 3: Criar um EXE Standalone
+## ✅ Solução 3: Criar um EXE Standalone (Para Windows 10)
 
-Se você quer um .exe que funcione sem instalar o .NET:
+Se você REALMENTE quer um .exe que funcione sem instalar o .NET:
 
+### Opção A: Use o Script Automático
 ```cmd
-dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true
+# Duplo clique em:
+build-exe.bat
+```
+
+### Opção B: Linha de Comando
+```cmd
+dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
 ```
 
 Isso vai criar um arquivo `.exe` em:
@@ -56,7 +71,9 @@ Isso vai criar um arquivo `.exe` em:
 bin\Release\net8.0\win-x64\publish\WTGMerger.exe
 ```
 
-Você pode copiar este arquivo para qualquer lugar e executá-lo diretamente.
+⚠️ **IMPORTANTE**: O arquivo terá ~70-100MB porque inclui o .NET Runtime inteiro.
+
+Você pode copiar este arquivo para qualquer lugar (incluindo máquinas sem .NET) e executá-lo diretamente.
 
 ---
 
@@ -93,6 +110,77 @@ Ou com argumentos:
 ```cmd
 WTGMerger.exe "C:\path\to\source.wtg" "C:\path\to\target.wtg" "C:\path\to\output.wtg"
 ```
+
+---
+
+## 🎮 Novas Funcionalidades (Menu Interativo)
+
+O programa agora oferece um **menu interativo completo** com as seguintes opções:
+
+### **Menu Principal:**
+```
+1. List all categories from SOURCE      - Ver todas as categorias do arquivo de origem
+2. List all categories from TARGET      - Ver todas as categorias do arquivo de destino
+3. List triggers in a specific category - Listar triggers dentro de uma categoria
+4. Copy ENTIRE category                 - Copiar categoria INTEIRA
+5. Copy SPECIFIC trigger(s)             - Copiar APENAS triggers específicos
+6. Save and exit                        - Salvar e sair
+7. Exit without saving                  - Sair sem salvar
+```
+
+### **Exemplo de Uso:**
+
+#### Copiar Triggers Específicos (NOVO!)
+```
+Select option: 5
+
+Enter category name where the trigger is: AI
+  Triggers in 'AI': 5
+
+  [1] AI Player 1
+      Enabled: True
+      Events: 1
+      Conditions: 0
+      Actions: 5
+
+  [2] AI Player 2
+      Enabled: True
+      Events: 1
+      Conditions: 0
+      Actions: 5
+
+Enter trigger name to copy (or multiple separated by comma): AI Player 1, AI Player 2
+
+Enter destination category name (leave empty to keep same): Custom AI
+
+  ✓ Created new category 'Custom AI'
+
+  Copying 2 trigger(s) to category 'Custom AI':
+    ✓ AI Player 1
+    ✓ AI Player 2
+```
+
+#### Copiar Categoria Inteira
+```
+Select option: 4
+
+Enter category name to copy: Melee Initialization
+
+Merging category 'Melee Initialization' from source to target...
+  Found 12 triggers in source category
+  Added category 'Melee Initialization' to target
+    + Copied trigger: Melee Game Init
+    + Copied trigger: Melee Starting Resources
+    + ...
+✓ Category copied!
+```
+
+### **Recursos:**
+- ✅ **Copiar triggers individuais** - Não precisa copiar a categoria inteira!
+- ✅ **Copiar múltiplos triggers de uma vez** - Separe por vírgula
+- ✅ **Escolher categoria de destino diferente** - Organize como quiser
+- ✅ **Ver informações detalhadas** - Events, Conditions, Actions de cada trigger
+- ✅ **Salvar apenas quando quiser** - Faça várias operações antes de salvar
 
 ---
 
