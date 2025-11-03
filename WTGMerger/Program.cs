@@ -350,7 +350,7 @@ namespace WTGMerger
             Console.WriteLine($"\n  Copying {triggersToCopy.Count} trigger(s) to category '{destCategoryName}':");
             foreach (var sourceTrigger in triggersToCopy)
             {
-                var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target));
+                var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), destCategory.Id);
                 target.TriggerItems.Insert(insertIndex, copiedTrigger);
                 insertIndex++;
                 Console.WriteLine($"    ✓ {copiedTrigger.Name}");
@@ -426,7 +426,7 @@ namespace WTGMerger
             // Copy all triggers
             foreach (var sourceTrigger in sourceCategoryTriggers)
             {
-                var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target));
+                var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), newCategory.Id);
                 target.TriggerItems.Add(copiedTrigger);
                 Console.WriteLine($"    + Copied trigger: {copiedTrigger.Name}");
             }
@@ -483,14 +483,15 @@ namespace WTGMerger
         }
 
         /// <summary>
-        /// Creates a deep copy of a trigger with a new ID
+        /// Creates a deep copy of a trigger with a new ID and parent ID
         /// </summary>
-        static TriggerDefinition CopyTrigger(TriggerDefinition source, int newId)
+        static TriggerDefinition CopyTrigger(TriggerDefinition source, int newId, int newParentId)
         {
             // Type must be set via constructor (it's read-only)
             var copy = new TriggerDefinition(source.Type)
             {
                 Id = newId,
+                ParentId = newParentId,  // Set the new parent category ID
                 Name = source.Name,
                 Description = source.Description,
                 IsComment = source.IsComment,
