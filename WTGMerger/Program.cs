@@ -355,7 +355,7 @@ namespace WTGMerger
         }
 
         /// <summary>
-        /// Gets all triggers that belong to a specific category
+        /// Gets all triggers that belong to a specific category (using ParentId)
         /// </summary>
         static List<TriggerDefinition> GetTriggersInCategory(MapTriggers triggers, string categoryName)
         {
@@ -368,26 +368,11 @@ namespace WTGMerger
                 return new List<TriggerDefinition>();
             }
 
-            var categoryIndex = triggers.TriggerItems.IndexOf(category);
-            var triggersInCategory = new List<TriggerDefinition>();
-
-            // Get all triggers that come after this category (until next category or end)
-            for (int i = categoryIndex + 1; i < triggers.TriggerItems.Count; i++)
-            {
-                var item = triggers.TriggerItems[i];
-
-                // Stop when we hit another category
-                if (item is TriggerCategoryDefinition)
-                {
-                    break;
-                }
-
-                // Add triggers
-                if (item is TriggerDefinition trigger)
-                {
-                    triggersInCategory.Add(trigger);
-                }
-            }
+            // Get all triggers that have this category as their parent (using ParentId)
+            var triggersInCategory = triggers.TriggerItems
+                .OfType<TriggerDefinition>()
+                .Where(t => t.ParentId == category.Id)
+                .ToList();
 
             return triggersInCategory;
         }
