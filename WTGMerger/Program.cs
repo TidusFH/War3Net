@@ -124,11 +124,15 @@ namespace WTGMerger
                         case "6":
                             if (modified)
                             {
-                                Console.WriteLine($"\nSaving merged WTG to: {outputPath}");
+                                Console.WriteLine($"\nPreparing to save merged WTG to: {outputPath}");
 
                                 // CRITICAL: Update trigger item counts before saving
                                 UpdateTriggerItemCounts(targetTriggers);
 
+                                // Validate and show statistics
+                                ValidateAndShowStats(targetTriggers);
+
+                                Console.WriteLine($"\nWriting file...");
                                 WriteWTGFile(outputPath, targetTriggers);
                                 Console.WriteLine("✓ Merge complete!");
                                 Console.WriteLine("\n=== Final Target Categories ===");
@@ -460,6 +464,85 @@ namespace WTGMerger
                     triggers.TriggerItemCounts[item.Type] = 1;
                 }
             }
+        }
+
+        /// <summary>
+        /// Validates trigger structure and shows statistics before saving
+        /// </summary>
+        static void ValidateAndShowStats(MapTriggers triggers)
+        {
+            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+            Console.WriteLine("║              VALIDATION & STATISTICS                     ║");
+            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+
+            Console.WriteLine($"\nFormat Version: {triggers.FormatVersion}");
+            Console.WriteLine($"SubVersion: {triggers.SubVersion?.ToString() ?? "None"}");
+            Console.WriteLine($"Game Version: {triggers.GameVersion}");
+
+            Console.WriteLine($"\nTotal Variables: {triggers.Variables.Count}");
+            Console.WriteLine($"Total Trigger Items: {triggers.TriggerItems.Count}");
+
+            Console.WriteLine($"\nTrigger Item Counts:");
+            foreach (var kvp in triggers.TriggerItemCounts.OrderBy(x => x.Key))
+            {
+                Console.WriteLine($"  {kvp.Key}: {kvp.Value}");
+            }
+
+            // Validate ParentIds
+            var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
+            var categoryIds = new HashSet<int>(categories.Select(c => c.Id));
+            var orphanedTriggers = triggers.TriggerItems
+                .OfType<TriggerDefinition>()
+                .Where(t => t.ParentId != 0 && !categoryIds.Contains(t.ParentId))
+                .ToList();
+
+            if (orphanedTriggers.Count > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"\n⚠ WARNING: {orphanedTriggers.Count} orphaned triggers found (ParentId points to non-existent category):");
+                foreach (var trigger in orphanedTriggers.Take(5))
+                {
+                    Console.WriteLine($"  - {trigger.Name} (ParentId={trigger.ParentId})");
+                }
+                if (orphanedTriggers.Count > 5)
+                {
+                    Console.WriteLine($"  ... and {orphanedTriggers.Count - 5} more");
+                }
+                Console.ResetColor();
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("\n✓ No orphaned triggers found");
+                Console.ResetColor();
+            }
+
+            // Check for duplicate IDs
+            var allIds = triggers.TriggerItems.Select(item => item.Id).ToList();
+            var duplicateIds = allIds.GroupBy(id => id)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+
+            if (duplicateIds.Count > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"\n❌ ERROR: {duplicateIds.Count} duplicate IDs found:");
+                foreach (var id in duplicateIds.Take(5))
+                {
+                    var items = triggers.TriggerItems.Where(item => item.Id == id).ToList();
+                    Console.WriteLine($"  ID {id}: {string.Join(", ", items.Select(i => i.Name))}");
+                }
+                Console.ResetColor();
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("✓ No duplicate IDs found");
+                Console.ResetColor();
+            }
+
+            Console.WriteLine();
         }
 
         /// <summary>
