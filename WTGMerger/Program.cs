@@ -10,6 +10,9 @@ namespace WTGMerger
 {
     class Program
     {
+        // Global debug flag - set to true to enable detailed logging
+        static bool DEBUG_MODE = false;
+
         static void Main(string[] args)
         {
             try
@@ -102,10 +105,12 @@ namespace WTGMerger
                     Console.WriteLine("4. Copy ENTIRE category");
                     Console.WriteLine("5. Copy SPECIFIC trigger(s)");
                     Console.WriteLine("6. Fix all TARGET categories to root-level (ParentId = -1)");
-                    Console.WriteLine("7. Save and exit");
-                    Console.WriteLine("8. Exit without saving");
+                    Console.WriteLine("7. DEBUG: Show comprehensive debug information");
+                    Console.WriteLine($"8. DEBUG: Toggle debug mode (currently: {(DEBUG_MODE ? "ON" : "OFF")})");
+                    Console.WriteLine("9. Save and exit");
+                    Console.WriteLine("0. Exit without saving");
                     Console.WriteLine();
-                    Console.Write("Select option (1-8): ");
+                    Console.Write("Select option (0-9): ");
 
                     string? choice = Console.ReadLine();
 
@@ -198,6 +203,17 @@ namespace WTGMerger
                             break;
 
                         case "7":
+                            ShowComprehensiveDebugInfo(sourceTriggers, targetTriggers);
+                            break;
+
+                        case "8":
+                            DEBUG_MODE = !DEBUG_MODE;
+                            Console.ForegroundColor = DEBUG_MODE ? ConsoleColor.Yellow : ConsoleColor.Green;
+                            Console.WriteLine($"\n✓ Debug mode is now {(DEBUG_MODE ? "ON" : "OFF")}");
+                            Console.ResetColor();
+                            break;
+
+                        case "9":
                             if (modified)
                             {
                                 Console.WriteLine($"\nPreparing to save merged WTG to: {outputPath}");
@@ -320,7 +336,7 @@ namespace WTGMerger
                             }
                             return;
 
-                        case "8":
+                        case "0":
                             Console.WriteLine("\nExiting without saving changes.");
                             return;
 
@@ -810,20 +826,50 @@ namespace WTGMerger
         /// </summary>
         static void CopyMissingVariables(MapTriggers source, MapTriggers target, List<TriggerDefinition> triggers)
         {
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine("\n[DEBUG] ═══ CopyMissingVariables START ═══");
+                Console.WriteLine($"[DEBUG] Analyzing {triggers.Count} trigger(s)");
+            }
+
             // Collect all variables used by the triggers being copied
             var usedVariables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var trigger in triggers)
             {
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[DEBUG] Scanning trigger: {trigger.Name}");
+                }
+
                 var varsInTrigger = GetVariablesUsedByTrigger(trigger, source);
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[DEBUG]   Found {varsInTrigger.Count} variable(s) in this trigger");
+                    foreach (var v in varsInTrigger)
+                    {
+                        Console.WriteLine($"[DEBUG]     - {v}");
+                    }
+                }
+
                 foreach (var varName in varsInTrigger)
                 {
                     usedVariables.Add(varName);
                 }
             }
 
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[DEBUG] Total unique variables used: {usedVariables.Count}");
+            }
+
             if (usedVariables.Count == 0)
             {
                 Console.WriteLine("  ℹ No variables used by these triggers");
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine("[DEBUG] ═══ CopyMissingVariables END (no variables) ═══\n");
+                }
                 return;
             }
 
@@ -924,13 +970,32 @@ namespace WTGMerger
             if (renamedMappings.Count > 0)
             {
                 Console.WriteLine($"\n  Updating variable references in triggers...");
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine("[DEBUG] Rename mappings:");
+                    foreach (var kvp in renamedMappings)
+                    {
+                        Console.WriteLine($"[DEBUG]   '{kvp.Key}' → '{kvp.Value}'");
+                    }
+                }
+
                 foreach (var trigger in triggers)
                 {
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[DEBUG] Renaming variables in trigger: {trigger.Name}");
+                    }
                     RenameVariablesInTrigger(trigger, renamedMappings);
                 }
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine($"  ✓ Updated all variable references");
                 Console.ResetColor();
+            }
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine("[DEBUG] ═══ CopyMissingVariables END ═══\n");
             }
         }
 
@@ -941,10 +1006,20 @@ namespace WTGMerger
         {
             var usedVariables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[DEBUG]   GetVariablesUsedByTrigger: {trigger.Name} ({trigger.Functions.Count} functions)");
+            }
+
             // Scan all functions in the trigger
             foreach (var function in trigger.Functions)
             {
                 CollectVariablesFromFunction(function, usedVariables, mapTriggers);
+            }
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[DEBUG]   Total variables collected: {usedVariables.Count}");
             }
 
             return usedVariables;
@@ -955,15 +1030,31 @@ namespace WTGMerger
         /// </summary>
         static void CollectVariablesFromFunction(TriggerFunction function, HashSet<string> usedVariables, MapTriggers mapTriggers)
         {
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[DEBUG]     Function: {function.Type} - {function.Name} ({function.Parameters.Count} params)");
+            }
+
             // Check parameters
             foreach (var param in function.Parameters)
             {
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[DEBUG]       Param: Type={param.Type}, Value='{param.Value}'");
+                }
+
                 if (param.Type == TriggerFunctionParameterType.Variable)
                 {
                     // Parameter is a variable reference - extract the variable name
                     var varName = GetVariableNameFromParameter(param, mapTriggers);
                     if (!string.IsNullOrEmpty(varName))
                     {
+                        if (DEBUG_MODE)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Cyan;
+                            Console.WriteLine($"[DEBUG]       >>> VARIABLE DETECTED: '{varName}'");
+                            Console.ResetColor();
+                        }
                         usedVariables.Add(varName);
                     }
                 }
@@ -1147,6 +1238,200 @@ namespace WTGMerger
             if (param.ArrayIndexer != null)
             {
                 RenameVariablesInParameterRecursive(param.ArrayIndexer, renameMappings);
+            }
+        }
+
+        /// <summary>
+        /// Shows comprehensive debug information about both maps
+        /// </summary>
+        static void ShowComprehensiveDebugInfo(MapTriggers source, MapTriggers target)
+        {
+            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+            Console.WriteLine("║           COMPREHENSIVE DEBUG INFORMATION                ║");
+            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+
+            // SOURCE MAP VARIABLES
+            Console.WriteLine("\n=== SOURCE MAP VARIABLES ===");
+            Console.WriteLine($"Total: {source.Variables.Count}");
+            if (source.Variables.Count > 0)
+            {
+                Console.WriteLine("\nID | Name                      | Type           | Array | Init");
+                Console.WriteLine("---|---------------------------|----------------|-------|-----");
+                foreach (var v in source.Variables.OrderBy(v => v.Id))
+                {
+                    Console.WriteLine($"{v.Id,2} | {v.Name,-25} | {v.Type,-14} | {(v.IsArray ? "Yes" : "No"),-5} | {(v.IsInitialized ? "Yes" : "No")}");
+                }
+            }
+
+            // TARGET MAP VARIABLES
+            Console.WriteLine("\n=== TARGET MAP VARIABLES ===");
+            Console.WriteLine($"Total: {target.Variables.Count}");
+            if (target.Variables.Count > 0)
+            {
+                Console.WriteLine("\nID | Name                      | Type           | Array | Init");
+                Console.WriteLine("---|---------------------------|----------------|-------|-----");
+                foreach (var v in target.Variables.OrderBy(v => v.Id))
+                {
+                    Console.WriteLine($"{v.Id,2} | {v.Name,-25} | {v.Type,-14} | {(v.IsArray ? "Yes" : "No"),-5} | {(v.IsInitialized ? "Yes" : "No")}");
+                }
+            }
+
+            // VARIABLE CONFLICTS
+            Console.WriteLine("\n=== VARIABLE NAME CONFLICTS (Same name, different type) ===");
+            var sourceVarDict = source.Variables.ToDictionary(v => v.Name, v => v, StringComparer.OrdinalIgnoreCase);
+            var targetVarDict = target.Variables.ToDictionary(v => v.Name, v => v, StringComparer.OrdinalIgnoreCase);
+
+            var conflicts = new List<(string Name, string SourceType, string TargetType)>();
+            foreach (var sv in source.Variables)
+            {
+                if (targetVarDict.TryGetValue(sv.Name, out var tv))
+                {
+                    if (sv.Type != tv.Type)
+                    {
+                        conflicts.Add((sv.Name, sv.Type, tv.Type));
+                    }
+                }
+            }
+
+            if (conflicts.Count > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"Found {conflicts.Count} variable(s) with same name but different types:");
+                Console.WriteLine("\nVariable Name             | Source Type    | Target Type");
+                Console.WriteLine("--------------------------|----------------|----------------");
+                foreach (var c in conflicts)
+                {
+                    Console.WriteLine($"{c.Name,-25} | {c.SourceType,-14} | {c.TargetType}");
+                }
+                Console.ResetColor();
+                Console.WriteLine("\nℹ These will be auto-renamed if used by triggers you copy");
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("✓ No variable name/type conflicts found");
+                Console.ResetColor();
+            }
+
+            // SOURCE CATEGORIES AND TRIGGERS
+            Console.WriteLine("\n=== SOURCE MAP STRUCTURE ===");
+            var sourceCategories = source.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
+            Console.WriteLine($"Categories: {sourceCategories.Count}");
+            Console.WriteLine($"Triggers: {source.TriggerItems.OfType<TriggerDefinition>().Count()}");
+
+            // TARGET CATEGORIES AND TRIGGERS
+            Console.WriteLine("\n=== TARGET MAP STRUCTURE ===");
+            var targetCategories = target.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
+            Console.WriteLine($"Categories: {targetCategories.Count}");
+            Console.WriteLine($"Triggers: {target.TriggerItems.OfType<TriggerDefinition>().Count()}");
+
+            Console.WriteLine("\n=== SAMPLE TRIGGER VARIABLE ANALYSIS ===");
+            Console.Write("Enter category name to analyze (or press Enter to skip): ");
+            string? catName = Console.ReadLine();
+
+            if (!string.IsNullOrWhiteSpace(catName))
+            {
+                var triggers = GetTriggersInCategory(source, catName);
+                if (triggers.Count > 0)
+                {
+                    Console.WriteLine($"\nFound {triggers.Count} trigger(s) in '{catName}'");
+                    Console.Write("Enter trigger name to analyze: ");
+                    string? trigName = Console.ReadLine();
+
+                    var trigger = triggers.FirstOrDefault(t => t.Name.Equals(trigName, StringComparison.OrdinalIgnoreCase));
+                    if (trigger != null)
+                    {
+                        DebugAnalyzeTrigger(trigger, source);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"⚠ Trigger '{trigName}' not found");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"⚠ No triggers found in category '{catName}'");
+                }
+            }
+
+            Console.WriteLine("\nPress Enter to continue...");
+            Console.ReadLine();
+        }
+
+        /// <summary>
+        /// Deep analysis of a single trigger for debugging
+        /// </summary>
+        static void DebugAnalyzeTrigger(TriggerDefinition trigger, MapTriggers mapTriggers)
+        {
+            Console.WriteLine($"\n╔══════════════════════════════════════════════════════════╗");
+            Console.WriteLine($"║  TRIGGER: {trigger.Name,-47}║");
+            Console.WriteLine($"╚══════════════════════════════════════════════════════════╝");
+
+            Console.WriteLine($"ID: {trigger.Id}");
+            Console.WriteLine($"ParentId: {trigger.ParentId}");
+            Console.WriteLine($"Enabled: {trigger.IsEnabled}");
+            Console.WriteLine($"Functions: {trigger.Functions.Count}");
+
+            // Analyze variables
+            var usedVars = GetVariablesUsedByTrigger(trigger, mapTriggers);
+            Console.WriteLine($"\n=== VARIABLES DETECTED ({usedVars.Count}) ===");
+            if (usedVars.Count > 0)
+            {
+                foreach (var varName in usedVars.OrderBy(v => v))
+                {
+                    var varDef = mapTriggers.Variables.FirstOrDefault(v =>
+                        v.Name.Equals(varName, StringComparison.OrdinalIgnoreCase));
+                    if (varDef != null)
+                    {
+                        Console.WriteLine($"  ✓ '{varName}' (Type: {varDef.Type}, Array: {varDef.IsArray})");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"  ⚠ '{varName}' (NOT FOUND IN MAP!)");
+                    }
+                }
+            }
+            else
+            {
+                Console.WriteLine("  (No variables detected)");
+            }
+
+            // Detailed function analysis
+            Console.WriteLine($"\n=== DETAILED FUNCTION ANALYSIS ===");
+            for (int i = 0; i < trigger.Functions.Count; i++)
+            {
+                var func = trigger.Functions[i];
+                Console.WriteLine($"\n[{i + 1}] {func.Type}: {func.Name}");
+                Console.WriteLine($"    Enabled: {func.IsEnabled}");
+                Console.WriteLine($"    Parameters: {func.Parameters.Count}");
+
+                for (int p = 0; p < func.Parameters.Count; p++)
+                {
+                    var param = func.Parameters[p];
+                    Console.WriteLine($"      [{p}] Type={param.Type}, Value='{param.Value}'");
+
+                    if (param.Type == TriggerFunctionParameterType.Variable)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Cyan;
+                        Console.WriteLine($"          ^^^ VARIABLE REFERENCE ^^^");
+                        Console.ResetColor();
+                    }
+
+                    if (param.Function != null)
+                    {
+                        Console.WriteLine($"          Nested Function: {param.Function.Name}");
+                    }
+
+                    if (param.ArrayIndexer != null)
+                    {
+                        Console.WriteLine($"          Array Indexer: Type={param.ArrayIndexer.Type}, Value='{param.ArrayIndexer.Value}'");
+                    }
+                }
+
+                if (func.ChildFunctions.Count > 0)
+                {
+                    Console.WriteLine($"    Child Functions: {func.ChildFunctions.Count}");
+                }
             }
         }
 
