@@ -199,6 +199,19 @@ namespace WTGMerger
                             {
                                 Console.WriteLine($"\nPreparing to save merged WTG to: {outputPath}");
 
+                                // CRITICAL: Set SubVersion if null to enable ParentId writing
+                                if (targetTriggers.SubVersion == null)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Yellow;
+                                    Console.WriteLine("\n⚠ WARNING: Target map has SubVersion=null, ParentId won't be saved!");
+                                    Console.WriteLine("   Setting SubVersion=v4 to enable ParentId support...");
+                                    Console.ResetColor();
+                                    targetTriggers.SubVersion = MapTriggersSubVersion.v4;
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine("   ✓ SubVersion set to v4");
+                                    Console.ResetColor();
+                                }
+
                                 // CRITICAL: Update trigger item counts before saving
                                 UpdateTriggerItemCounts(targetTriggers);
 
