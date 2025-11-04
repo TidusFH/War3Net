@@ -70,6 +70,21 @@ namespace WTGMerger
                 MapTriggers sourceTriggers = ReadMapTriggersAuto(sourcePath);
                 Console.WriteLine($"✓ Source loaded: {sourceTriggers.TriggerItems.Count} items, {sourceTriggers.Variables.Count} variables");
 
+                // Check variable IDs
+                if (DEBUG_MODE && sourceTriggers.Variables.Count > 0)
+                {
+                    Console.WriteLine("[DEBUG] Source variable IDs:");
+                    var idCounts = sourceTriggers.Variables.GroupBy(v => v.Id).OrderBy(g => g.Key).ToList();
+                    foreach (var group in idCounts.Take(10))
+                    {
+                        Console.WriteLine($"[DEBUG]   ID {group.Key}: {group.Count()} variable(s) - {string.Join(", ", group.Select(v => v.Name).Take(3))}");
+                    }
+                    if (idCounts.Count > 10)
+                    {
+                        Console.WriteLine($"[DEBUG]   ... and {idCounts.Count - 10} more IDs");
+                    }
+                }
+
                 // Read target (auto-detect .wtg or .w3x/.w3m)
                 Console.WriteLine($"\nReading target: {targetPath}");
                 MapTriggers targetTriggers = ReadMapTriggersAuto(targetPath);
@@ -85,6 +100,10 @@ namespace WTGMerger
 
                 // Fix duplicate IDs if they exist
                 FixDuplicateIds(targetTriggers);
+
+                // Fix variable IDs if they're all 0 or have duplicates
+                FixVariableIds(sourceTriggers, "source");
+                FixVariableIds(targetTriggers, "target");
 
                 // Check and report on category structure
                 CheckCategoryStructure(targetTriggers);
@@ -327,6 +346,64 @@ namespace WTGMerger
                                 }
 
                                 Console.WriteLine("\n✓ Merge complete!");
+
+                                // Offer to debug the merged file
+                                Console.WriteLine("\n=== POST-MERGE DEBUG ===");
+                                Console.Write("Show comprehensive debug info for MERGED file? (y/n): ");
+                                string? debugMerged = Console.ReadLine();
+                                if (debugMerged?.ToLower() == "y")
+                                {
+                                    try
+                                    {
+                                        Console.WriteLine("\nReading merged file for analysis...");
+                                        MapTriggers mergedTriggers = ReadMapTriggersAuto(outputPath);
+                                        Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                                        Console.WriteLine("║           MERGED FILE DEBUG INFORMATION                  ║");
+                                        Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+
+                                        // Show merged file variables
+                                        Console.WriteLine("\n=== MERGED FILE VARIABLES ===");
+                                        Console.WriteLine($"Total: {mergedTriggers.Variables.Count}");
+                                        if (mergedTriggers.Variables.Count > 0)
+                                        {
+                                            Console.WriteLine("\nID | Name                      | Type           | Array | Init");
+                                            Console.WriteLine("---|---------------------------|----------------|-------|-----");
+                                            foreach (var v in mergedTriggers.Variables.OrderBy(v => v.Id))
+                                            {
+                                                Console.WriteLine($"{v.Id,2} | {v.Name,-25} | {v.Type,-14} | {(v.IsArray ? "Yes" : "No"),-5} | {(v.IsInitialized ? "Yes" : "No")}");
+                                            }
+                                        }
+
+                                        // Check for duplicate variable IDs
+                                        var varIdGroups = mergedTriggers.Variables.GroupBy(v => v.Id).Where(g => g.Count() > 1).ToList();
+                                        if (varIdGroups.Count > 0)
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Red;
+                                            Console.WriteLine($"\n❌ ERROR: {varIdGroups.Count} duplicate variable ID(s) found:");
+                                            foreach (var group in varIdGroups.Take(5))
+                                            {
+                                                Console.WriteLine($"  ID {group.Key}: {string.Join(", ", group.Select(v => v.Name))}");
+                                            }
+                                            Console.ResetColor();
+                                        }
+                                        else
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Green;
+                                            Console.WriteLine("\n✓ No duplicate variable IDs found");
+                                            Console.ResetColor();
+                                        }
+
+                                        Console.WriteLine("\nPress Enter to continue...");
+                                        Console.ReadLine();
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"❌ Could not read merged file: {ex.Message}");
+                                        Console.ResetColor();
+                                    }
+                                }
+
                                 Console.WriteLine("\n=== Final Target Categories ===");
                                 ListCategoriesDetailed(targetTriggers);
                             }
@@ -1499,6 +1576,61 @@ namespace WTGMerger
             }
 
             Console.WriteLine();
+        }
+
+        /// <summary>
+        /// Fixes variable IDs by ensuring they are sequential (0, 1, 2, ...)
+        /// </summary>
+        static void FixVariableIds(MapTriggers triggers, string mapName)
+        {
+            if (triggers.Variables.Count == 0)
+            {
+                return;
+            }
+
+            // Check if all variables have the same ID (corrupted) or if there are duplicates
+            var idGroups = triggers.Variables.GroupBy(v => v.Id).ToList();
+            var duplicateIds = idGroups.Where(g => g.Count() > 1).ToList();
+            bool allSameId = idGroups.Count == 1;
+
+            if (allSameId)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"\n⚠ WARNING: All variables in {mapName} have ID={triggers.Variables[0].Id}!");
+                Console.WriteLine($"  This indicates corrupted variable IDs. Reassigning sequential IDs...");
+                Console.ResetColor();
+
+                // Reassign sequential IDs
+                for (int i = 0; i < triggers.Variables.Count; i++)
+                {
+                    triggers.Variables[i].Id = i;
+                }
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"  ✓ Reassigned variable IDs: 0 to {triggers.Variables.Count - 1}");
+                Console.ResetColor();
+            }
+            else if (duplicateIds.Count > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"\n⚠ WARNING: Found {duplicateIds.Count} duplicate variable ID(s) in {mapName}!");
+                Console.WriteLine($"  Reassigning sequential IDs...");
+                Console.ResetColor();
+
+                // Reassign sequential IDs
+                for (int i = 0; i < triggers.Variables.Count; i++)
+                {
+                    triggers.Variables[i].Id = i;
+                }
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"  ✓ Reassigned variable IDs: 0 to {triggers.Variables.Count - 1}");
+                Console.ResetColor();
+            }
+            else if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[DEBUG] Variable IDs in {mapName} are valid (no duplicates)");
+            }
         }
 
         /// <summary>
