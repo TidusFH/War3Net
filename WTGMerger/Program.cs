@@ -86,6 +86,9 @@ namespace WTGMerger
                 // Check and report on category structure
                 CheckCategoryStructure(targetTriggers);
 
+                // Check for variable conflicts between source and target
+                CheckVariableConflicts(sourceTriggers, targetTriggers);
+
                 // Interactive menu
                 bool modified = false;
                 while (true)
@@ -543,6 +546,9 @@ namespace WTGMerger
                 insertIndex++;
             }
 
+            // Copy missing variables from source to target before copying triggers
+            CopyMissingVariables(source, target, triggersToCopy);
+
             // Copy triggers
             Console.WriteLine($"\n  Copying {triggersToCopy.Count} trigger(s) to category '{destCategoryName}':");
             foreach (var sourceTrigger in triggersToCopy)
@@ -625,6 +631,9 @@ namespace WTGMerger
             // Add category at the end
             target.TriggerItems.Add(newCategory);
             Console.WriteLine($"  Added category '{categoryName}' to target (ID={newCategory.Id}, ParentId={newCategory.ParentId})");
+
+            // Copy missing variables from source to target before copying triggers
+            CopyMissingVariables(source, target, sourceCategoryTriggers);
 
             // Copy all triggers
             foreach (var sourceTrigger in sourceCategoryTriggers)
@@ -794,6 +803,122 @@ namespace WTGMerger
             }
 
             return fixedCount;
+        }
+
+        /// <summary>
+        /// Copies variables from source that are missing in target
+        /// Skips variables that already exist (to avoid conflicts)
+        /// </summary>
+        static void CopyMissingVariables(MapTriggers source, MapTriggers target, List<TriggerDefinition> triggers)
+        {
+            var targetVarNames = new HashSet<string>(target.Variables.Select(v => v.Name));
+            int copiedCount = 0;
+
+            foreach (var sourceVar in source.Variables)
+            {
+                if (!targetVarNames.Contains(sourceVar.Name))
+                {
+                    // Variable doesn't exist in target - copy it
+                    var newVar = new VariableDefinition
+                    {
+                        Name = sourceVar.Name,
+                        Type = sourceVar.Type,
+                        Unk = sourceVar.Unk,
+                        IsArray = sourceVar.IsArray,
+                        ArraySize = sourceVar.ArraySize,
+                        IsInitialized = sourceVar.IsInitialized,
+                        InitialValue = sourceVar.InitialValue,
+                        Id = target.Variables.Count,  // Assign next ID
+                        ParentId = sourceVar.ParentId
+                    };
+
+                    target.Variables.Add(newVar);
+                    copiedCount++;
+                    Console.WriteLine($"    + Copied variable: {newVar.Name} ({newVar.Type})");
+                }
+            }
+
+            if (copiedCount > 0)
+            {
+                Console.WriteLine($"  ✓ Copied {copiedCount} missing variable(s) from source");
+            }
+        }
+
+        /// <summary>
+        /// Checks for variable conflicts between source and target maps
+        /// </summary>
+        static void CheckVariableConflicts(MapTriggers source, MapTriggers target)
+        {
+            Console.WriteLine("\n=== Variable Conflict Check ===");
+
+            var sourceVars = source.Variables.ToDictionary(v => v.Name, v => v);
+            var targetVars = target.Variables.ToDictionary(v => v.Name, v => v);
+
+            var conflicts = new List<string>();
+            var missing = new List<VariableDefinition>();
+
+            foreach (var sourceVar in sourceVars.Values)
+            {
+                if (targetVars.TryGetValue(sourceVar.Name, out var targetVar))
+                {
+                    // Variable exists in both - check if types match
+                    if (sourceVar.Type != targetVar.Type)
+                    {
+                        conflicts.Add($"  '{sourceVar.Name}': Source={sourceVar.Type}, Target={targetVar.Type}");
+                    }
+                }
+                else
+                {
+                    // Variable exists in source but not in target
+                    missing.Add(sourceVar);
+                }
+            }
+
+            if (conflicts.Count > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"\n❌ ERROR: {conflicts.Count} variable type conflicts found:");
+                foreach (var conflict in conflicts.Take(10))
+                {
+                    Console.WriteLine(conflict);
+                }
+                if (conflicts.Count > 10)
+                {
+                    Console.WriteLine($"  ... and {conflicts.Count - 10} more");
+                }
+                Console.WriteLine("\n⚠ These variables have DIFFERENT types in source vs target!");
+                Console.WriteLine("⚠ You must manually resolve these conflicts in World Editor.");
+                Console.WriteLine("⚠ Options:");
+                Console.WriteLine("   1. Rename the variable in one of the maps");
+                Console.WriteLine("   2. Change the variable type to match");
+                Console.WriteLine("   3. Remove the conflicting triggers");
+                Console.ResetColor();
+            }
+
+            if (missing.Count > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"\n⚠ WARNING: {missing.Count} variables from SOURCE are missing in TARGET:");
+                foreach (var missingVar in missing.Take(10))
+                {
+                    Console.WriteLine($"  '{missingVar.Name}' ({missingVar.Type})");
+                }
+                if (missing.Count > 10)
+                {
+                    Console.WriteLine($"  ... and {missing.Count - 10} more");
+                }
+                Console.WriteLine("\nℹ These variables will be added to the target map when you merge triggers.");
+                Console.ResetColor();
+            }
+
+            if (conflicts.Count == 0 && missing.Count == 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("✓ No variable conflicts found");
+                Console.ResetColor();
+            }
+
+            Console.WriteLine();
         }
 
         /// <summary>
