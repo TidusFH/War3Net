@@ -59,6 +59,9 @@ namespace WTGMerger
                 // Fix duplicate IDs if they exist
                 FixDuplicateIds(targetTriggers);
 
+                // Check and report on category structure
+                CheckCategoryStructure(targetTriggers);
+
                 // Interactive menu
                 bool modified = false;
                 while (true)
@@ -71,10 +74,11 @@ namespace WTGMerger
                     Console.WriteLine("3. List triggers in a specific category");
                     Console.WriteLine("4. Copy ENTIRE category");
                     Console.WriteLine("5. Copy SPECIFIC trigger(s)");
-                    Console.WriteLine("6. Save and exit");
-                    Console.WriteLine("7. Exit without saving");
+                    Console.WriteLine("6. Fix all TARGET categories to root-level (ParentId = -1)");
+                    Console.WriteLine("7. Save and exit");
+                    Console.WriteLine("8. Exit without saving");
                     Console.WriteLine();
-                    Console.Write("Select option (1-7): ");
+                    Console.Write("Select option (1-8): ");
 
                     string? choice = Console.ReadLine();
 
@@ -135,6 +139,22 @@ namespace WTGMerger
                             break;
 
                         case "6":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║          FIX CATEGORY NESTING                            ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nThis will set ALL categories in TARGET to root-level (ParentId = -1).");
+                            Console.WriteLine("Use this if your categories are incorrectly nested.");
+                            Console.Write("\nProceed? (y/n): ");
+                            string? confirmFix = Console.ReadLine();
+                            if (confirmFix?.ToLower() == "y")
+                            {
+                                int fixed = FixAllCategoriesToRoot(targetTriggers);
+                                Console.WriteLine($"\n✓ Fixed {fixed} categories to root-level");
+                                modified = true;
+                            }
+                            break;
+
+                        case "7":
                             if (modified)
                             {
                                 Console.WriteLine($"\nPreparing to save merged WTG to: {outputPath}");
@@ -192,7 +212,7 @@ namespace WTGMerger
                             }
                             return;
 
-                        case "7":
+                        case "8":
                             Console.WriteLine("\nExiting without saving changes.");
                             return;
 
@@ -389,7 +409,7 @@ namespace WTGMerger
                     IsExpanded = true
                 };
                 target.TriggerItems.Add(destCategory);
-                Console.WriteLine($"\n  ✓ Created new category '{destCategoryName}'");
+                Console.WriteLine($"\n  ✓ Created new category '{destCategoryName}' (ID={destCategory.Id}, ParentId={destCategory.ParentId})");
             }
 
             // Find insertion point (after the category)
@@ -471,11 +491,12 @@ namespace WTGMerger
             }
 
             // Create new category in target (Type must be set via constructor)
-            // Preserve ParentId from source to maintain nesting structure
+            // ALWAYS set ParentId = -1 for root-level when copying between files
+            // (source ParentId might point to non-existent category in target)
             var newCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
             {
                 Id = GetNextId(target),
-                ParentId = sourceCategory.ParentId,  // Preserve nesting structure
+                ParentId = -1,  // CRITICAL: Always root-level for copied categories
                 Name = sourceCategory.Name,
                 IsComment = sourceCategory.IsComment,
                 IsExpanded = sourceCategory.IsExpanded
@@ -483,7 +504,7 @@ namespace WTGMerger
 
             // Add category at the end
             target.TriggerItems.Add(newCategory);
-            Console.WriteLine($"  Added category '{categoryName}' to target");
+            Console.WriteLine($"  Added category '{categoryName}' to target (ID={newCategory.Id}, ParentId={newCategory.ParentId})");
 
             // Copy all triggers
             foreach (var sourceTrigger in sourceCategoryTriggers)
@@ -628,6 +649,80 @@ namespace WTGMerger
             {
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine("✓ No duplicate IDs found");
+                Console.ResetColor();
+            }
+
+            Console.WriteLine();
+        }
+
+        /// <summary>
+        /// Fixes all categories to root-level by setting ParentId = -1
+        /// </summary>
+        static int FixAllCategoriesToRoot(MapTriggers triggers)
+        {
+            var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
+            int fixedCount = 0;
+
+            foreach (var category in categories)
+            {
+                if (category.ParentId != -1)
+                {
+                    Console.WriteLine($"  Fixing '{category.Name}' (was ParentId={category.ParentId})");
+                    category.ParentId = -1;
+                    fixedCount++;
+                }
+            }
+
+            return fixedCount;
+        }
+
+        /// <summary>
+        /// Checks and reports on category structure, showing any suspicious ParentId values
+        /// </summary>
+        static void CheckCategoryStructure(MapTriggers triggers)
+        {
+            var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
+
+            if (categories.Count == 0)
+            {
+                return;
+            }
+
+            Console.WriteLine("\n=== Category Structure Analysis ===");
+
+            var rootCategories = categories.Where(c => c.ParentId < 0).ToList();
+            var potentiallyNested = categories.Where(c => c.ParentId >= 0).ToList();
+
+            Console.WriteLine($"Root-level categories (ParentId < 0): {rootCategories.Count}");
+            Console.WriteLine($"Potentially nested (ParentId >= 0): {potentiallyNested.Count}");
+
+            if (potentiallyNested.Count > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"\n⚠ WARNING: Found {potentiallyNested.Count} categories with ParentId >= 0:");
+                foreach (var cat in potentiallyNested.Take(10))
+                {
+                    var parentCat = categories.FirstOrDefault(c => c.Id == cat.ParentId);
+                    if (parentCat != null)
+                    {
+                        Console.WriteLine($"  - '{cat.Name}' (ID={cat.Id}, ParentId={cat.ParentId} → nested under '{parentCat.Name}')");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"  - '{cat.Name}' (ID={cat.Id}, ParentId={cat.ParentId} → ORPHANED!)");
+                    }
+                }
+                if (potentiallyNested.Count > 10)
+                {
+                    Console.WriteLine($"  ... and {potentiallyNested.Count - 10} more");
+                }
+                Console.WriteLine("\nℹ If these should be root-level, they will be fixed when you add new categories.");
+                Console.ResetColor();
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("✓ All categories are at root level");
                 Console.ResetColor();
             }
 
