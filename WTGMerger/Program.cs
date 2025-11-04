@@ -150,6 +150,22 @@ namespace WTGMerger
                             {
                                 int fixedCount = FixAllCategoriesToRoot(targetTriggers);
                                 Console.WriteLine($"\n✓ Fixed {fixedCount} categories to root-level");
+
+                                // Verify the fix worked
+                                Console.WriteLine("\n=== Verification ===");
+                                var categories = targetTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
+                                var rootCount = categories.Count(c => c.ParentId == -1);
+                                var nestedCount = categories.Count(c => c.ParentId >= 0);
+                                Console.WriteLine($"Categories with ParentId=-1: {rootCount}");
+                                Console.WriteLine($"Categories with ParentId>=0: {nestedCount}");
+
+                                if (nestedCount > 0)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine("❌ WARNING: Some categories still have ParentId >= 0!");
+                                    Console.ResetColor();
+                                }
+
                                 modified = true;
                             }
                             break;
@@ -165,10 +181,22 @@ namespace WTGMerger
                                 // Validate and show statistics
                                 ValidateAndShowStats(targetTriggers);
 
+                                // Show ParentId values before saving for debugging
+                                Console.WriteLine("\n=== DEBUG: Category ParentIds Before Save ===");
+                                var debugCategories = targetTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().Take(5).ToList();
+                                foreach (var cat in debugCategories)
+                                {
+                                    Console.WriteLine($"  '{cat.Name}': ParentId={cat.ParentId}");
+                                }
+                                if (targetTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().Count() > 5)
+                                {
+                                    Console.WriteLine($"  ... and {targetTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().Count() - 5} more");
+                                }
+
                                 Console.WriteLine($"\nWriting file...");
 
-                                // Check if target is a map archive (.w3x/.w3m)
-                                if (IsMapArchive(targetPath))
+                                // Check if OUTPUT is a map archive (.w3x/.w3m)
+                                if (IsMapArchive(outputPath))
                                 {
                                     Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
                                     Console.WriteLine("║           JASS CODE SYNCHRONIZATION                      ║");
