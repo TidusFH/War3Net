@@ -237,6 +237,36 @@ namespace WTGMerger
                             {
                                 Console.WriteLine($"\nPreparing to save merged WTG to: {outputPath}");
 
+                                // CRITICAL SAFETY CHECK: Verify variables exist before saving
+                                Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                                Console.WriteLine("║              PRE-SAVE VERIFICATION                       ║");
+                                Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                                Console.WriteLine($"Variables in memory: {targetTriggers.Variables.Count}");
+                                Console.WriteLine($"Trigger items: {targetTriggers.TriggerItems.Count}");
+                                Console.WriteLine($"Categories: {targetTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().Count()}");
+                                Console.WriteLine($"Triggers: {targetTriggers.TriggerItems.OfType<TriggerDefinition>().Count()}");
+
+                                if (targetTriggers.Variables.Count == 0)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine("\n❌ CRITICAL ERROR: All variables have been deleted!");
+                                    Console.WriteLine("❌ Saving now would corrupt the map!");
+                                    Console.WriteLine("❌ Aborting save to prevent data loss.");
+                                    Console.ResetColor();
+                                    Console.WriteLine("\nPress Enter to return to menu...");
+                                    Console.ReadLine();
+                                    break;
+                                }
+
+                                if (DEBUG_MODE)
+                                {
+                                    Console.WriteLine("\n[DEBUG] Sample variables before save:");
+                                    foreach (var v in targetTriggers.Variables.Take(10))
+                                    {
+                                        Console.WriteLine($"[DEBUG]   ID={v.Id}, Name={v.Name}, Type={v.Type}");
+                                    }
+                                }
+
                                 // CRITICAL: Set SubVersion if null to enable ParentId writing
                                 if (targetTriggers.SubVersion == null)
                                 {
@@ -269,6 +299,12 @@ namespace WTGMerger
                                 }
 
                                 Console.WriteLine($"\nWriting file...");
+
+                                if (DEBUG_MODE)
+                                {
+                                    Console.WriteLine($"[DEBUG] About to write {targetTriggers.Variables.Count} variables");
+                                    Console.WriteLine($"[DEBUG] About to write {targetTriggers.TriggerItems.Count} trigger items");
+                                }
 
                                 // Check if OUTPUT is a map archive (.w3x/.w3m)
                                 if (IsMapArchive(outputPath))
@@ -305,18 +341,57 @@ namespace WTGMerger
                                     Console.WriteLine("\n   See SYNCING-WTG-WITH-J.md for details.");
                                 }
 
-                                // VERIFICATION: Read back the saved file to confirm ParentIds were written correctly
+                                // VERIFICATION: Read back the saved file to confirm everything was written correctly
                                 Console.WriteLine("\n=== VERIFICATION: Reading saved file ===");
                                 try
                                 {
                                     MapTriggers verifyTriggers = ReadMapTriggersAuto(outputPath);
+
+                                    // CRITICAL: Check if variables were preserved
+                                    int originalVarCount = targetTriggers.Variables.Count;
+                                    int savedVarCount = verifyTriggers.Variables.Count;
+
+                                    Console.WriteLine($"Variables written: {originalVarCount}");
+                                    Console.WriteLine($"Variables in saved file: {savedVarCount}");
+
+                                    if (savedVarCount == 0 && originalVarCount > 0)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine("\n❌❌❌ CRITICAL ERROR: ALL VARIABLES WERE LOST! ❌❌❌");
+                                        Console.WriteLine($"❌ We tried to write {originalVarCount} variables but the file has 0!");
+                                        Console.WriteLine("❌ This is a BUG in War3Net library's WriteTo method!");
+                                        Console.WriteLine("❌ DO NOT use this file - it will corrupt your map!");
+                                        Console.ResetColor();
+                                    }
+                                    else if (savedVarCount < originalVarCount)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"\n❌ ERROR: Variable loss detected!");
+                                        Console.WriteLine($"❌ {originalVarCount - savedVarCount} variables were lost during save!");
+                                        Console.ResetColor();
+                                    }
+                                    else if (savedVarCount > originalVarCount)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Yellow;
+                                        Console.WriteLine($"\n⚠ WARNING: Extra variables appeared!");
+                                        Console.WriteLine($"⚠ {savedVarCount - originalVarCount} more variables than expected!");
+                                        Console.ResetColor();
+                                    }
+                                    else
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Green;
+                                        Console.WriteLine("✓ All variables were saved correctly!");
+                                        Console.ResetColor();
+                                    }
+
+                                    // Check categories
                                     var verifyCats = verifyTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
                                     var verifyRoot = verifyCats.Count(c => c.ParentId == -1);
                                     var verifyNested = verifyCats.Count(c => c.ParentId >= 0);
 
-                                    Console.WriteLine($"Saved file has:");
-                                    Console.WriteLine($"  Root-level categories (ParentId=-1): {verifyRoot}");
-                                    Console.WriteLine($"  Nested categories (ParentId>=0): {verifyNested}");
+                                    Console.WriteLine($"\nCategories:");
+                                    Console.WriteLine($"  Root-level (ParentId=-1): {verifyRoot}");
+                                    Console.WriteLine($"  Nested (ParentId>=0): {verifyNested}");
 
                                     if (verifyNested > 0)
                                     {
@@ -484,6 +559,13 @@ namespace WTGMerger
         /// </summary>
         static void WriteWTGFile(string filePath, MapTriggers triggers)
         {
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[DEBUG] WriteWTGFile: Writing to {filePath}");
+                Console.WriteLine($"[DEBUG]   Variables to write: {triggers.Variables.Count}");
+                Console.WriteLine($"[DEBUG]   Trigger items to write: {triggers.TriggerItems.Count}");
+            }
+
             using var fileStream = File.Create(filePath);
             using var writer = new BinaryWriter(fileStream);
 
@@ -501,6 +583,11 @@ namespace WTGMerger
             }
 
             writeToMethod.Invoke(triggers, new object[] { writer });
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[DEBUG] WriteWTGFile: Completed. File size: {fileStream.Length} bytes");
+            }
         }
 
         /// <summary>
@@ -1980,6 +2067,13 @@ namespace WTGMerger
         /// </summary>
         static void WriteMapArchive(string originalArchivePath, string outputArchivePath, MapTriggers triggers, bool removeJassFile)
         {
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[DEBUG] WriteMapArchive: Writing to {outputArchivePath}");
+                Console.WriteLine($"[DEBUG]   Variables to write: {triggers.Variables.Count}");
+                Console.WriteLine($"[DEBUG]   Trigger items to write: {triggers.TriggerItems.Count}");
+            }
+
             Console.WriteLine($"  Opening original archive...");
             using var originalArchive = MpqArchive.Open(originalArchivePath, true);
             originalArchive.DiscoverFileNames();
@@ -2006,6 +2100,11 @@ namespace WTGMerger
 
             writeToMethod.Invoke(triggers, new object[] { writer });
             writer.Flush();
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[DEBUG] Serialized war3map.wtg to memory: {triggerStream.Length} bytes");
+            }
 
             triggerStream.Position = 0;
 
