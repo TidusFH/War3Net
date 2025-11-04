@@ -310,8 +310,23 @@ namespace WTGMerger
                 throw new InvalidOperationException("Could not find internal MapTriggers constructor");
             }
 
-            var triggers = (MapTriggers)constructorInfo.Invoke(new object[] { reader, TriggerData.Default });
-            return triggers;
+            try
+            {
+                var triggers = (MapTriggers)constructorInfo.Invoke(new object[] { reader, TriggerData.Default });
+                return triggers;
+            }
+            catch (System.Reflection.TargetInvocationException ex)
+            {
+                // Show the actual inner exception that caused the problem
+                throw new InvalidOperationException(
+                    $"Failed to parse war3map.wtg file. " +
+                    $"Inner error: {ex.InnerException?.Message ?? ex.Message}\n" +
+                    $"This might be due to:\n" +
+                    $"  - Corrupted .wtg file\n" +
+                    $"  - Unsupported WTG format version\n" +
+                    $"  - File from very old or very new WC3 version",
+                    ex.InnerException ?? ex);
+            }
         }
 
         /// <summary>
@@ -1103,8 +1118,24 @@ namespace WTGMerger
                 throw new InvalidOperationException("Could not find internal MapTriggers constructor");
             }
 
-            var triggers = (MapTriggers)constructorInfo.Invoke(new object[] { reader, TriggerData.Default });
-            return triggers;
+            try
+            {
+                var triggers = (MapTriggers)constructorInfo.Invoke(new object[] { reader, TriggerData.Default });
+                return triggers;
+            }
+            catch (System.Reflection.TargetInvocationException ex)
+            {
+                // Show the actual inner exception that caused the problem
+                throw new InvalidOperationException(
+                    $"Failed to parse war3map.wtg from map archive. " +
+                    $"Inner error: {ex.InnerException?.Message ?? ex.Message}\n" +
+                    $"This might be due to:\n" +
+                    $"  - Corrupted .wtg file in the map\n" +
+                    $"  - Unsupported WTG format version\n" +
+                    $"  - Map from very old or very new WC3 version\n" +
+                    $"  - Try extracting war3map.wtg manually and check if it's valid",
+                    ex.InnerException ?? ex);
+            }
         }
 
         /// <summary>
