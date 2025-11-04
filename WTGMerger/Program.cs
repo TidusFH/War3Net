@@ -148,8 +148,8 @@ namespace WTGMerger
                             string? confirmFix = Console.ReadLine();
                             if (confirmFix?.ToLower() == "y")
                             {
-                                int fixed = FixAllCategoriesToRoot(targetTriggers);
-                                Console.WriteLine($"\n✓ Fixed {fixed} categories to root-level");
+                                int fixedCount = FixAllCategoriesToRoot(targetTriggers);
+                                Console.WriteLine($"\n✓ Fixed {fixedCount} categories to root-level");
                                 modified = true;
                             }
                             break;
