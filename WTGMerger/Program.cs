@@ -86,8 +86,8 @@ namespace WTGMerger
                 // Check and report on category structure
                 CheckCategoryStructure(targetTriggers);
 
-                // Check for variable conflicts between source and target
-                CheckVariableConflicts(sourceTriggers, targetTriggers);
+                // Show informational summary about variables
+                ShowVariableSummary(sourceTriggers, targetTriggers);
 
                 // Interactive menu
                 bool modified = false;
@@ -806,17 +806,91 @@ namespace WTGMerger
         }
 
         /// <summary>
-        /// Copies variables from source that are missing in target
-        /// Skips variables that already exist (to avoid conflicts)
+        /// Copies variables used by triggers, with automatic renaming on conflicts
         /// </summary>
         static void CopyMissingVariables(MapTriggers source, MapTriggers target, List<TriggerDefinition> triggers)
         {
-            var targetVarNames = new HashSet<string>(target.Variables.Select(v => v.Name));
-            int copiedCount = 0;
-
-            foreach (var sourceVar in source.Variables)
+            // Collect all variables used by the triggers being copied
+            var usedVariables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var trigger in triggers)
             {
-                if (!targetVarNames.Contains(sourceVar.Name))
+                var varsInTrigger = GetVariablesUsedByTrigger(trigger, source);
+                foreach (var varName in varsInTrigger)
+                {
+                    usedVariables.Add(varName);
+                }
+            }
+
+            if (usedVariables.Count == 0)
+            {
+                Console.WriteLine("  ℹ No variables used by these triggers");
+                return;
+            }
+
+            Console.WriteLine($"\n  Analyzing {usedVariables.Count} variable(s) used by triggers:");
+
+            var targetVarNames = new HashSet<string>(target.Variables.Select(v => v.Name), StringComparer.OrdinalIgnoreCase);
+            var sourceVarDict = source.Variables.ToDictionary(v => v.Name, v => v, StringComparer.OrdinalIgnoreCase);
+            var targetVarDict = target.Variables.ToDictionary(v => v.Name, v => v, StringComparer.OrdinalIgnoreCase);
+
+            int copiedCount = 0;
+            int renamedCount = 0;
+            var renamedMappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var varName in usedVariables)
+            {
+                if (!sourceVarDict.TryGetValue(varName, out var sourceVar))
+                {
+                    Console.WriteLine($"    ⚠ Warning: Variable '{varName}' not found in source map");
+                    continue;
+                }
+
+                // Check if variable exists in target
+                if (targetVarDict.TryGetValue(varName, out var targetVar))
+                {
+                    // Variable exists in both - check type
+                    if (sourceVar.Type == targetVar.Type)
+                    {
+                        Console.WriteLine($"    ✓ '{varName}' already exists with same type - no action needed");
+                    }
+                    else
+                    {
+                        // TYPE CONFLICT - need to rename
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"    ⚠ CONFLICT: '{varName}' has different types:");
+                        Console.WriteLine($"      Source: {sourceVar.Type}");
+                        Console.WriteLine($"      Target: {targetVar.Type}");
+                        Console.WriteLine($"      → Will rename source variable");
+                        Console.ResetColor();
+
+                        // Generate unique name
+                        string newName = GenerateUniqueVariableName(varName, targetVarNames);
+                        renamedMappings[varName] = newName;
+
+                        // Create renamed copy
+                        var newVar = new VariableDefinition
+                        {
+                            Name = newName,
+                            Type = sourceVar.Type,
+                            Unk = sourceVar.Unk,
+                            IsArray = sourceVar.IsArray,
+                            ArraySize = sourceVar.ArraySize,
+                            IsInitialized = sourceVar.IsInitialized,
+                            InitialValue = sourceVar.InitialValue,
+                            Id = target.Variables.Count,
+                            ParentId = sourceVar.ParentId
+                        };
+
+                        target.Variables.Add(newVar);
+                        targetVarNames.Add(newName);
+                        renamedCount++;
+
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"    ✓ Renamed and copied: '{varName}' → '{newName}'");
+                        Console.ResetColor();
+                    }
+                }
+                else
                 {
                     // Variable doesn't exist in target - copy it
                     var newVar = new VariableDefinition
@@ -828,96 +902,264 @@ namespace WTGMerger
                         ArraySize = sourceVar.ArraySize,
                         IsInitialized = sourceVar.IsInitialized,
                         InitialValue = sourceVar.InitialValue,
-                        Id = target.Variables.Count,  // Assign next ID
+                        Id = target.Variables.Count,
                         ParentId = sourceVar.ParentId
                     };
 
                     target.Variables.Add(newVar);
+                    targetVarNames.Add(newVar.Name);
                     copiedCount++;
-                    Console.WriteLine($"    + Copied variable: {newVar.Name} ({newVar.Type})");
+                    Console.WriteLine($"    + Copied: '{newVar.Name}' ({newVar.Type})");
                 }
             }
 
-            if (copiedCount > 0)
+            if (copiedCount > 0 || renamedCount > 0)
             {
-                Console.WriteLine($"  ✓ Copied {copiedCount} missing variable(s) from source");
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"\n  ✓ Copied {copiedCount} variable(s), renamed {renamedCount} variable(s)");
+                Console.ResetColor();
+            }
+
+            // Apply renamings to triggers if any
+            if (renamedMappings.Count > 0)
+            {
+                Console.WriteLine($"\n  Updating variable references in triggers...");
+                foreach (var trigger in triggers)
+                {
+                    RenameVariablesInTrigger(trigger, renamedMappings);
+                }
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"  ✓ Updated all variable references");
+                Console.ResetColor();
             }
         }
 
         /// <summary>
-        /// Checks for variable conflicts between source and target maps
+        /// Gets all variable names referenced in a trigger
         /// </summary>
-        static void CheckVariableConflicts(MapTriggers source, MapTriggers target)
+        static HashSet<string> GetVariablesUsedByTrigger(TriggerDefinition trigger, MapTriggers mapTriggers)
         {
-            Console.WriteLine("\n=== Variable Conflict Check ===");
+            var usedVariables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            var sourceVars = source.Variables.ToDictionary(v => v.Name, v => v);
-            var targetVars = target.Variables.ToDictionary(v => v.Name, v => v);
-
-            var conflicts = new List<string>();
-            var missing = new List<VariableDefinition>();
-
-            foreach (var sourceVar in sourceVars.Values)
+            // Scan all functions in the trigger
+            foreach (var function in trigger.Functions)
             {
-                if (targetVars.TryGetValue(sourceVar.Name, out var targetVar))
+                CollectVariablesFromFunction(function, usedVariables, mapTriggers);
+            }
+
+            return usedVariables;
+        }
+
+        /// <summary>
+        /// Recursively collects variable names from a trigger function and its parameters
+        /// </summary>
+        static void CollectVariablesFromFunction(TriggerFunction function, HashSet<string> usedVariables, MapTriggers mapTriggers)
+        {
+            // Check parameters
+            foreach (var param in function.Parameters)
+            {
+                if (param.Type == TriggerFunctionParameterType.Variable)
                 {
-                    // Variable exists in both - check if types match
-                    if (sourceVar.Type != targetVar.Type)
+                    // Parameter is a variable reference - extract the variable name
+                    var varName = GetVariableNameFromParameter(param, mapTriggers);
+                    if (!string.IsNullOrEmpty(varName))
                     {
-                        conflicts.Add($"  '{sourceVar.Name}': Source={sourceVar.Type}, Target={targetVar.Type}");
+                        usedVariables.Add(varName);
                     }
                 }
-                else
+
+                // Check nested function
+                if (param.Function != null)
                 {
-                    // Variable exists in source but not in target
-                    missing.Add(sourceVar);
+                    CollectVariablesFromFunction(param.Function, usedVariables, mapTriggers);
+                }
+
+                // Check array indexer
+                if (param.ArrayIndexer != null)
+                {
+                    CollectVariablesFromParameterRecursive(param.ArrayIndexer, usedVariables, mapTriggers);
                 }
             }
 
-            if (conflicts.Count > 0)
+            // Check child functions (if-then-else blocks)
+            foreach (var childFunc in function.ChildFunctions)
             {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"\n❌ ERROR: {conflicts.Count} variable type conflicts found:");
-                foreach (var conflict in conflicts.Take(10))
-                {
-                    Console.WriteLine(conflict);
-                }
-                if (conflicts.Count > 10)
-                {
-                    Console.WriteLine($"  ... and {conflicts.Count - 10} more");
-                }
-                Console.WriteLine("\n⚠ These variables have DIFFERENT types in source vs target!");
-                Console.WriteLine("⚠ You must manually resolve these conflicts in World Editor.");
-                Console.WriteLine("⚠ Options:");
-                Console.WriteLine("   1. Rename the variable in one of the maps");
-                Console.WriteLine("   2. Change the variable type to match");
-                Console.WriteLine("   3. Remove the conflicting triggers");
-                Console.ResetColor();
+                CollectVariablesFromFunction(childFunc, usedVariables, mapTriggers);
             }
+        }
 
-            if (missing.Count > 0)
+        /// <summary>
+        /// Recursively collects variables from a parameter
+        /// </summary>
+        static void CollectVariablesFromParameterRecursive(TriggerFunctionParameter param, HashSet<string> usedVariables, MapTriggers mapTriggers)
+        {
+            if (param.Type == TriggerFunctionParameterType.Variable)
             {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"\n⚠ WARNING: {missing.Count} variables from SOURCE are missing in TARGET:");
-                foreach (var missingVar in missing.Take(10))
+                var varName = GetVariableNameFromParameter(param, mapTriggers);
+                if (!string.IsNullOrEmpty(varName))
                 {
-                    Console.WriteLine($"  '{missingVar.Name}' ({missingVar.Type})");
+                    usedVariables.Add(varName);
                 }
-                if (missing.Count > 10)
-                {
-                    Console.WriteLine($"  ... and {missing.Count - 10} more");
-                }
-                Console.WriteLine("\nℹ These variables will be added to the target map when you merge triggers.");
-                Console.ResetColor();
             }
 
-            if (conflicts.Count == 0 && missing.Count == 0)
+            if (param.Function != null)
             {
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("✓ No variable conflicts found");
-                Console.ResetColor();
+                CollectVariablesFromFunction(param.Function, usedVariables, mapTriggers);
             }
 
+            if (param.ArrayIndexer != null)
+            {
+                CollectVariablesFromParameterRecursive(param.ArrayIndexer, usedVariables, mapTriggers);
+            }
+        }
+
+        /// <summary>
+        /// Gets variable name from a parameter value
+        /// </summary>
+        static string GetVariableNameFromParameter(TriggerFunctionParameter param, MapTriggers mapTriggers)
+        {
+            var value = param.Value;
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            // The parameter value is typically the variable name directly
+            // First, check if it's a valid variable name in the map
+            var varByName = mapTriggers.Variables.FirstOrDefault(v =>
+                v.Name.Equals(value, StringComparison.OrdinalIgnoreCase));
+            if (varByName != null)
+            {
+                return varByName.Name;
+            }
+
+            // Some triggers might use variable IDs - try parsing as int
+            if (int.TryParse(value, out int varId))
+            {
+                var varById = mapTriggers.Variables.FirstOrDefault(v => v.Id == varId);
+                if (varById != null)
+                {
+                    return varById.Name;
+                }
+            }
+
+            // Return the value as-is if we can't resolve it
+            // (it might be a variable that will be resolved later)
+            return value;
+        }
+
+        /// <summary>
+        /// Generates a unique variable name by appending a suffix
+        /// </summary>
+        static string GenerateUniqueVariableName(string baseName, HashSet<string> existingNames)
+        {
+            // Try different suffixes until we find one that doesn't exist
+            string[] suffixes = { "_Source", "_Merged", "_Copy", "_Alt", "_2" };
+
+            foreach (var suffix in suffixes)
+            {
+                string candidate = baseName + suffix;
+                if (!existingNames.Contains(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            // If all standard suffixes are taken, use numeric suffix
+            int counter = 2;
+            while (counter < 1000) // Safety limit
+            {
+                string candidate = $"{baseName}_{counter}";
+                if (!existingNames.Contains(candidate))
+                {
+                    return candidate;
+                }
+                counter++;
+            }
+
+            // Last resort
+            return $"{baseName}_{Guid.NewGuid().ToString().Substring(0, 8)}";
+        }
+
+        /// <summary>
+        /// Renames variable references in a trigger
+        /// </summary>
+        static void RenameVariablesInTrigger(TriggerDefinition trigger, Dictionary<string, string> renameMappings)
+        {
+            foreach (var function in trigger.Functions)
+            {
+                RenameVariablesInFunction(function, renameMappings);
+            }
+        }
+
+        /// <summary>
+        /// Recursively renames variable references in a function
+        /// </summary>
+        static void RenameVariablesInFunction(TriggerFunction function, Dictionary<string, string> renameMappings)
+        {
+            foreach (var param in function.Parameters)
+            {
+                if (param.Type == TriggerFunctionParameterType.Variable)
+                {
+                    // Check if this variable needs to be renamed
+                    if (renameMappings.TryGetValue(param.Value, out var newName))
+                    {
+                        param.Value = newName;
+                    }
+                }
+
+                if (param.Function != null)
+                {
+                    RenameVariablesInFunction(param.Function, renameMappings);
+                }
+
+                if (param.ArrayIndexer != null)
+                {
+                    RenameVariablesInParameterRecursive(param.ArrayIndexer, renameMappings);
+                }
+            }
+
+            foreach (var childFunc in function.ChildFunctions)
+            {
+                RenameVariablesInFunction(childFunc, renameMappings);
+            }
+        }
+
+        /// <summary>
+        /// Recursively renames variables in a parameter
+        /// </summary>
+        static void RenameVariablesInParameterRecursive(TriggerFunctionParameter param, Dictionary<string, string> renameMappings)
+        {
+            if (param.Type == TriggerFunctionParameterType.Variable)
+            {
+                if (renameMappings.TryGetValue(param.Value, out var newName))
+                {
+                    param.Value = newName;
+                }
+            }
+
+            if (param.Function != null)
+            {
+                RenameVariablesInFunction(param.Function, renameMappings);
+            }
+
+            if (param.ArrayIndexer != null)
+            {
+                RenameVariablesInParameterRecursive(param.ArrayIndexer, renameMappings);
+            }
+        }
+
+        /// <summary>
+        /// Shows a simple summary of variables in both maps
+        /// </summary>
+        static void ShowVariableSummary(MapTriggers source, MapTriggers target)
+        {
+            Console.WriteLine("\n=== Variable Summary ===");
+            Console.WriteLine($"Source map: {source.Variables.Count} variables");
+            Console.WriteLine($"Target map: {target.Variables.Count} variables");
+            Console.WriteLine("\nℹ Variable conflicts will be detected and automatically resolved");
+            Console.WriteLine("  when you copy triggers (variables will be renamed if needed)");
             Console.WriteLine();
         }
 
