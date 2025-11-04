@@ -254,6 +254,46 @@ namespace WTGMerger
                                     Console.WriteLine("\n   See SYNCING-WTG-WITH-J.md for details.");
                                 }
 
+                                // VERIFICATION: Read back the saved file to confirm ParentIds were written correctly
+                                Console.WriteLine("\n=== VERIFICATION: Reading saved file ===");
+                                try
+                                {
+                                    MapTriggers verifyTriggers = ReadMapTriggersAuto(outputPath);
+                                    var verifyCats = verifyTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
+                                    var verifyRoot = verifyCats.Count(c => c.ParentId == -1);
+                                    var verifyNested = verifyCats.Count(c => c.ParentId >= 0);
+
+                                    Console.WriteLine($"Saved file has:");
+                                    Console.WriteLine($"  Root-level categories (ParentId=-1): {verifyRoot}");
+                                    Console.WriteLine($"  Nested categories (ParentId>=0): {verifyNested}");
+
+                                    if (verifyNested > 0)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine("\n❌ ERROR: ParentIds were NOT saved correctly!");
+                                        Console.WriteLine("The saved file still has nested categories:");
+                                        foreach (var cat in verifyCats.Where(c => c.ParentId >= 0).Take(5))
+                                        {
+                                            Console.WriteLine($"  '{cat.Name}': ParentId={cat.ParentId}");
+                                        }
+                                        Console.WriteLine("\n⚠ This means the ParentId field is NOT being written to disk.");
+                                        Console.WriteLine("⚠ The issue is in the WriteTo method or file format.");
+                                        Console.ResetColor();
+                                    }
+                                    else
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Green;
+                                        Console.WriteLine("✓ ParentIds were saved correctly!");
+                                        Console.ResetColor();
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Yellow;
+                                    Console.WriteLine($"⚠ Could not verify saved file: {ex.Message}");
+                                    Console.ResetColor();
+                                }
+
                                 Console.WriteLine("\n✓ Merge complete!");
                                 Console.WriteLine("\n=== Final Target Categories ===");
                                 ListCategoriesDetailed(targetTriggers);
