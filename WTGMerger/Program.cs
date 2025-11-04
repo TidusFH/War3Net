@@ -14,10 +14,34 @@ namespace WTGMerger
         {
             try
             {
-                // Paths to your WTG files (can be overridden by command line arguments)
-                var sourcePath = args.Length > 0 ? args[0] : "../Source/war3map.wtg";
-                var targetPath = args.Length > 1 ? args[1] : "../Target/war3map.wtg";
-                var outputPath = args.Length > 2 ? args[2] : "../Target/war3map_merged.wtg";
+                string sourcePath, targetPath, outputPath;
+
+                if (args.Length > 0)
+                {
+                    // Use command line arguments
+                    sourcePath = args[0];
+                    targetPath = args.Length > 1 ? args[1] : "../Target/war3map.wtg";
+                    outputPath = args.Length > 2 ? args[2] : "../Target/war3map_merged.wtg";
+                }
+                else
+                {
+                    // Auto-detect .w3x or .wtg files in default folders
+                    sourcePath = AutoDetectMapFile("../Source");
+                    targetPath = AutoDetectMapFile("../Target");
+
+                    // Generate output filename based on target
+                    if (IsMapArchive(targetPath))
+                    {
+                        var targetFileName = Path.GetFileNameWithoutExtension(targetPath);
+                        var targetExt = Path.GetExtension(targetPath);
+                        outputPath = Path.Combine(Path.GetDirectoryName(targetPath) ?? "../Target",
+                                                  $"{targetFileName}_merged{targetExt}");
+                    }
+                    else
+                    {
+                        outputPath = "../Target/war3map_merged.wtg";
+                    }
+                }
 
                 Console.WriteLine("=== War3Net WTG Trigger Merger ===\n");
 
@@ -988,6 +1012,43 @@ namespace WTGMerger
         {
             var extension = Path.GetExtension(filePath).ToLowerInvariant();
             return extension == ".w3x" || extension == ".w3m";
+        }
+
+        /// <summary>
+        /// Auto-detects map files in a folder, prioritizing .w3x/.w3m over .wtg
+        /// </summary>
+        static string AutoDetectMapFile(string folderPath)
+        {
+            if (!Directory.Exists(folderPath))
+            {
+                throw new DirectoryNotFoundException($"Folder not found: {folderPath}");
+            }
+
+            // Priority 1: Look for .w3x files
+            var w3xFiles = Directory.GetFiles(folderPath, "*.w3x");
+            if (w3xFiles.Length > 0)
+            {
+                Console.WriteLine($"  Detected: {Path.GetFileName(w3xFiles[0])} (WC3 map archive)");
+                return w3xFiles[0];
+            }
+
+            // Priority 2: Look for .w3m files
+            var w3mFiles = Directory.GetFiles(folderPath, "*.w3m");
+            if (w3mFiles.Length > 0)
+            {
+                Console.WriteLine($"  Detected: {Path.GetFileName(w3mFiles[0])} (WC3 campaign archive)");
+                return w3mFiles[0];
+            }
+
+            // Priority 3: Look for war3map.wtg
+            var wtgPath = Path.Combine(folderPath, "war3map.wtg");
+            if (File.Exists(wtgPath))
+            {
+                Console.WriteLine($"  Detected: war3map.wtg (raw trigger file)");
+                return wtgPath;
+            }
+
+            throw new FileNotFoundException($"No map files found in {folderPath}. Looking for: *.w3x, *.w3m, or war3map.wtg");
         }
 
         /// <summary>
