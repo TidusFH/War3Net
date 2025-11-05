@@ -343,16 +343,50 @@ namespace WTGMerger
 
                                 // VERIFICATION: Read back the saved file to confirm everything was written correctly
                                 Console.WriteLine("\n=== VERIFICATION: Reading saved file ===");
+
+                                // CRITICAL: Ensure file is flushed to disk and not cached
+                                System.Threading.Thread.Sleep(500); // Wait for OS to flush
+                                GC.Collect(); // Force garbage collection to clear any caches
+                                GC.WaitForPendingFinalizers();
+
+                                // Show file system proof
+                                if (File.Exists(outputPath))
+                                {
+                                    var fileInfo = new FileInfo(outputPath);
+                                    Console.WriteLine($"\n📁 FILE SYSTEM VERIFICATION:");
+                                    Console.WriteLine($"   Path: {Path.GetFullPath(outputPath)}");
+                                    Console.WriteLine($"   Size: {fileInfo.Length:N0} bytes");
+                                    Console.WriteLine($"   Last Modified: {fileInfo.LastWriteTime}");
+                                    Console.WriteLine($"   Exists: {fileInfo.Exists}");
+
+                                    // Compare with original target file size
+                                    if (File.Exists(targetPath))
+                                    {
+                                        var originalSize = new FileInfo(targetPath).Length;
+                                        var sizeDiff = fileInfo.Length - originalSize;
+                                        Console.WriteLine($"   Original target size: {originalSize:N0} bytes");
+                                        Console.WriteLine($"   Size difference: {sizeDiff:+#;-#;0} bytes");
+                                    }
+                                }
+                                else
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine("\n❌ CRITICAL: Output file does NOT exist on disk!");
+                                    Console.ResetColor();
+                                }
+
                                 try
                                 {
+                                    // Open with completely new file handle to avoid any caching
+                                    Console.WriteLine("\n🔍 PARSING VERIFICATION (fresh file read):");
                                     MapTriggers verifyTriggers = ReadMapTriggersAuto(outputPath);
 
                                     // CRITICAL: Check if variables were preserved
                                     int originalVarCount = targetTriggers.Variables.Count;
                                     int savedVarCount = verifyTriggers.Variables.Count;
 
-                                    Console.WriteLine($"Variables written: {originalVarCount}");
-                                    Console.WriteLine($"Variables in saved file: {savedVarCount}");
+                                    Console.WriteLine($"   Variables we tried to write: {originalVarCount}");
+                                    Console.WriteLine($"   Variables parser found in file: {savedVarCount}");
 
                                     if (savedVarCount == 0 && originalVarCount > 0)
                                     {
@@ -362,6 +396,42 @@ namespace WTGMerger
                                         Console.WriteLine("❌ This is a BUG in War3Net library's WriteTo method!");
                                         Console.WriteLine("❌ DO NOT use this file - it will corrupt your map!");
                                         Console.ResetColor();
+
+                                        // RAW BYTE ANALYSIS to prove what's actually in the file
+                                        Console.WriteLine("\n🔬 RAW BYTE ANALYSIS:");
+                                        try
+                                        {
+                                            using var fs = File.OpenRead(outputPath);
+                                            using var br = new BinaryReader(fs);
+
+                                            // Read WTG header
+                                            var fileId = new string(br.ReadChars(4)); // Should be "WTG!"
+                                            var version = br.ReadInt32();
+
+                                            Console.WriteLine($"   File signature: '{fileId}' (should be 'WTG!')");
+                                            Console.WriteLine($"   Format version: {version}");
+
+                                            // Try to find variable count in file
+                                            // WTG format: after header, there's usually a variable count as int32
+                                            var possibleVarCount = br.ReadInt32();
+                                            Console.WriteLine($"   Value at offset 8 (possible var count): {possibleVarCount}");
+
+                                            // Read first 100 bytes as hex for manual inspection
+                                            fs.Position = 0;
+                                            byte[] header = new byte[Math.Min(100, fs.Length)];
+                                            fs.Read(header, 0, header.Length);
+
+                                            Console.WriteLine($"\n   First 100 bytes (hex):");
+                                            for (int i = 0; i < header.Length; i += 16)
+                                            {
+                                                var line = string.Join(" ", header.Skip(i).Take(16).Select(b => b.ToString("X2")));
+                                                Console.WriteLine($"   {i:000}: {line}");
+                                            }
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            Console.WriteLine($"   ⚠ Could not read raw bytes: {ex.Message}");
+                                        }
                                     }
                                     else if (savedVarCount < originalVarCount)
                                     {
@@ -380,7 +450,31 @@ namespace WTGMerger
                                     else
                                     {
                                         Console.ForegroundColor = ConsoleColor.Green;
-                                        Console.WriteLine("✓ All variables were saved correctly!");
+                                        Console.WriteLine("   ✓ All variables were saved correctly!");
+                                        Console.ResetColor();
+
+                                        // Show sample variables to prove they're real
+                                        if (DEBUG_MODE && savedVarCount > 0)
+                                        {
+                                            Console.WriteLine("\n   Sample variables from saved file:");
+                                            foreach (var v in verifyTriggers.Variables.Take(5))
+                                            {
+                                                Console.WriteLine($"      ID={v.Id}, Name={v.Name}, Type={v.Type}");
+                                            }
+                                            if (savedVarCount > 5)
+                                            {
+                                                Console.WriteLine($"      ... and {savedVarCount - 5} more");
+                                            }
+                                        }
+
+                                        // WARNING about tool compatibility
+                                        Console.ForegroundColor = ConsoleColor.Yellow;
+                                        Console.WriteLine("\n   ⚠ IMPORTANT: If BetterTriggers shows 0 variables:");
+                                        Console.WriteLine("   1. Our parser found {0} variables in the file", savedVarCount);
+                                        Console.WriteLine("   2. The file exists and has the correct size");
+                                        Console.WriteLine("   3. This suggests BetterTriggers may not support our format");
+                                        Console.WriteLine("   4. Try opening in World Editor instead");
+                                        Console.WriteLine("   5. Or there may be a SubVersion/FormatVersion incompatibility");
                                         Console.ResetColor();
                                     }
 
@@ -389,9 +483,24 @@ namespace WTGMerger
                                     var verifyRoot = verifyCats.Count(c => c.ParentId == -1);
                                     var verifyNested = verifyCats.Count(c => c.ParentId >= 0);
 
-                                    Console.WriteLine($"\nCategories:");
-                                    Console.WriteLine($"  Root-level (ParentId=-1): {verifyRoot}");
-                                    Console.WriteLine($"  Nested (ParentId>=0): {verifyNested}");
+                                    Console.WriteLine($"\n   Categories:");
+                                    Console.WriteLine($"      Root-level (ParentId=-1): {verifyRoot}");
+                                    Console.WriteLine($"      Nested (ParentId>=0): {verifyNested}");
+
+                                    // Show format information
+                                    Console.WriteLine($"\n   📋 Format Information:");
+                                    Console.WriteLine($"      Format Version: {verifyTriggers.FormatVersion}");
+                                    Console.WriteLine($"      SubVersion: {verifyTriggers.SubVersion?.ToString() ?? "null"}");
+                                    Console.WriteLine($"      Game Version: {verifyTriggers.GameVersion}");
+
+                                    // Compare with original
+                                    if (DEBUG_MODE)
+                                    {
+                                        Console.WriteLine($"\n   [DEBUG] Original target had:");
+                                        Console.WriteLine($"   [DEBUG]   SubVersion: {(targetTriggers.SubVersion?.ToString() ?? "null")}");
+                                        Console.WriteLine($"   [DEBUG] We may have changed SubVersion during save");
+                                        Console.WriteLine($"   [DEBUG] This could cause BetterTriggers compatibility issues");
+                                    }
 
                                     if (verifyNested > 0)
                                     {
