@@ -255,35 +255,21 @@ namespace WTGMerger
                                 targetTriggers.GameVersion = originalGameVersion;
 
                                 // CRITICAL: If SubVersion is null, we need to set it to enable ParentId support
-                                // But we must match the FormatVersion!
+                                // SubVersion enum only has v1 and v4 (NOT v7!)
+                                // Setting SubVersion=v4 enables the enhanced format with ParentId=-1 support
                                 if (originalSubVersion == null)
                                 {
                                     Console.ForegroundColor = ConsoleColor.Yellow;
-                                    Console.WriteLine($"\n⚠ Original file has SubVersion=null");
+                                    Console.WriteLine($"\n⚠ Original file has SubVersion=null (OLD format)");
                                     Console.WriteLine($"   This format does NOT support ParentId=-1");
-                                    Console.WriteLine($"   Setting SubVersion to match FormatVersion={originalFormatVersion}");
+                                    Console.WriteLine($"   Upgrading to SubVersion=v4 (ENHANCED format)");
+                                    Console.WriteLine($"   This will enable ParentId=-1 and sequential variable IDs");
                                     Console.ResetColor();
 
-                                    // Set SubVersion to match FormatVersion
-                                    if (originalFormatVersion == MapTriggersFormatVersion.v7)
-                                    {
-                                        // For Format v7, use SubVersion v7 (TFT 1.31+)
-                                        targetTriggers.SubVersion = MapTriggersSubVersion.v7;
-                                        Console.WriteLine($"   → Using SubVersion=v7 (TFT 1.31+)");
-                                    }
-                                    else if (originalFormatVersion == MapTriggersFormatVersion.v4)
-                                    {
-                                        targetTriggers.SubVersion = MapTriggersSubVersion.v4;
-                                        Console.WriteLine($"   → Using SubVersion=v4");
-                                    }
-                                    else
-                                    {
-                                        // Keep null for unknown versions
-                                        targetTriggers.SubVersion = originalSubVersion;
-                                        Console.ForegroundColor = ConsoleColor.Red;
-                                        Console.WriteLine($"   → Unknown format, keeping SubVersion=null (ParentIds may not work!)");
-                                        Console.ResetColor();
-                                    }
+                                    // Always use SubVersion.v4 for the enhanced format
+                                    // (SubVersion enum only has v1 and v4, regardless of FormatVersion)
+                                    targetTriggers.SubVersion = MapTriggersSubVersion.v4;
+                                    Console.WriteLine($"   → Using SubVersion=v4 (works with any FormatVersion)");
                                 }
                                 else
                                 {
