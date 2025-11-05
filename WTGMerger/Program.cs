@@ -367,6 +367,50 @@ namespace WTGMerger
                                         Console.WriteLine($"   Original target size: {originalSize:N0} bytes");
                                         Console.WriteLine($"   Size difference: {sizeDiff:+#;-#;0} bytes");
                                     }
+
+                                    // HEX COMPARISON: First 200 bytes
+                                    Console.WriteLine($"\n🔬 HEX COMPARISON (first 200 bytes):");
+                                    try
+                                    {
+                                        byte[] originalBytes = File.ReadAllBytes(targetPath).Take(200).ToArray();
+                                        byte[] mergedBytes = File.ReadAllBytes(outputPath).Take(200).ToArray();
+
+                                        Console.WriteLine($"\n   ORIGINAL TARGET:");
+                                        PrintHexDump(originalBytes, 0, Math.Min(200, originalBytes.Length));
+
+                                        Console.WriteLine($"\n   MERGED FILE:");
+                                        PrintHexDump(mergedBytes, 0, Math.Min(200, mergedBytes.Length));
+
+                                        // Find first difference
+                                        int firstDiff = -1;
+                                        for (int i = 0; i < Math.Min(originalBytes.Length, mergedBytes.Length); i++)
+                                        {
+                                            if (originalBytes[i] != mergedBytes[i])
+                                            {
+                                                firstDiff = i;
+                                                break;
+                                            }
+                                        }
+
+                                        if (firstDiff >= 0)
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Yellow;
+                                            Console.WriteLine($"\n   ⚠ First difference at byte {firstDiff} (0x{firstDiff:X})");
+                                            Console.WriteLine($"      Original: 0x{originalBytes[firstDiff]:X2}");
+                                            Console.WriteLine($"      Merged:   0x{mergedBytes[firstDiff]:X2}");
+                                            Console.ResetColor();
+                                        }
+                                        else
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Green;
+                                            Console.WriteLine($"\n   ✓ First 200 bytes are IDENTICAL");
+                                            Console.ResetColor();
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.WriteLine($"   ⚠ Could not compare hex: {ex.Message}");
+                                    }
                                 }
                                 else
                                 {
@@ -1511,6 +1555,26 @@ namespace WTGMerger
             if (param.ArrayIndexer != null)
             {
                 RenameVariablesInParameterRecursive(param.ArrayIndexer, renameMappings);
+            }
+        }
+
+        /// <summary>
+        /// Prints hex dump of byte array
+        /// </summary>
+        static void PrintHexDump(byte[] bytes, int offset, int length)
+        {
+            for (int i = offset; i < offset + length && i < bytes.Length; i += 16)
+            {
+                // Offset
+                Console.Write($"      {i:000}: ");
+
+                // Hex bytes
+                for (int j = 0; j < 16 && (i + j) < bytes.Length && (i + j) < offset + length; j++)
+                {
+                    Console.Write($"{bytes[i + j]:X2} ");
+                }
+
+                Console.WriteLine();
             }
         }
 
