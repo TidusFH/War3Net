@@ -90,6 +90,19 @@ namespace WTGMerger
                 MapTriggers targetTriggers = ReadMapTriggersAuto(targetPath);
                 Console.WriteLine($"✓ Target loaded: {targetTriggers.TriggerItems.Count} items, {targetTriggers.Variables.Count} variables");
 
+                // CRITICAL: Store original format version to preserve it
+                var originalFormatVersion = targetTriggers.FormatVersion;
+                var originalSubVersion = targetTriggers.SubVersion;
+                var originalGameVersion = targetTriggers.GameVersion;
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[DEBUG] Original target format:");
+                    Console.WriteLine($"[DEBUG]   FormatVersion: {originalFormatVersion}");
+                    Console.WriteLine($"[DEBUG]   SubVersion: {originalSubVersion?.ToString() ?? "null"}");
+                    Console.WriteLine($"[DEBUG]   GameVersion: {originalGameVersion}");
+                }
+
                 // Auto-adjust output path based on target type
                 if (IsMapArchive(targetPath) && !IsMapArchive(outputPath))
                 {
@@ -237,6 +250,18 @@ namespace WTGMerger
                             {
                                 Console.WriteLine($"\nPreparing to save merged WTG to: {outputPath}");
 
+                                // CRITICAL: Restore original format version before saving
+                                targetTriggers.FormatVersion = originalFormatVersion;
+                                targetTriggers.SubVersion = originalSubVersion;
+                                targetTriggers.GameVersion = originalGameVersion;
+
+                                Console.ForegroundColor = ConsoleColor.Cyan;
+                                Console.WriteLine($"\n✓ Preserving original file format:");
+                                Console.WriteLine($"  FormatVersion: {originalFormatVersion}");
+                                Console.WriteLine($"  SubVersion: {originalSubVersion?.ToString() ?? "null"}");
+                                Console.WriteLine($"  GameVersion: {originalGameVersion}");
+                                Console.ResetColor();
+
                                 // CRITICAL SAFETY CHECK: Verify variables exist before saving
                                 Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
                                 Console.WriteLine("║              PRE-SAVE VERIFICATION                       ║");
@@ -267,17 +292,11 @@ namespace WTGMerger
                                     }
                                 }
 
-                                // CRITICAL: Set SubVersion if null to enable ParentId writing
-                                if (targetTriggers.SubVersion == null)
+                                // NOTE: We used to change SubVersion here, but that breaks compatibility!
+                                // Original format must be preserved exactly as-is
+                                if (DEBUG_MODE && targetTriggers.SubVersion == null)
                                 {
-                                    Console.ForegroundColor = ConsoleColor.Yellow;
-                                    Console.WriteLine("\n⚠ WARNING: Target map has SubVersion=null, ParentId won't be saved!");
-                                    Console.WriteLine("   Setting SubVersion=v4 to enable ParentId support...");
-                                    Console.ResetColor();
-                                    targetTriggers.SubVersion = MapTriggersSubVersion.v4;
-                                    Console.ForegroundColor = ConsoleColor.Green;
-                                    Console.WriteLine("   ✓ SubVersion set to v4");
-                                    Console.ResetColor();
+                                    Console.WriteLine("[DEBUG] Note: SubVersion is null (this is OK, preserving original format)");
                                 }
 
                                 // CRITICAL: Update trigger item counts before saving
