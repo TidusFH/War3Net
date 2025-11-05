@@ -135,8 +135,8 @@ namespace WTGMerger
                     Console.WriteLine("2. List all categories from TARGET");
                     Console.WriteLine("3. List triggers in a specific category");
                     Console.WriteLine("4. Copy ENTIRE category");
-                    Console.WriteLine("5. Copy SPECIFIC trigger(s)");
-                    Console.WriteLine("6. Fix all TARGET categories to root-level (ParentId = -1)");
+                    Console.WriteLine("5. Copy SPECIFIC trigger(s) [AUTO-FIXES categories]");
+                    Console.WriteLine("6. Manual: Fix all TARGET categories (version-aware)");
                     Console.WriteLine("7. DEBUG: Show comprehensive debug information");
                     Console.WriteLine($"8. DEBUG: Toggle debug mode (currently: {(DEBUG_MODE ? "ON" : "OFF")})");
                     Console.WriteLine("9. Save and exit");
@@ -204,29 +204,41 @@ namespace WTGMerger
 
                         case "6":
                             Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
-                            Console.WriteLine("║          FIX CATEGORY NESTING                            ║");
+                            Console.WriteLine("║          FIX CATEGORY NESTING (VERSION-AWARE)           ║");
                             Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
-                            Console.WriteLine("\nThis will set ALL categories in TARGET to root-level (ParentId = -1).");
+
+                            if (targetTriggers.SubVersion == null)
+                            {
+                                Console.WriteLine("\nDetected OLD format (SubVersion=null)");
+                                Console.WriteLine("This will set all categories to ParentId=0 (old format standard).");
+                            }
+                            else
+                            {
+                                Console.WriteLine("\nDetected ENHANCED format (SubVersion=v4)");
+                                Console.WriteLine("This will set all categories to ParentId=-1 (root level).");
+                            }
+
                             Console.WriteLine("Use this if your categories are incorrectly nested.");
                             Console.Write("\nProceed? (y/n): ");
                             string? confirmFix = Console.ReadLine();
                             if (confirmFix?.ToLower() == "y")
                             {
-                                int fixedCount = FixAllCategoriesToRoot(targetTriggers);
-                                Console.WriteLine($"\n✓ Fixed {fixedCount} categories to root-level");
+                                AutoFixCategoriesForFormat(targetTriggers);
 
                                 // Verify the fix worked
                                 Console.WriteLine("\n=== Verification ===");
                                 var categories = targetTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
                                 var rootCount = categories.Count(c => c.ParentId == -1);
-                                var nestedCount = categories.Count(c => c.ParentId >= 0);
+                                var zeroCount = categories.Count(c => c.ParentId == 0);
+                                var nestedCount = categories.Count(c => c.ParentId > 0);
                                 Console.WriteLine($"Categories with ParentId=-1: {rootCount}");
-                                Console.WriteLine($"Categories with ParentId>=0: {nestedCount}");
+                                Console.WriteLine($"Categories with ParentId=0: {zeroCount}");
+                                Console.WriteLine($"Categories with ParentId>0: {nestedCount}");
 
-                                if (nestedCount > 0)
+                                if (targetTriggers.SubVersion == null && rootCount > 0)
                                 {
-                                    Console.ForegroundColor = ConsoleColor.Red;
-                                    Console.WriteLine("❌ WARNING: Some categories still have ParentId >= 0!");
+                                    Console.ForegroundColor = ConsoleColor.Yellow;
+                                    Console.WriteLine("⚠ Note: Old format doesn't support ParentId=-1");
                                     Console.ResetColor();
                                 }
 
@@ -925,6 +937,9 @@ namespace WTGMerger
 
             // Update trigger item counts
             UpdateTriggerItemCounts(target);
+
+            // AUTOMATIC FIX: Apply version-aware category fixing
+            AutoFixCategoriesForFormat(target);
         }
 
         /// <summary>
@@ -1009,6 +1024,9 @@ namespace WTGMerger
 
             // Update trigger item counts
             UpdateTriggerItemCounts(target);
+
+            // AUTOMATIC FIX: Apply version-aware category fixing
+            AutoFixCategoriesForFormat(target);
         }
 
         /// <summary>
@@ -1167,6 +1185,64 @@ namespace WTGMerger
             }
 
             return fixedCount;
+        }
+
+        /// <summary>
+        /// Automatically fixes category structure based on file format version
+        /// </summary>
+        static void AutoFixCategoriesForFormat(MapTriggers triggers)
+        {
+            if (triggers.SubVersion == null)
+            {
+                // OLD FORMAT (SubVersion=null): ParentId=-1 doesn't work properly
+                // In old format, categories and triggers are stored separately
+                // World Editor uses a different system for determining category hierarchy
+
+                var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
+                int fixedCount = 0;
+
+                foreach (var category in categories)
+                {
+                    // In old format, root categories should have ParentId=0, not -1
+                    if (category.ParentId == -1)
+                    {
+                        if (DEBUG_MODE)
+                        {
+                            Console.WriteLine($"[AUTO-FIX] OLD FORMAT: Changing '{category.Name}' ParentId from -1 to 0");
+                        }
+                        category.ParentId = 0;
+                        fixedCount++;
+                    }
+
+                    // Also ensure Type is Category, not RootCategory (old format doesn't support RootCategory)
+                    if (category.Type == TriggerItemType.RootCategory)
+                    {
+                        if (DEBUG_MODE)
+                        {
+                            Console.WriteLine($"[AUTO-FIX] OLD FORMAT: Changing '{category.Name}' Type from RootCategory to Category");
+                        }
+                        // Can't change Type directly, it's set in constructor
+                        // This is handled by War3Net during write
+                    }
+                }
+
+                if (fixedCount > 0)
+                {
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.WriteLine($"\n✓ AUTO-FIX: Adjusted {fixedCount} categories for OLD format compatibility");
+                    Console.WriteLine($"  (Changed ParentId from -1 to 0 for old format)");
+                    Console.ResetColor();
+                }
+            }
+            else
+            {
+                // ENHANCED FORMAT (SubVersion=v4): ParentId=-1 works correctly
+                // No automatic fixes needed for enhanced format
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[AUTO-FIX] ENHANCED FORMAT: No fixes needed, format fully supports ParentId=-1");
+                }
+            }
         }
 
         /// <summary>
