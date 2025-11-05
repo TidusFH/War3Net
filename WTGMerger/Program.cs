@@ -252,14 +252,49 @@ namespace WTGMerger
 
                                 // CRITICAL: Restore original format version before saving
                                 targetTriggers.FormatVersion = originalFormatVersion;
-                                targetTriggers.SubVersion = originalSubVersion;
                                 targetTriggers.GameVersion = originalGameVersion;
 
+                                // CRITICAL: If SubVersion is null, we need to set it to enable ParentId support
+                                // But we must match the FormatVersion!
+                                if (originalSubVersion == null)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Yellow;
+                                    Console.WriteLine($"\n⚠ Original file has SubVersion=null");
+                                    Console.WriteLine($"   This format does NOT support ParentId=-1");
+                                    Console.WriteLine($"   Setting SubVersion to match FormatVersion={originalFormatVersion}");
+                                    Console.ResetColor();
+
+                                    // Set SubVersion to match FormatVersion
+                                    if (originalFormatVersion == MapTriggersFormatVersion.v7)
+                                    {
+                                        // For Format v7, use SubVersion v7 (TFT 1.31+)
+                                        targetTriggers.SubVersion = MapTriggersSubVersion.v7;
+                                        Console.WriteLine($"   → Using SubVersion=v7 (TFT 1.31+)");
+                                    }
+                                    else if (originalFormatVersion == MapTriggersFormatVersion.v4)
+                                    {
+                                        targetTriggers.SubVersion = MapTriggersSubVersion.v4;
+                                        Console.WriteLine($"   → Using SubVersion=v4");
+                                    }
+                                    else
+                                    {
+                                        // Keep null for unknown versions
+                                        targetTriggers.SubVersion = originalSubVersion;
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"   → Unknown format, keeping SubVersion=null (ParentIds may not work!)");
+                                        Console.ResetColor();
+                                    }
+                                }
+                                else
+                                {
+                                    targetTriggers.SubVersion = originalSubVersion;
+                                }
+
                                 Console.ForegroundColor = ConsoleColor.Cyan;
-                                Console.WriteLine($"\n✓ Preserving original file format:");
-                                Console.WriteLine($"  FormatVersion: {originalFormatVersion}");
-                                Console.WriteLine($"  SubVersion: {originalSubVersion?.ToString() ?? "null"}");
-                                Console.WriteLine($"  GameVersion: {originalGameVersion}");
+                                Console.WriteLine($"\n✓ File format for save:");
+                                Console.WriteLine($"  FormatVersion: {targetTriggers.FormatVersion}");
+                                Console.WriteLine($"  SubVersion: {targetTriggers.SubVersion?.ToString() ?? "null"}");
+                                Console.WriteLine($"  GameVersion: {targetTriggers.GameVersion}");
                                 Console.ResetColor();
 
                                 // CRITICAL SAFETY CHECK: Verify variables exist before saving
