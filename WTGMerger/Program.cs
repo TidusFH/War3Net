@@ -250,38 +250,29 @@ namespace WTGMerger
                             {
                                 Console.WriteLine($"\nPreparing to save merged WTG to: {outputPath}");
 
-                                // CRITICAL: Restore original format version before saving
+                                // CRITICAL: Restore original format EXACTLY as-is
+                                // DO NOT change SubVersion! This breaks World Editor/BetterTriggers compatibility
                                 targetTriggers.FormatVersion = originalFormatVersion;
+                                targetTriggers.SubVersion = originalSubVersion;
                                 targetTriggers.GameVersion = originalGameVersion;
 
-                                // CRITICAL: If SubVersion is null, we need to set it to enable ParentId support
-                                // SubVersion enum only has v1 and v4 (NOT v7!)
-                                // Setting SubVersion=v4 enables the enhanced format with ParentId=-1 support
-                                if (originalSubVersion == null)
-                                {
-                                    Console.ForegroundColor = ConsoleColor.Yellow;
-                                    Console.WriteLine($"\n⚠ Original file has SubVersion=null (OLD format)");
-                                    Console.WriteLine($"   This format does NOT support ParentId=-1");
-                                    Console.WriteLine($"   Upgrading to SubVersion=v4 (ENHANCED format)");
-                                    Console.WriteLine($"   This will enable ParentId=-1 and sequential variable IDs");
-                                    Console.ResetColor();
-
-                                    // Always use SubVersion.v4 for the enhanced format
-                                    // (SubVersion enum only has v1 and v4, regardless of FormatVersion)
-                                    targetTriggers.SubVersion = MapTriggersSubVersion.v4;
-                                    Console.WriteLine($"   → Using SubVersion=v4 (works with any FormatVersion)");
-                                }
-                                else
-                                {
-                                    targetTriggers.SubVersion = originalSubVersion;
-                                }
-
                                 Console.ForegroundColor = ConsoleColor.Cyan;
-                                Console.WriteLine($"\n✓ File format for save:");
+                                Console.WriteLine($"\n✓ Preserving original file format:");
                                 Console.WriteLine($"  FormatVersion: {targetTriggers.FormatVersion}");
                                 Console.WriteLine($"  SubVersion: {targetTriggers.SubVersion?.ToString() ?? "null"}");
                                 Console.WriteLine($"  GameVersion: {targetTriggers.GameVersion}");
                                 Console.ResetColor();
+
+                                if (originalSubVersion == null)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Yellow;
+                                    Console.WriteLine($"\n⚠ NOTE: Original file uses OLD format (SubVersion=null)");
+                                    Console.WriteLine($"   Old format has some limitations:");
+                                    Console.WriteLine($"   - All variables may show ID=0 (this is normal for old format)");
+                                    Console.WriteLine($"   - ParentId=-1 might not be fully supported");
+                                    Console.WriteLine($"   Keeping original format for maximum compatibility.");
+                                    Console.ResetColor();
+                                }
 
                                 // CRITICAL SAFETY CHECK: Verify variables exist before saving
                                 Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
@@ -1888,7 +1879,19 @@ namespace WTGMerger
                 return;
             }
 
-            // Check if all variables have the same ID (corrupted) or if there are duplicates
+            // CRITICAL: In OLD format (SubVersion=null), all variables having ID=0 is NORMAL
+            // Do NOT "fix" this as it breaks compatibility!
+            if (triggers.SubVersion == null)
+            {
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[DEBUG] {mapName} uses old format (SubVersion=null)");
+                    Console.WriteLine($"[DEBUG] Skipping variable ID fixes to preserve original format");
+                }
+                return;
+            }
+
+            // Only fix variable IDs for ENHANCED format (SubVersion != null)
             var idGroups = triggers.Variables.GroupBy(v => v.Id).ToList();
             var duplicateIds = idGroups.Where(g => g.Count() > 1).ToList();
             bool allSameId = idGroups.Count == 1;
@@ -1897,7 +1900,7 @@ namespace WTGMerger
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
                 Console.WriteLine($"\n⚠ WARNING: All variables in {mapName} have ID={triggers.Variables[0].Id}!");
-                Console.WriteLine($"  This indicates corrupted variable IDs. Reassigning sequential IDs...");
+                Console.WriteLine($"  This is unexpected for enhanced format. Reassigning sequential IDs...");
                 Console.ResetColor();
 
                 // Reassign sequential IDs
