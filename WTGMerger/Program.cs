@@ -590,7 +590,7 @@ namespace WTGMerger
                                     }
 
                                     // Check ParentIds based on format version
-                                    if (mergedTriggers.SubVersion == null)
+                                    if (verifyTriggers.SubVersion == null)
                                     {
                                         // OLD FORMAT: ParentId=0 is expected and correct
                                         var zeroParentCount = verifyCats.Count(c => c.ParentId == 0);
