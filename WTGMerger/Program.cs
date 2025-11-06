@@ -1256,49 +1256,71 @@ namespace WTGMerger
         {
             if (triggers.SubVersion == null)
             {
-                // OLD FORMAT (SubVersion=null): ParentId=-1 doesn't work properly
-                // In old format, categories and triggers are stored separately
-                // World Editor uses a different system for determining category hierarchy
+                // OLD FORMAT (SubVersion=null): Warcraft 1.27 and earlier
+                // CRITICAL: In old format, World Editor uses POSITION, not stored ID!
+                // Category IDs MUST match their position in the category list
 
                 var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
-                int fixedCount = 0;
 
-                foreach (var category in categories)
+                // Step 1: Reassign category IDs to match their position
+                for (int i = 0; i < categories.Count; i++)
                 {
-                    // In old format, root categories should have ParentId=0, not -1
-                    if (category.ParentId == -1)
-                    {
-                        if (DEBUG_MODE)
-                        {
-                            Console.WriteLine($"[AUTO-FIX] OLD FORMAT: Changing '{category.Name}' ParentId from -1 to 0");
-                        }
-                        category.ParentId = 0;
-                        fixedCount++;
-                    }
+                    var oldId = categories[i].Id;
+                    var newId = i;
 
-                    // Also ensure Type is Category, not RootCategory (old format doesn't support RootCategory)
-                    if (category.Type == TriggerItemType.RootCategory)
+                    if (oldId != newId)
                     {
                         if (DEBUG_MODE)
                         {
-                            Console.WriteLine($"[AUTO-FIX] OLD FORMAT: Changing '{category.Name}' Type from RootCategory to Category");
+                            Console.WriteLine($"[AUTO-FIX] OLD FORMAT: Reassigning '{categories[i].Name}' ID from {oldId} to {newId} (position)");
                         }
-                        // Can't change Type directly, it's set in constructor
-                        // This is handled by War3Net during write
+
+                        // Update category ID
+                        categories[i].Id = newId;
+
+                        // Update all triggers that reference this category
+                        foreach (var trigger in triggers.TriggerItems.OfType<TriggerDefinition>())
+                        {
+                            if (trigger.ParentId == oldId)
+                            {
+                                trigger.ParentId = newId;
+                                if (DEBUG_MODE)
+                                {
+                                    Console.WriteLine($"[AUTO-FIX]   Updated trigger '{trigger.Name}' ParentId {oldId} → {newId}");
+                                }
+                            }
+                        }
                     }
                 }
 
-                if (fixedCount > 0)
+                // Step 2: Set all category ParentIds to 0 (old format standard)
+                int parentIdFixCount = 0;
+                foreach (var category in categories)
+                {
+                    if (category.ParentId != 0)
+                    {
+                        if (DEBUG_MODE)
+                        {
+                            Console.WriteLine($"[AUTO-FIX] OLD FORMAT: '{category.Name}' ParentId {category.ParentId} → 0");
+                        }
+                        category.ParentId = 0;
+                        parentIdFixCount++;
+                    }
+                }
+
+                if (categories.Count > 0)
                 {
                     Console.ForegroundColor = ConsoleColor.Cyan;
-                    Console.WriteLine($"\n✓ AUTO-FIX: Adjusted {fixedCount} categories for OLD format compatibility");
-                    Console.WriteLine($"  (Changed ParentId from -1 to 0 for old format)");
+                    Console.WriteLine($"\n✓ AUTO-FIX: Adjusted {categories.Count} categories for OLD format (Warcraft 1.27)");
+                    Console.WriteLine($"  - Category IDs now match their position (0-{categories.Count - 1})");
+                    Console.WriteLine($"  - Category ParentIds set to 0 (old format standard)");
+                    Console.WriteLine($"  - Trigger ParentIds updated to reference correct categories");
                     Console.ResetColor();
                 }
             }
             else
             {
-                // ENHANCED FORMAT (SubVersion=v4): ParentId=-1 works correctly
+                // ENHANCED FORMAT (SubVersion=v4): Modern Warcraft versions
                 // No automatic fixes needed for enhanced format
                 if (DEBUG_MODE)
                 {
