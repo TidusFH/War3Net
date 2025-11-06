@@ -116,6 +116,15 @@ namespace WTGMerger
                 FixCategoryIdsForOldFormat(sourceTriggers, "source");
                 FixCategoryIdsForOldFormat(targetTriggers, "target");
 
+                // TRACE: Show state after load fixes
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine("\n" + new string('═', 70));
+                    Console.WriteLine("TRACE: STATE AFTER LOAD FIXES (Before any user operations)");
+                    Console.WriteLine(new string('═', 70));
+                    TraceCategoryStructure(targetTriggers, "TARGET");
+                }
+
                 // Fix duplicate IDs if they exist
                 FixDuplicateIds(targetTriggers);
 
@@ -1023,8 +1032,26 @@ namespace WTGMerger
             // Update trigger item counts
             UpdateTriggerItemCounts(target);
 
+            // TRACE: Show state BEFORE auto-fix
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine("\n" + new string('═', 70));
+                Console.WriteLine("TRACE: STATE AFTER COPY, BEFORE AUTO-FIX");
+                Console.WriteLine(new string('═', 70));
+                TraceCategoryStructure(target, "TARGET");
+            }
+
             // AUTOMATIC FIX: Apply version-aware category fixing
             AutoFixCategoriesForFormat(target);
+
+            // TRACE: Show state AFTER auto-fix
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine("\n" + new string('═', 70));
+                Console.WriteLine("TRACE: STATE AFTER AUTO-FIX");
+                Console.WriteLine(new string('═', 70));
+                TraceCategoryStructure(target, "TARGET");
+            }
         }
 
         /// <summary>
@@ -2595,6 +2622,76 @@ namespace WTGMerger
             Console.WriteLine($"  Saving to {outputArchivePath}...");
             builder.SaveTo(outputArchivePath);
             Console.WriteLine($"  Archive updated successfully!");
+        }
+
+        /// <summary>
+        /// Traces the category-trigger structure to understand what's happening
+        /// </summary>
+        static void TraceCategoryStructure(MapTriggers triggers, string label)
+        {
+            var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
+            var triggerslist = triggers.TriggerItems.OfType<TriggerDefinition>().ToList();
+
+            Console.WriteLine($"\n[{label}] FORMAT: SubVersion={triggers.SubVersion?.ToString() ?? "null"}");
+            Console.WriteLine($"[{label}] CATEGORIES ({categories.Count}):");
+
+            for (int i = 0; i < Math.Min(5, categories.Count); i++)
+            {
+                var cat = categories[i];
+                Console.WriteLine($"  [{i}] '{cat.Name}' - ID={cat.Id}, ParentId={cat.ParentId}");
+            }
+            if (categories.Count > 5)
+            {
+                Console.WriteLine($"  ... and {categories.Count - 5} more");
+                // Show last category (usually the newly created one)
+                var lastCat = categories[categories.Count - 1];
+                Console.WriteLine($"  [{categories.Count - 1}] '{lastCat.Name}' - ID={lastCat.Id}, ParentId={lastCat.ParentId}");
+            }
+
+            Console.WriteLine($"\n[{label}] TRIGGERS ({triggerslist.Count}):");
+
+            // Group triggers by ParentId
+            var triggersByParent = triggerslist.GroupBy(t => t.ParentId).ToList();
+            foreach (var group in triggersByParent.OrderBy(g => g.Key).Take(5))
+            {
+                var parentId = group.Key;
+                var count = group.Count();
+                var parentCat = categories.FirstOrDefault(c => c.Id == parentId);
+                var parentName = parentCat?.Name ?? $"[UNKNOWN ID={parentId}]";
+
+                Console.WriteLine($"  ParentId={parentId} ({parentName}): {count} triggers");
+                foreach (var trig in group.Take(3))
+                {
+                    Console.WriteLine($"    - '{trig.Name}'");
+                }
+                if (group.Count() > 3)
+                {
+                    Console.WriteLine($"    ... and {group.Count() - 3} more");
+                }
+            }
+
+            if (triggersByParent.Count > 5)
+            {
+                Console.WriteLine($"  ... and {triggersByParent.Count - 5} more parent groups");
+            }
+
+            // Check for orphaned triggers
+            var validCategoryIds = categories.Select(c => c.Id).ToHashSet();
+            var orphaned = triggerslist.Where(t => !validCategoryIds.Contains(t.ParentId)).ToList();
+            if (orphaned.Count > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"\n[{label}] ⚠ ORPHANED TRIGGERS ({orphaned.Count}) - ParentId doesn't match any category:");
+                Console.ResetColor();
+                foreach (var trig in orphaned.Take(5))
+                {
+                    Console.WriteLine($"  - '{trig.Name}' has ParentId={trig.ParentId} (no category with this ID!)");
+                }
+                if (orphaned.Count > 5)
+                {
+                    Console.WriteLine($"  ... and {orphaned.Count - 5} more");
+                }
+            }
         }
     }
 }
