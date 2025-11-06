@@ -111,6 +111,11 @@ namespace WTGMerger
                     Console.WriteLine($"\n⚠ Output adjusted to match target type: {outputPath}");
                 }
 
+                // CRITICAL: Fix category IDs IMMEDIATELY after load for old format
+                // This must run BEFORE any other operations
+                FixCategoryIdsForOldFormat(sourceTriggers, "source");
+                FixCategoryIdsForOldFormat(targetTriggers, "target");
+
                 // Fix duplicate IDs if they exist
                 FixDuplicateIds(targetTriggers);
 
@@ -931,11 +936,29 @@ namespace WTGMerger
 
             if (destCategory == null)
             {
-                // Create new category at root level
+                // Calculate correct ID based on format
+                int newCategoryId;
+                int newParentId;
+
+                if (target.SubVersion == null)
+                {
+                    // OLD FORMAT: ID must match position in category list
+                    var existingCategories = target.TriggerItems.OfType<TriggerCategoryDefinition>().Count();
+                    newCategoryId = existingCategories;  // Next position
+                    newParentId = 0;  // Old format uses ParentId=0
+                }
+                else
+                {
+                    // ENHANCED FORMAT: Can use any unique ID
+                    newCategoryId = GetNextId(target);
+                    newParentId = -1;  // Root-level in enhanced format
+                }
+
+                // Create new category
                 destCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
                 {
-                    Id = GetNextId(target),
-                    ParentId = -1,  // CRITICAL: Root-level category
+                    Id = newCategoryId,
+                    ParentId = newParentId,
                     Name = destCategoryName,
                     IsComment = false,
                     IsExpanded = true
@@ -1251,81 +1274,61 @@ namespace WTGMerger
 
         /// <summary>
         /// Automatically fixes category structure based on file format version
+        /// This is a safety net - main fixing happens at load time
         /// </summary>
         static void AutoFixCategoriesForFormat(MapTriggers triggers)
         {
             if (triggers.SubVersion == null)
             {
-                // OLD FORMAT (SubVersion=null): Warcraft 1.27 and earlier
-                // CRITICAL: In old format, World Editor uses POSITION, not stored ID!
-                // Category IDs MUST match their position in the category list
-
+                // OLD FORMAT: Re-run the same fix as load time to ensure consistency
+                // This catches any changes made during the session
                 var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
+                bool needsFix = false;
 
-                // Step 1: Reassign category IDs to match their position
+                // Quick check if IDs match position
                 for (int i = 0; i < categories.Count; i++)
                 {
-                    var oldId = categories[i].Id;
-                    var newId = i;
-
-                    if (oldId != newId)
+                    if (categories[i].Id != i || categories[i].ParentId != 0)
                     {
-                        if (DEBUG_MODE)
-                        {
-                            Console.WriteLine($"[AUTO-FIX] OLD FORMAT: Reassigning '{categories[i].Name}' ID from {oldId} to {newId} (position)");
-                        }
-
-                        // Update category ID
-                        categories[i].Id = newId;
-
-                        // Update all triggers that reference this category
-                        foreach (var trigger in triggers.TriggerItems.OfType<TriggerDefinition>())
-                        {
-                            if (trigger.ParentId == oldId)
-                            {
-                                trigger.ParentId = newId;
-                                if (DEBUG_MODE)
-                                {
-                                    Console.WriteLine($"[AUTO-FIX]   Updated trigger '{trigger.Name}' ParentId {oldId} → {newId}");
-                                }
-                            }
-                        }
+                        needsFix = true;
+                        break;
                     }
                 }
 
-                // Step 2: Set all category ParentIds to 0 (old format standard)
-                int parentIdFixCount = 0;
-                foreach (var category in categories)
+                if (needsFix)
                 {
-                    if (category.ParentId != 0)
+                    if (DEBUG_MODE)
                     {
-                        if (DEBUG_MODE)
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"\n[AUTO-FIX] Detected category ID mismatch, re-applying fix...");
+                        Console.ResetColor();
+                    }
+
+                    // Re-apply the same fix
+                    for (int i = 0; i < categories.Count; i++)
+                    {
+                        categories[i].Id = i;
+                        categories[i].ParentId = 0;
+                    }
+
+                    // Update trigger ParentIds if needed
+                    foreach (var trigger in triggers.TriggerItems.OfType<TriggerDefinition>())
+                    {
+                        // Ensure ParentId is within valid range
+                        if (trigger.ParentId < 0 || trigger.ParentId >= categories.Count)
                         {
-                            Console.WriteLine($"[AUTO-FIX] OLD FORMAT: '{category.Name}' ParentId {category.ParentId} → 0");
+                            trigger.ParentId = 0;  // Default to first category
                         }
-                        category.ParentId = 0;
-                        parentIdFixCount++;
                     }
                 }
-
-                if (categories.Count > 0)
+                else if (DEBUG_MODE)
                 {
-                    Console.ForegroundColor = ConsoleColor.Cyan;
-                    Console.WriteLine($"\n✓ AUTO-FIX: Adjusted {categories.Count} categories for OLD format (Warcraft 1.27)");
-                    Console.WriteLine($"  - Category IDs now match their position (0-{categories.Count - 1})");
-                    Console.WriteLine($"  - Category ParentIds set to 0 (old format standard)");
-                    Console.WriteLine($"  - Trigger ParentIds updated to reference correct categories");
-                    Console.ResetColor();
+                    Console.WriteLine($"[AUTO-FIX] Category IDs already correct, no fix needed");
                 }
             }
-            else
+            else if (DEBUG_MODE)
             {
-                // ENHANCED FORMAT (SubVersion=v4): Modern Warcraft versions
-                // No automatic fixes needed for enhanced format
-                if (DEBUG_MODE)
-                {
-                    Console.WriteLine($"[AUTO-FIX] ENHANCED FORMAT: No fixes needed, format fully supports ParentId=-1");
-                }
+                Console.WriteLine($"[AUTO-FIX] ENHANCED FORMAT: No fixes needed");
             }
         }
 
@@ -2027,6 +2030,104 @@ namespace WTGMerger
             }
 
             Console.WriteLine();
+        }
+
+        /// <summary>
+        /// CRITICAL: Fixes category IDs for old format (Warcraft 1.27)
+        /// In old format, category IDs MUST match their position (0,1,2,3...)
+        /// </summary>
+        static void FixCategoryIdsForOldFormat(MapTriggers triggers, string mapName)
+        {
+            // Only fix for old format
+            if (triggers.SubVersion != null)
+            {
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[LOAD-FIX] {mapName}: Enhanced format, skipping category ID fix");
+                }
+                return;
+            }
+
+            // Get categories in TriggerItems order (this is the order they'll be written)
+            var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
+            if (categories.Count == 0) return;
+
+            // Build ID mapping: oldID → newID (position)
+            var idMapping = new Dictionary<int, int>();
+            bool needsFix = false;
+
+            for (int position = 0; position < categories.Count; position++)
+            {
+                int oldId = categories[position].Id;
+                int correctId = position;
+
+                idMapping[oldId] = correctId;
+
+                if (oldId != correctId)
+                {
+                    needsFix = true;
+                }
+            }
+
+            if (!needsFix)
+            {
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[LOAD-FIX] {mapName}: Category IDs already correct (0-{categories.Count - 1})");
+                }
+                return;
+            }
+
+            // Apply fixes
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"\n⚠ [{mapName}] OLD FORMAT: Fixing category IDs to match position...");
+            Console.ResetColor();
+
+            // Fix category IDs
+            for (int position = 0; position < categories.Count; position++)
+            {
+                int oldId = categories[position].Id;
+                int newId = position;
+
+                if (oldId != newId)
+                {
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[LOAD-FIX]   '{categories[position].Name}': ID {oldId} → {newId}");
+                    }
+                    categories[position].Id = newId;
+                }
+
+                // Always set ParentId=0 for old format
+                if (categories[position].ParentId != 0)
+                {
+                    categories[position].ParentId = 0;
+                }
+            }
+
+            // Fix trigger ParentIds using mapping
+            var triggers_list = triggers.TriggerItems.OfType<TriggerDefinition>().ToList();
+            int triggersFixed = 0;
+
+            foreach (var trigger in triggers_list)
+            {
+                if (idMapping.TryGetValue(trigger.ParentId, out int newParentId))
+                {
+                    if (trigger.ParentId != newParentId)
+                    {
+                        if (DEBUG_MODE)
+                        {
+                            Console.WriteLine($"[LOAD-FIX]   Trigger '{trigger.Name}': ParentId {trigger.ParentId} → {newParentId}");
+                        }
+                        trigger.ParentId = newParentId;
+                        triggersFixed++;
+                    }
+                }
+            }
+
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"✓ [{mapName}] Fixed {categories.Count} category IDs and {triggersFixed} trigger ParentIds");
+            Console.ResetColor();
         }
 
         /// <summary>
