@@ -589,24 +589,46 @@ namespace WTGMerger
                                         Console.WriteLine($"   [DEBUG] This could cause BetterTriggers compatibility issues");
                                     }
 
-                                    if (verifyNested > 0)
+                                    // Check ParentIds based on format version
+                                    if (mergedTriggers.SubVersion == null)
                                     {
-                                        Console.ForegroundColor = ConsoleColor.Red;
-                                        Console.WriteLine("\n❌ ERROR: ParentIds were NOT saved correctly!");
-                                        Console.WriteLine("The saved file still has nested categories:");
-                                        foreach (var cat in verifyCats.Where(c => c.ParentId >= 0).Take(5))
+                                        // OLD FORMAT: ParentId=0 is expected and correct
+                                        var zeroParentCount = verifyCats.Count(c => c.ParentId == 0);
+                                        if (zeroParentCount == verifyCats.Count)
                                         {
-                                            Console.WriteLine($"  '{cat.Name}': ParentId={cat.ParentId}");
+                                            Console.ForegroundColor = ConsoleColor.Green;
+                                            Console.WriteLine("✓ ParentIds saved correctly for OLD format (all ParentId=0)");
+                                            Console.ResetColor();
                                         }
-                                        Console.WriteLine("\n⚠ This means the ParentId field is NOT being written to disk.");
-                                        Console.WriteLine("⚠ The issue is in the WriteTo method or file format.");
-                                        Console.ResetColor();
+                                        else
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Yellow;
+                                            Console.WriteLine($"⚠ Note: Old format - {zeroParentCount}/{verifyCats.Count} categories have ParentId=0");
+                                            Console.ResetColor();
+                                        }
                                     }
                                     else
                                     {
-                                        Console.ForegroundColor = ConsoleColor.Green;
-                                        Console.WriteLine("✓ ParentIds were saved correctly!");
-                                        Console.ResetColor();
+                                        // ENHANCED FORMAT: ParentId=-1 is expected for root categories
+                                        if (verifyNested > 0)
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Red;
+                                            Console.WriteLine("\n❌ ERROR: ParentIds were NOT saved correctly!");
+                                            Console.WriteLine("The saved file still has nested categories:");
+                                            foreach (var cat in verifyCats.Where(c => c.ParentId >= 0).Take(5))
+                                            {
+                                                Console.WriteLine($"  '{cat.Name}': ParentId={cat.ParentId}");
+                                            }
+                                            Console.WriteLine("\n⚠ This means the ParentId field is NOT being written to disk.");
+                                            Console.WriteLine("⚠ The issue is in the WriteTo method or file format.");
+                                            Console.ResetColor();
+                                        }
+                                        else
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Green;
+                                            Console.WriteLine("✓ ParentIds were saved correctly!");
+                                            Console.ResetColor();
+                                        }
                                     }
                                 }
                                 catch (Exception ex)
@@ -645,17 +667,28 @@ namespace WTGMerger
                                             }
                                         }
 
-                                        // Check for duplicate variable IDs
+                                        // Check for duplicate variable IDs (version-aware)
                                         var varIdGroups = mergedTriggers.Variables.GroupBy(v => v.Id).Where(g => g.Count() > 1).ToList();
                                         if (varIdGroups.Count > 0)
                                         {
-                                            Console.ForegroundColor = ConsoleColor.Red;
-                                            Console.WriteLine($"\n❌ ERROR: {varIdGroups.Count} duplicate variable ID(s) found:");
-                                            foreach (var group in varIdGroups.Take(5))
+                                            if (mergedTriggers.SubVersion == null)
                                             {
-                                                Console.WriteLine($"  ID {group.Key}: {string.Join(", ", group.Select(v => v.Name))}");
+                                                // OLD FORMAT: All variables having same ID is NORMAL
+                                                Console.ForegroundColor = ConsoleColor.Green;
+                                                Console.WriteLine($"\n✓ Variable IDs correct for OLD format (all ID={varIdGroups[0].Key} is normal)");
+                                                Console.ResetColor();
                                             }
-                                            Console.ResetColor();
+                                            else
+                                            {
+                                                // ENHANCED FORMAT: Duplicate IDs are a problem
+                                                Console.ForegroundColor = ConsoleColor.Red;
+                                                Console.WriteLine($"\n❌ ERROR: {varIdGroups.Count} duplicate variable ID(s) found:");
+                                                foreach (var group in varIdGroups.Take(5))
+                                                {
+                                                    Console.WriteLine($"  ID {group.Key}: {string.Join(", ", group.Select(v => v.Name))}");
+                                                }
+                                                Console.ResetColor();
+                                            }
                                         }
                                         else
                                         {
@@ -925,14 +958,43 @@ namespace WTGMerger
             // Copy missing variables from source to target before copying triggers
             CopyMissingVariables(source, target, triggersToCopy);
 
+            // Check for existing triggers in destination category to avoid duplicates
+            var existingTriggersInDest = target.TriggerItems
+                .OfType<TriggerDefinition>()
+                .Where(t => t.ParentId == destCategory.Id)
+                .Select(t => t.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
             // Copy triggers
             Console.WriteLine($"\n  Copying {triggersToCopy.Count} trigger(s) to category '{destCategoryName}':");
+            int copiedCount = 0;
+            int skippedCount = 0;
+
             foreach (var sourceTrigger in triggersToCopy)
             {
+                // Check if trigger already exists in destination
+                if (existingTriggersInDest.Contains(sourceTrigger.Name))
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"    ⊘ Skipped '{sourceTrigger.Name}' (already exists in destination)");
+                    Console.ResetColor();
+                    skippedCount++;
+                    continue;
+                }
+
                 var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), destCategory.Id);
                 target.TriggerItems.Insert(insertIndex, copiedTrigger);
                 insertIndex++;
+                existingTriggersInDest.Add(copiedTrigger.Name); // Track copied trigger
                 Console.WriteLine($"    ✓ {copiedTrigger.Name}");
+                copiedCount++;
+            }
+
+            if (skippedCount > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine($"\n  Summary: {copiedCount} copied, {skippedCount} skipped (duplicates)");
+                Console.ResetColor();
             }
 
             // Update trigger item counts
