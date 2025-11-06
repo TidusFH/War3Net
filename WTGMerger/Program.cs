@@ -2352,6 +2352,13 @@ namespace WTGMerger
         /// </summary>
         static TriggerDefinition CopyTrigger(TriggerDefinition source, int newId, int newParentId)
         {
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[COPY-TRIGGER] Copying '{source.Name}':");
+                Console.WriteLine($"[COPY-TRIGGER]   Source: ID={source.Id}, ParentId={source.ParentId}");
+                Console.WriteLine($"[COPY-TRIGGER]   Target: ID={newId}, ParentId={newParentId}");
+            }
+
             // Type must be set via constructor (it's read-only)
             var copy = new TriggerDefinition(source.Type)
             {
@@ -2370,6 +2377,11 @@ namespace WTGMerger
             foreach (var function in source.Functions)
             {
                 copy.Functions.Add(CopyTriggerFunction(function));
+            }
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[COPY-TRIGGER] ✓ Created: ID={copy.Id}, ParentId={copy.ParentId}");
             }
 
             return copy;
@@ -2652,7 +2664,7 @@ namespace WTGMerger
 
             // Group triggers by ParentId
             var triggersByParent = triggerslist.GroupBy(t => t.ParentId).ToList();
-            foreach (var group in triggersByParent.OrderBy(g => g.Key).Take(5))
+            foreach (var group in triggersByParent.OrderBy(g => g.Key))
             {
                 var parentId = group.Key;
                 var count = group.Count();
@@ -2660,19 +2672,16 @@ namespace WTGMerger
                 var parentName = parentCat?.Name ?? $"[UNKNOWN ID={parentId}]";
 
                 Console.WriteLine($"  ParentId={parentId} ({parentName}): {count} triggers");
+
+                // Show first few triggers
                 foreach (var trig in group.Take(3))
                 {
-                    Console.WriteLine($"    - '{trig.Name}'");
+                    Console.WriteLine($"    - '{trig.Name}' (ID={trig.Id})");
                 }
                 if (group.Count() > 3)
                 {
                     Console.WriteLine($"    ... and {group.Count() - 3} more");
                 }
-            }
-
-            if (triggersByParent.Count > 5)
-            {
-                Console.WriteLine($"  ... and {triggersByParent.Count - 5} more parent groups");
             }
 
             // Check for orphaned triggers
