@@ -951,10 +951,27 @@ namespace WTGMerger
 
                 if (target.SubVersion == null)
                 {
-                    // OLD FORMAT: ID must match position in category list
-                    var existingCategories = target.TriggerItems.OfType<TriggerCategoryDefinition>().Count();
-                    newCategoryId = existingCategories;  // Next position
+                    // OLD FORMAT: Category IDs must not conflict with trigger IDs
+                    // Find the max trigger ID and use IDs after that for categories
+                    var existingTriggerIds = target.TriggerItems
+                        .OfType<TriggerDefinition>()
+                        .Select(t => t.Id)
+                        .ToList();
+
+                    int startCategoryId = 0;
+                    if (existingTriggerIds.Count > 0)
+                    {
+                        startCategoryId = existingTriggerIds.Max() + 1;
+                    }
+
+                    var existingCategoryCount = target.TriggerItems.OfType<TriggerCategoryDefinition>().Count();
+                    newCategoryId = startCategoryId + existingCategoryCount;
                     newParentId = 0;  // Old format uses ParentId=0
+
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[CREATE-CAT] OLD FORMAT: Max trigger ID = {existingTriggerIds.DefaultIfEmpty(-1).Max()}, assigning category ID = {newCategoryId}");
+                    }
                 }
                 else
                 {
@@ -1108,12 +1125,12 @@ namespace WTGMerger
             }
 
             // Create new category in target (Type must be set via constructor)
-            // ALWAYS set ParentId = -1 for root-level when copying between files
-            // (source ParentId might point to non-existent category in target)
+            // Set ParentId based on format (source ParentId might point to non-existent category in target)
+            int newParentId = target.SubVersion == null ? 0 : -1;  // Old format uses 0, enhanced uses -1
             var newCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
             {
                 Id = GetNextId(target),
-                ParentId = -1,  // CRITICAL: Always root-level for copied categories
+                ParentId = newParentId,  // Root-level for copied categories
                 Name = sourceCategory.Name,
                 IsComment = sourceCategory.IsComment,
                 IsExpanded = sourceCategory.IsExpanded
@@ -2061,7 +2078,8 @@ namespace WTGMerger
 
         /// <summary>
         /// CRITICAL: Fixes category IDs for old format (Warcraft 1.27)
-        /// In old format, category IDs MUST match their position (0,1,2,3...)
+        /// In old format, category IDs must not conflict with trigger IDs!
+        /// We assign sequential IDs starting after the highest trigger ID.
         /// </summary>
         static void FixCategoryIdsForOldFormat(MapTriggers triggers, string mapName)
         {
@@ -2075,22 +2093,39 @@ namespace WTGMerger
                 return;
             }
 
-            // Get categories in TriggerItems order (this is the order they'll be written)
+            // Get categories and triggers
             var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
+            var triggersList = triggers.TriggerItems.OfType<TriggerDefinition>().ToList();
             if (categories.Count == 0) return;
 
-            // Build ID mapping: oldID → newID (position)
+            // Get all existing trigger IDs
+            var usedTriggerIds = new HashSet<int>(triggersList.Select(t => t.Id));
+
+            // Find the starting ID for categories (after all trigger IDs)
+            int startCategoryId = 0;
+            if (usedTriggerIds.Count > 0)
+            {
+                int maxTriggerId = usedTriggerIds.Max();
+                startCategoryId = maxTriggerId + 1;
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[LOAD-FIX] {mapName}: Max trigger ID = {maxTriggerId}, categories will start at ID {startCategoryId}");
+                }
+            }
+
+            // Build ID mapping: oldID → newID (sequential, no conflicts with triggers)
             var idMapping = new Dictionary<int, int>();
             bool needsFix = false;
 
             for (int position = 0; position < categories.Count; position++)
             {
                 int oldId = categories[position].Id;
-                int correctId = position;
+                int newId = startCategoryId + position;
 
-                idMapping[oldId] = correctId;
+                idMapping[oldId] = newId;
 
-                if (oldId != correctId)
+                if (oldId != newId)
                 {
                     needsFix = true;
                 }
@@ -2100,21 +2135,22 @@ namespace WTGMerger
             {
                 if (DEBUG_MODE)
                 {
-                    Console.WriteLine($"[LOAD-FIX] {mapName}: Category IDs already correct (0-{categories.Count - 1})");
+                    Console.WriteLine($"[LOAD-FIX] {mapName}: Category IDs already correct ({startCategoryId}-{startCategoryId + categories.Count - 1})");
                 }
                 return;
             }
 
             // Apply fixes
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"\n⚠ [{mapName}] OLD FORMAT: Fixing category IDs to match position...");
+            Console.WriteLine($"\n⚠ [{mapName}] OLD FORMAT: Fixing category IDs to avoid trigger ID conflicts...");
+            Console.WriteLine($"  Assigning category IDs: {startCategoryId}-{startCategoryId + categories.Count - 1}");
             Console.ResetColor();
 
             // Fix category IDs
             for (int position = 0; position < categories.Count; position++)
             {
                 int oldId = categories[position].Id;
-                int newId = position;
+                int newId = startCategoryId + position;
 
                 if (oldId != newId)
                 {
