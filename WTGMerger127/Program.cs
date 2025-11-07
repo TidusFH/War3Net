@@ -412,7 +412,7 @@ namespace WTGMerger127
             }
 
             // Final fix to ensure everything is correct
-            AutoFixCategoriesForFormat(target);
+            FixCategoryIdsForOldFormat(target);
         }
 
         /// <summary>
@@ -476,7 +476,7 @@ namespace WTGMerger127
             }
 
             // Final fix
-            AutoFixCategoriesForFormat(target);
+            FixCategoryIdsForOldFormat(target);
         }
 
         /// <summary>
