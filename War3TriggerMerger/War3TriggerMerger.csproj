@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="War3Net.Build.Core">
+      <HintPath>../Libs/War3Net.Build.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="War3Net.Build">
+      <HintPath>../Libs/War3Net.Build.dll</HintPath>
+    </Reference>
+    <Reference Include="War3Net.Common">
+      <HintPath>../Libs/War3Net.Common.dll</HintPath>
+    </Reference>
+    <Reference Include="War3Net.IO.Mpq">
+      <HintPath>../Libs/War3Net.IO.Mpq.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>
