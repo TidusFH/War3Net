@@ -1425,80 +1425,74 @@ namespace WTGMerger
 
             if (triggers.SubVersion == null)
             {
-                // OLD FORMAT: Re-run the same fix as load time to ensure consistency
-                // This catches any changes made during the session
+                // OLD FORMAT: Only ensure ParentId=0 for categories
+                // Category IDs are already correctly assigned by FixCategoryIdsForOldFormat() at load time
+                // and by category creation logic during operations
                 var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
-                bool needsFix = false;
 
                 if (DEBUG_MODE)
                 {
-                    Console.WriteLine($"[AUTO-FIX] OLD FORMAT: Checking {categories.Count} categories...");
+                    Console.WriteLine($"[AUTO-FIX] OLD FORMAT: Verifying {categories.Count} categories...");
                 }
 
-                // Quick check if IDs match position
-                for (int i = 0; i < categories.Count; i++)
+                // Only fix ParentId for categories (should all be 0 in old format)
+                int fixedParentIds = 0;
+                foreach (var category in categories)
                 {
-                    if (categories[i].Id != i || categories[i].ParentId != 0)
+                    if (category.ParentId != 0)
                     {
-                        needsFix = true;
-
                         if (DEBUG_MODE)
                         {
-                            Console.WriteLine($"[AUTO-FIX]   Category [{i}] '{categories[i].Name}': ID={categories[i].Id} (should be {i}), ParentId={categories[i].ParentId} (should be 0)");
+                            Console.WriteLine($"[AUTO-FIX]   Category '{category.Name}': ParentId {category.ParentId} → 0");
                         }
-                        break;
+                        category.ParentId = 0;
+                        fixedParentIds++;
                     }
                 }
 
-                if (needsFix)
+                if (DEBUG_MODE)
                 {
-                    if (DEBUG_MODE)
+                    if (fixedParentIds > 0)
                     {
-                        Console.ForegroundColor = ConsoleColor.Yellow;
-                        Console.WriteLine($"\n[AUTO-FIX] Detected category ID mismatch, re-applying fix...");
+                        Console.WriteLine($"[AUTO-FIX] ✓ Fixed {fixedParentIds} category ParentIds");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[AUTO-FIX] ✓ All category ParentIds correct (0)");
+                    }
+
+                    // Show category ID range for verification
+                    if (categories.Count > 0)
+                    {
+                        int minCatId = categories.Min(c => c.Id);
+                        int maxCatId = categories.Max(c => c.Id);
+                        Console.WriteLine($"[AUTO-FIX] Category ID range: {minCatId}-{maxCatId}");
+                    }
+
+                    // Verify trigger ParentIds reference valid categories
+                    var categoryIds = categories.Select(c => c.Id).ToHashSet();
+                    var triggersWithInvalidParent = triggers.TriggerItems.OfType<TriggerDefinition>()
+                        .Where(t => !categoryIds.Contains(t.ParentId))
+                        .ToList();
+
+                    if (triggersWithInvalidParent.Count > 0)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"[AUTO-FIX] ⚠ WARNING: {triggersWithInvalidParent.Count} triggers have invalid ParentIds:");
+                        foreach (var trigger in triggersWithInvalidParent.Take(5))
+                        {
+                            Console.WriteLine($"[AUTO-FIX]   Trigger '{trigger.Name}': ParentId={trigger.ParentId} (not found in categories)");
+                        }
+                        if (triggersWithInvalidParent.Count > 5)
+                        {
+                            Console.WriteLine($"[AUTO-FIX]   ... and {triggersWithInvalidParent.Count - 5} more");
+                        }
                         Console.ResetColor();
                     }
-
-                    // Re-apply the same fix
-                    int fixedCount = 0;
-                    for (int i = 0; i < categories.Count; i++)
+                    else
                     {
-                        if (categories[i].Id != i || categories[i].ParentId != 0)
-                        {
-                            if (DEBUG_MODE)
-                            {
-                                Console.WriteLine($"[AUTO-FIX]   Fixing '{categories[i].Name}': ID {categories[i].Id}→{i}, ParentId {categories[i].ParentId}→0");
-                            }
-                            categories[i].Id = i;
-                            categories[i].ParentId = 0;
-                            fixedCount++;
-                        }
+                        Console.WriteLine($"[AUTO-FIX] ✓ All trigger ParentIds reference valid categories");
                     }
-
-                    // Update trigger ParentIds if needed
-                    int triggersFixed = 0;
-                    foreach (var trigger in triggers.TriggerItems.OfType<TriggerDefinition>())
-                    {
-                        // Ensure ParentId is within valid range
-                        if (trigger.ParentId < 0 || trigger.ParentId >= categories.Count)
-                        {
-                            if (DEBUG_MODE)
-                            {
-                                Console.WriteLine($"[AUTO-FIX]   Trigger '{trigger.Name}': invalid ParentId {trigger.ParentId} → 0");
-                            }
-                            trigger.ParentId = 0;  // Default to first category
-                            triggersFixed++;
-                        }
-                    }
-
-                    if (DEBUG_MODE)
-                    {
-                        Console.WriteLine($"[AUTO-FIX] ✓ Fixed {fixedCount} categories, {triggersFixed} triggers");
-                    }
-                }
-                else if (DEBUG_MODE)
-                {
-                    Console.WriteLine($"[AUTO-FIX] ✓ Category IDs already correct, no fix needed");
                 }
             }
             else if (DEBUG_MODE)
