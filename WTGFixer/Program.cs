@@ -21,6 +21,18 @@ namespace WTGFixer
                 Console.WriteLine("     Repairs corrupted/merged WTG files with validation");
                 Console.WriteLine("============================================================\n");
 
+                // Ask for debug mode
+                Console.Write("Enable debug mode? (y/n): ");
+                string? debugResponse = Console.ReadLine();
+                if (debugResponse?.ToLower() == "y")
+                {
+                    DEBUG_MODE = true;
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.WriteLine("[DEBUG] Debug mode ENABLED - detailed logging will be shown");
+                    Console.ResetColor();
+                }
+                Console.WriteLine();
+
                 string mergedPath, originalPath, sourcePath = null, outputPath;
 
                 if (args.Length >= 2)
@@ -73,10 +85,12 @@ namespace WTGFixer
                 Console.WriteLine("Reading merged file...");
                 MapTriggers mergedTriggers = ReadMapTriggersAuto(mergedPath);
                 Console.WriteLine($"  [OK] Merged: {mergedTriggers.TriggerItems.Count} items, {mergedTriggers.Variables.Count} variables");
+                DebugLogVariables("After reading merged file", mergedTriggers);
 
                 Console.WriteLine("\nReading original file...");
                 MapTriggers originalTriggers = ReadMapTriggersAuto(originalPath);
                 Console.WriteLine($"  [OK] Original: {originalTriggers.TriggerItems.Count} items, {originalTriggers.Variables.Count} variables");
+                DebugLogVariables("After reading original file", originalTriggers);
 
                 MapTriggers? sourceTriggers = null;
                 if (sourcePath != null)
@@ -84,6 +98,7 @@ namespace WTGFixer
                     Console.WriteLine("\nReading source file...");
                     sourceTriggers = ReadMapTriggersAuto(sourcePath);
                     Console.WriteLine($"  [OK] Source: {sourceTriggers.TriggerItems.Count} items, {sourceTriggers.Variables.Count} variables");
+                    DebugLogVariables("After reading source file", sourceTriggers);
                 }
 
                 // Run validation and fixes
@@ -166,21 +181,32 @@ namespace WTGFixer
 
                 // Save fixed file
                 Console.WriteLine($"\nSaving fixed file to: {outputPath}");
+                DebugLog($"About to save - Variable count: {mergedTriggers.Variables.Count}");
+                DebugLogVariables("BEFORE saving to disk", mergedTriggers);
+
                 if (IsMapArchive(outputPath))
                 {
+                    DebugLog($"Writing to map archive: {outputPath}");
                     WriteMapArchive(mergedPath, outputPath, mergedTriggers);
                 }
                 else
                 {
+                    DebugLog($"Writing to WTG file: {outputPath}");
                     WriteWTGFile(outputPath, mergedTriggers);
                 }
+
+                DebugLog($"File saved successfully. Verifying file exists: {File.Exists(outputPath)}");
 
                 // Verify fix
                 Console.WriteLine("\n============================================================");
                 Console.WriteLine("                    VERIFICATION");
                 Console.WriteLine("============================================================\n");
 
+                DebugLog($"Reading back the fixed file from: {outputPath}");
                 MapTriggers verifyTriggers = ReadMapTriggersAuto(outputPath);
+                DebugLog($"Read back - Variable count: {verifyTriggers.Variables.Count}");
+                DebugLogVariables("AFTER reading back from disk", verifyTriggers);
+
                 var verifyIssues = new ValidationIssues();
                 bool stillHasIssues = false;
 
@@ -441,10 +467,14 @@ namespace WTGFixer
             if (issues.MissingVariables.Count > 0)
             {
                 Console.WriteLine($"\nCopying {issues.MissingVariables.Count} missing variable(s) from original...");
+                DebugLog($"Variable count BEFORE copying: {merged.Variables.Count}");
+                DebugLogVariables("BEFORE copying from original", merged);
+
                 var originalVarDict = original.Variables.ToDictionary(v => v.Name, v => v, StringComparer.OrdinalIgnoreCase);
 
                 foreach (var varName in issues.MissingVariables)
                 {
+                    DebugLog($"Attempting to copy variable: {varName}");
                     if (originalVarDict.TryGetValue(varName, out var origVar))
                     {
                         var newVar = new VariableDefinition
@@ -460,10 +490,18 @@ namespace WTGFixer
                             ParentId = origVar.ParentId
                         };
                         merged.Variables.Add(newVar);
+                        DebugLog($"  Added variable {varName} with Id={newVar.Id}, Type={newVar.Type}");
                         Console.WriteLine($"  + {varName} ({origVar.Type})");
                         fixCount++;
                     }
+                    else
+                    {
+                        DebugLog($"  ERROR: Variable {varName} not found in original dictionary!");
+                    }
                 }
+
+                DebugLog($"Variable count AFTER copying: {merged.Variables.Count}");
+                DebugLogVariables("AFTER copying from original", merged);
                 Console.WriteLine($"  [OK] Copied {issues.MissingVariables.Count} variable(s)");
             }
 
@@ -471,10 +509,13 @@ namespace WTGFixer
             if (source != null && issues.MissingSourceVariables.Count > 0)
             {
                 Console.WriteLine($"\nCopying {issues.MissingSourceVariables.Count} missing variable(s) from source...");
+                DebugLog($"Variable count BEFORE copying from source: {merged.Variables.Count}");
+
                 var sourceVarDict = source.Variables.ToDictionary(v => v.Name, v => v, StringComparer.OrdinalIgnoreCase);
 
                 foreach (var varName in issues.MissingSourceVariables)
                 {
+                    DebugLog($"Attempting to copy variable from source: {varName}");
                     if (sourceVarDict.TryGetValue(varName, out var sourceVar))
                     {
                         var newVar = new VariableDefinition
@@ -490,10 +531,18 @@ namespace WTGFixer
                             ParentId = sourceVar.ParentId
                         };
                         merged.Variables.Add(newVar);
+                        DebugLog($"  Added variable {varName} with Id={newVar.Id}, Type={newVar.Type}");
                         Console.WriteLine($"  + {varName} ({sourceVar.Type})");
                         fixCount++;
                     }
+                    else
+                    {
+                        DebugLog($"  ERROR: Variable {varName} not found in source dictionary!");
+                    }
                 }
+
+                DebugLog($"Variable count AFTER copying from source: {merged.Variables.Count}");
+                DebugLogVariables("AFTER copying from source", merged);
                 Console.WriteLine($"  [OK] Copied {issues.MissingSourceVariables.Count} variable(s)");
             }
 
@@ -589,6 +638,33 @@ namespace WTGFixer
         #endregion
 
         #region Helper Methods
+
+        static void DebugLog(string message)
+        {
+            if (DEBUG_MODE)
+            {
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine($"[DEBUG] {message}");
+                Console.ResetColor();
+            }
+        }
+
+        static void DebugLogVariables(string label, MapTriggers triggers)
+        {
+            if (!DEBUG_MODE) return;
+
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"[DEBUG] {label} - Variable count: {triggers.Variables.Count}");
+            if (triggers.Variables.Count > 0)
+            {
+                Console.WriteLine($"[DEBUG]   First 10 variables:");
+                foreach (var v in triggers.Variables.Take(10))
+                {
+                    Console.WriteLine($"[DEBUG]     - {v.Name} ({v.Type}, Id={v.Id})");
+                }
+            }
+            Console.ResetColor();
+        }
 
         static HashSet<string> GetVariablesUsedByTrigger(TriggerDefinition trigger)
         {
@@ -762,6 +838,9 @@ namespace WTGFixer
 
         static MapTriggers ReadWTGFile(string filePath)
         {
+            DebugLog($"ReadWTGFile: Opening file {filePath}");
+            DebugLog($"ReadWTGFile: File exists = {File.Exists(filePath)}, Size = {new FileInfo(filePath).Length} bytes");
+
             using var fileStream = File.OpenRead(filePath);
             using var reader = new BinaryReader(fileStream);
 
@@ -774,7 +853,9 @@ namespace WTGFixer
             if (constructorInfo == null)
                 throw new InvalidOperationException("Could not find internal MapTriggers constructor");
 
-            return (MapTriggers)constructorInfo.Invoke(new object[] { reader, TriggerData.Default });
+            var result = (MapTriggers)constructorInfo.Invoke(new object[] { reader, TriggerData.Default });
+            DebugLog($"ReadWTGFile: Loaded {result.Variables.Count} variables, {result.TriggerItems.Count} trigger items");
+            return result;
         }
 
         static MapTriggers ReadMapArchive(string archivePath)
@@ -803,6 +884,10 @@ namespace WTGFixer
 
         static void WriteWTGFile(string filePath, MapTriggers triggers)
         {
+            DebugLog($"WriteWTGFile: About to write to {filePath}");
+            DebugLog($"WriteWTGFile: Writing {triggers.Variables.Count} variables, {triggers.TriggerItems.Count} trigger items");
+            DebugLog($"WriteWTGFile: SubVersion = {triggers.SubVersion}");
+
             using var fileStream = File.Create(filePath);
             using var writer = new BinaryWriter(fileStream);
 
@@ -816,11 +901,22 @@ namespace WTGFixer
             if (writeToMethod == null)
                 throw new InvalidOperationException("Could not find internal WriteTo method");
 
+            DebugLog($"WriteWTGFile: Invoking WriteTo method...");
             writeToMethod.Invoke(triggers, new object[] { writer });
+
+            writer.Flush();
+            fileStream.Flush();
+
+            DebugLog($"WriteWTGFile: Write complete. File size = {new FileInfo(filePath).Length} bytes");
         }
 
         static void WriteMapArchive(string originalArchivePath, string outputArchivePath, MapTriggers triggers)
         {
+            DebugLog($"WriteMapArchive: Source archive = {originalArchivePath}");
+            DebugLog($"WriteMapArchive: Output archive = {outputArchivePath}");
+            DebugLog($"WriteMapArchive: Writing {triggers.Variables.Count} variables, {triggers.TriggerItems.Count} trigger items");
+            DebugLog($"WriteMapArchive: SubVersion = {triggers.SubVersion}");
+
             using var originalArchive = MpqArchive.Open(originalArchivePath, true);
             originalArchive.DiscoverFileNames();
 
@@ -839,15 +935,20 @@ namespace WTGFixer
             if (writeToMethod == null)
                 throw new InvalidOperationException("Could not find internal WriteTo method");
 
+            DebugLog($"WriteMapArchive: Invoking WriteTo method...");
             writeToMethod.Invoke(triggers, new object[] { writer });
             writer.Flush();
             triggerStream.Position = 0;
+
+            DebugLog($"WriteMapArchive: Trigger stream size = {triggerStream.Length} bytes");
 
             var triggerFileName = MapTriggers.FileName;
             builder.RemoveFile(triggerFileName);
             builder.AddFile(MpqFile.New(triggerStream, triggerFileName));
 
+            DebugLog($"WriteMapArchive: Building archive...");
             builder.SaveTo(outputArchivePath);
+            DebugLog($"WriteMapArchive: Archive saved successfully");
         }
 
         #endregion
