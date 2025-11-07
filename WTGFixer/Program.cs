@@ -215,6 +215,68 @@ namespace WTGFixer
                 stillHasIssues |= CheckOrphaned(verifyTriggers, verifyIssues);
                 stillHasIssues |= CheckDuplicateIds(verifyTriggers, verifyIssues);
 
+                // CRITICAL: Verify the specific variables we added are actually present
+                Console.WriteLine("\nVerifying added variables are present in fixed file...");
+                DebugLog("=== COMPREHENSIVE VARIABLE VERIFICATION ===");
+
+                var addedVariables = new List<string>();
+                addedVariables.AddRange(issues.MissingVariables);
+                addedVariables.AddRange(issues.MissingSourceVariables);
+
+                if (addedVariables.Count > 0)
+                {
+                    Console.WriteLine($"Checking {addedVariables.Count} variable(s) that should have been added...");
+                    DebugLog($"Variables to verify: {string.Join(", ", addedVariables)}");
+
+                    var verifiedVarNames = new HashSet<string>(verifyTriggers.Variables.Select(v => v.Name), StringComparer.OrdinalIgnoreCase);
+                    var stillMissing = new List<string>();
+                    var foundVars = new List<string>();
+
+                    foreach (var varName in addedVariables)
+                    {
+                        if (verifiedVarNames.Contains(varName))
+                        {
+                            foundVars.Add(varName);
+                            DebugLog($"  [FOUND] Variable '{varName}' is present in fixed file");
+                        }
+                        else
+                        {
+                            stillMissing.Add(varName);
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine($"  [MISSING] Variable '{varName}' is STILL MISSING from fixed file!");
+                            Console.ResetColor();
+                            DebugLog($"  [ERROR] Variable '{varName}' was added but not found in fixed file!");
+                        }
+                    }
+
+                    if (stillMissing.Count == 0)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"  [OK] All {addedVariables.Count} added variable(s) are present in fixed file!");
+                        Console.ResetColor();
+                        DebugLog($"Successfully verified: {string.Join(", ", foundVars)}");
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"  [ERROR] {stillMissing.Count} variable(s) are STILL MISSING!");
+                        Console.WriteLine($"  Missing: {string.Join(", ", stillMissing)}");
+                        Console.ResetColor();
+                        stillHasIssues = true;
+                    }
+
+                    // Dump all variables to log for debugging
+                    if (DEBUG_MODE)
+                    {
+                        DebugLog("=== COMPLETE VARIABLE LIST IN FIXED FILE ===");
+                        foreach (var v in verifyTriggers.Variables.OrderBy(v => v.Id))
+                        {
+                            DebugLog($"  Variable[{v.Id}]: {v.Name} ({v.Type}, ParentId={v.ParentId})");
+                        }
+                        DebugLog("=== END OF VARIABLE LIST ===");
+                    }
+                }
+
                 if (!stillHasIssues)
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
@@ -273,11 +335,19 @@ namespace WTGFixer
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
                 Console.WriteLine($"  [WARNING] {missing.Count} variable(s) from {label} are missing:");
+
+                // CRITICAL FIX: Add ALL missing variables to the issues list, not just the first 10!
+                foreach (var varName in missing)
+                {
+                    issues.MissingVariables.Add(varName);
+                    DebugLog($"  Added to missing list: {varName}");
+                }
+
+                // Display only first 10 for readability
                 foreach (var varName in missing.Take(10))
                 {
                     var origVar = original.Variables.First(v => v.Name.Equals(varName, StringComparison.OrdinalIgnoreCase));
                     Console.WriteLine($"    - {varName} ({origVar.Type})");
-                    issues.MissingVariables.Add(varName);
                 }
                 if (missing.Count > 10)
                     Console.WriteLine($"    ... and {missing.Count - 10} more");
@@ -303,11 +373,19 @@ namespace WTGFixer
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
                 Console.WriteLine($"  [WARNING] {missing.Count} variable(s) from source triggers are missing:");
+
+                // CRITICAL FIX: Add ALL missing variables to the issues list, not just the first 10!
+                foreach (var varName in missing)
+                {
+                    issues.MissingSourceVariables.Add(varName);
+                    DebugLog($"  Added to missing source list: {varName}");
+                }
+
+                // Display only first 10 for readability
                 foreach (var varName in missing.Take(10))
                 {
                     var sourceVar = source.Variables.First(v => v.Name.Equals(varName, StringComparison.OrdinalIgnoreCase));
                     Console.WriteLine($"    - {varName} ({sourceVar.Type})");
-                    issues.MissingSourceVariables.Add(varName);
                 }
                 if (missing.Count > 10)
                     Console.WriteLine($"    ... and {missing.Count - 10} more");
@@ -342,10 +420,17 @@ namespace WTGFixer
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
                 Console.WriteLine($"  [WARNING] {undefined.Count} undefined variable(s) used in triggers:");
+
+                // Add ALL undefined variables to the issues list
+                foreach (var varName in undefined)
+                {
+                    issues.UndefinedVariables.Add(varName);
+                }
+
+                // Display only first 10 for readability
                 foreach (var varName in undefined.Take(10))
                 {
                     Console.WriteLine($"    - {varName}");
-                    issues.UndefinedVariables.Add(varName);
                 }
                 if (undefined.Count > 10)
                     Console.WriteLine($"    ... and {undefined.Count - 10} more");
