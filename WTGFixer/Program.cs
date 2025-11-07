@@ -16,51 +16,80 @@ namespace WTGFixer
         {
             try
             {
-                Console.WriteLine("╔══════════════════════════════════════════════════════════╗");
-                Console.WriteLine("║              War3Net WTG Fixer Utility                   ║");
-                Console.WriteLine("║  Repairs corrupted/merged WTG files with validation      ║");
-                Console.WriteLine("╚══════════════════════════════════════════════════════════╝\n");
+                Console.WriteLine("============================================================");
+                Console.WriteLine("           War3Net WTG Fixer Utility");
+                Console.WriteLine("     Repairs corrupted/merged WTG files with validation");
+                Console.WriteLine("============================================================\n");
 
-                string mergedPath, originalPath, outputPath;
+                string mergedPath, originalPath, sourcePath = null, outputPath;
 
                 if (args.Length >= 2)
                 {
                     mergedPath = args[0];
                     originalPath = args[1];
-                    outputPath = args.Length > 2 ? args[2] : Path.ChangeExtension(mergedPath, ".fixed.wtg");
+                    sourcePath = args.Length > 2 ? args[2] : null;
+                    outputPath = args.Length > 3 ? args[3] : Path.ChangeExtension(mergedPath, ".fixed.wtg");
                 }
                 else
                 {
-                    Console.WriteLine("Usage: WTGFixer <merged.wtg> <original.wtg> [output.wtg]");
+                    Console.WriteLine("Usage: WTGFixer <merged.wtg> <original.wtg> [source.wtg] [output.wtg]");
+                    Console.WriteLine("\nArguments:");
+                    Console.WriteLine("  merged.wtg   - Merged/corrupted file to fix (e.g., Target/war3map_merged.wtg)");
+                    Console.WriteLine("  original.wtg - Original target file for variable reference (e.g., Target/war3map.wtg)");
+                    Console.WriteLine("  source.wtg   - (Optional) Source file to check added triggers");
+                    Console.WriteLine("  output.wtg   - (Optional) Output file path");
                     Console.WriteLine("\nOr place files in folders:");
-                    Console.WriteLine("  ../Merged/   - Your merged/corrupted WTG file");
-                    Console.WriteLine("  ../Original/ - Your original WTG file (for variable reference)");
+                    Console.WriteLine("  ../Target/   - Your merged file (war3map_merged.wtg) and original target");
+                    Console.WriteLine("  ../Source/   - (Optional) Your source triggers for added trigger validation");
                     Console.WriteLine("\nPress Enter to auto-detect or Ctrl+C to exit...");
                     Console.ReadLine();
 
-                    mergedPath = AutoDetectMapFile("../Merged");
-                    originalPath = AutoDetectMapFile("../Original");
+                    // Auto-detect: Look for merged file in Target
+                    mergedPath = AutoDetectMergedFile("../Target");
+                    originalPath = AutoDetectOriginalFile("../Target");
+
+                    // Try to find source file (optional)
+                    try
+                    {
+                        sourcePath = AutoDetectMapFile("../Source");
+                        Console.WriteLine($"  [INFO] Source file detected: {Path.GetFileName(sourcePath)}");
+                    }
+                    catch
+                    {
+                        Console.WriteLine("  [INFO] No source file found - skipping added trigger validation");
+                    }
+
                     outputPath = GenerateOutputPath(mergedPath);
                 }
 
-                Console.WriteLine($"Merged file:   {Path.GetFullPath(mergedPath)}");
+                Console.WriteLine($"\nMerged file:   {Path.GetFullPath(mergedPath)}");
                 Console.WriteLine($"Original file: {Path.GetFullPath(originalPath)}");
+                if (sourcePath != null)
+                    Console.WriteLine($"Source file:   {Path.GetFullPath(sourcePath)}");
                 Console.WriteLine($"Output file:   {Path.GetFullPath(outputPath)}");
                 Console.WriteLine();
 
                 // Read files
                 Console.WriteLine("Reading merged file...");
                 MapTriggers mergedTriggers = ReadMapTriggersAuto(mergedPath);
-                Console.WriteLine($"✓ Merged: {mergedTriggers.TriggerItems.Count} items, {mergedTriggers.Variables.Count} variables");
+                Console.WriteLine($"  [OK] Merged: {mergedTriggers.TriggerItems.Count} items, {mergedTriggers.Variables.Count} variables");
 
                 Console.WriteLine("\nReading original file...");
                 MapTriggers originalTriggers = ReadMapTriggersAuto(originalPath);
-                Console.WriteLine($"✓ Original: {originalTriggers.TriggerItems.Count} items, {originalTriggers.Variables.Count} variables");
+                Console.WriteLine($"  [OK] Original: {originalTriggers.TriggerItems.Count} items, {originalTriggers.Variables.Count} variables");
+
+                MapTriggers? sourceTriggers = null;
+                if (sourcePath != null)
+                {
+                    Console.WriteLine("\nReading source file...");
+                    sourceTriggers = ReadMapTriggersAuto(sourcePath);
+                    Console.WriteLine($"  [OK] Source: {sourceTriggers.TriggerItems.Count} items, {sourceTriggers.Variables.Count} variables");
+                }
 
                 // Run validation and fixes
-                Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
-                Console.WriteLine("║                    VALIDATION PHASE                      ║");
-                Console.WriteLine("╚══════════════════════════════════════════════════════════╝\n");
+                Console.WriteLine("\n============================================================");
+                Console.WriteLine("                 VALIDATION PHASE");
+                Console.WriteLine("============================================================\n");
 
                 var issues = new ValidationIssues();
                 bool needsFix = false;
@@ -69,35 +98,42 @@ namespace WTGFixer
                 if (CheckSubVersion(mergedTriggers, issues))
                     needsFix = true;
 
-                // Check 2: Missing variables
-                if (CheckMissingVariables(mergedTriggers, originalTriggers, issues))
+                // Check 2: Missing variables (from original target)
+                if (CheckMissingVariables(mergedTriggers, originalTriggers, issues, "original target"))
                     needsFix = true;
 
-                // Check 3: Undefined variables in triggers
+                // Check 3: Missing variables from added triggers (if source provided)
+                if (sourceTriggers != null)
+                {
+                    if (CheckMissingVariablesFromSource(mergedTriggers, sourceTriggers, issues))
+                        needsFix = true;
+                }
+
+                // Check 4: Undefined variables in triggers
                 if (CheckUndefinedVariables(mergedTriggers, issues))
                     needsFix = true;
 
-                // Check 4: Wrong ParentId (nested in initialization)
+                // Check 5: Wrong ParentId (nested in initialization)
                 if (CheckWrongParentIds(mergedTriggers, issues))
                     needsFix = true;
 
-                // Check 5: Orphaned triggers/categories
+                // Check 6: Orphaned triggers/categories
                 if (CheckOrphaned(mergedTriggers, issues))
                     needsFix = true;
 
-                // Check 6: Duplicate IDs
+                // Check 7: Duplicate IDs
                 if (CheckDuplicateIds(mergedTriggers, issues))
                     needsFix = true;
 
                 // Show summary
-                Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
-                Console.WriteLine("║                   VALIDATION SUMMARY                     ║");
-                Console.WriteLine("╚══════════════════════════════════════════════════════════╝\n");
+                Console.WriteLine("\n============================================================");
+                Console.WriteLine("                VALIDATION SUMMARY");
+                Console.WriteLine("============================================================\n");
 
                 if (!needsFix)
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine("✓ No issues found! File is valid.");
+                    Console.WriteLine("  [OK] No issues found! File is valid.");
                     Console.ResetColor();
                     return;
                 }
@@ -105,7 +141,8 @@ namespace WTGFixer
                 Console.ForegroundColor = ConsoleColor.Yellow;
                 Console.WriteLine($"Found {issues.TotalIssues()} issue(s) that need fixing:");
                 Console.WriteLine($"  - SubVersion issues: {issues.SubVersionIssues}");
-                Console.WriteLine($"  - Missing variables: {issues.MissingVariables.Count}");
+                Console.WriteLine($"  - Missing variables (from original): {issues.MissingVariables.Count}");
+                Console.WriteLine($"  - Missing variables (from source): {issues.MissingSourceVariables.Count}");
                 Console.WriteLine($"  - Undefined variables: {issues.UndefinedVariables.Count}");
                 Console.WriteLine($"  - Wrong ParentIds: {issues.WrongParentIds.Count}");
                 Console.WriteLine($"  - Orphaned items: {issues.OrphanedItems.Count}");
@@ -121,11 +158,11 @@ namespace WTGFixer
                 }
 
                 // Apply fixes
-                Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
-                Console.WriteLine("║                      FIXING PHASE                        ║");
-                Console.WriteLine("╚══════════════════════════════════════════════════════════╝\n");
+                Console.WriteLine("\n============================================================");
+                Console.WriteLine("                   FIXING PHASE");
+                Console.WriteLine("============================================================\n");
 
-                ApplyFixes(mergedTriggers, originalTriggers, issues);
+                ApplyFixes(mergedTriggers, originalTriggers, sourceTriggers, issues);
 
                 // Save fixed file
                 Console.WriteLine($"\nSaving fixed file to: {outputPath}");
@@ -139,9 +176,9 @@ namespace WTGFixer
                 }
 
                 // Verify fix
-                Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
-                Console.WriteLine("║                     VERIFICATION                         ║");
-                Console.WriteLine("╚══════════════════════════════════════════════════════════╝\n");
+                Console.WriteLine("\n============================================================");
+                Console.WriteLine("                    VERIFICATION");
+                Console.WriteLine("============================================================\n");
 
                 MapTriggers verifyTriggers = ReadMapTriggersAuto(outputPath);
                 var verifyIssues = new ValidationIssues();
@@ -155,19 +192,19 @@ namespace WTGFixer
                 if (!stillHasIssues)
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine("✓ All issues fixed successfully!");
-                    Console.WriteLine($"✓ Variables: {verifyTriggers.Variables.Count}");
-                    Console.WriteLine($"✓ Trigger items: {verifyTriggers.TriggerItems.Count}");
+                    Console.WriteLine("  [OK] All issues fixed successfully!");
+                    Console.WriteLine($"  [OK] Variables: {verifyTriggers.Variables.Count}");
+                    Console.WriteLine($"  [OK] Trigger items: {verifyTriggers.TriggerItems.Count}");
                     Console.ResetColor();
                 }
                 else
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"⚠ Some issues remain ({verifyIssues.TotalIssues()})");
+                    Console.WriteLine($"  [WARNING] Some issues remain ({verifyIssues.TotalIssues()})");
                     Console.ResetColor();
                 }
 
-                Console.WriteLine($"\n✓ Fixed file saved: {Path.GetFullPath(outputPath)}");
+                Console.WriteLine($"\n  [OK] Fixed file saved: {Path.GetFullPath(outputPath)}");
             }
             catch (Exception ex)
             {
@@ -223,6 +260,36 @@ namespace WTGFixer
             }
 
             Console.WriteLine("  ✓ All original variables present");
+            return false;
+        }
+
+        static bool CheckMissingVariablesFromSource(MapTriggers merged, MapTriggers source, ValidationIssues issues)
+        {
+            Console.WriteLine("\nChecking for missing variables from added triggers (source)...");
+
+            var mergedVarNames = new HashSet<string>(merged.Variables.Select(v => v.Name), StringComparer.OrdinalIgnoreCase);
+            var sourceVarNames = new HashSet<string>(source.Variables.Select(v => v.Name), StringComparer.OrdinalIgnoreCase);
+
+            // Find variables in source that aren't in merged
+            var missing = sourceVarNames.Except(mergedVarNames).ToList();
+
+            if (missing.Count > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"  [WARNING] {missing.Count} variable(s) from source triggers are missing:");
+                foreach (var varName in missing.Take(10))
+                {
+                    var sourceVar = source.Variables.First(v => v.Name.Equals(varName, StringComparison.OrdinalIgnoreCase));
+                    Console.WriteLine($"    - {varName} ({sourceVar.Type})");
+                    issues.MissingSourceVariables.Add(varName);
+                }
+                if (missing.Count > 10)
+                    Console.WriteLine($"    ... and {missing.Count - 10} more");
+                Console.ResetColor();
+                return true;
+            }
+
+            Console.WriteLine("  [OK] All source variables present");
             return false;
         }
 
@@ -357,7 +424,7 @@ namespace WTGFixer
 
         #region Fix Application
 
-        static void ApplyFixes(MapTriggers merged, MapTriggers original, ValidationIssues issues)
+        static void ApplyFixes(MapTriggers merged, MapTriggers original, MapTriggers? source, ValidationIssues issues)
         {
             int fixCount = 0;
 
@@ -366,7 +433,7 @@ namespace WTGFixer
             {
                 Console.WriteLine("Setting SubVersion to v4...");
                 merged.SubVersion = MapTriggersSubVersion.v4;
-                Console.WriteLine("  ✓ SubVersion set");
+                Console.WriteLine("  [OK] SubVersion set");
                 fixCount++;
             }
 
@@ -397,10 +464,40 @@ namespace WTGFixer
                         fixCount++;
                     }
                 }
-                Console.WriteLine($"  ✓ Copied {issues.MissingVariables.Count} variable(s)");
+                Console.WriteLine($"  [OK] Copied {issues.MissingVariables.Count} variable(s)");
             }
 
-            // Fix 3: Fix wrong ParentIds (set categories to -1)
+            // Fix 3: Copy missing variables from source
+            if (source != null && issues.MissingSourceVariables.Count > 0)
+            {
+                Console.WriteLine($"\nCopying {issues.MissingSourceVariables.Count} missing variable(s) from source...");
+                var sourceVarDict = source.Variables.ToDictionary(v => v.Name, v => v, StringComparer.OrdinalIgnoreCase);
+
+                foreach (var varName in issues.MissingSourceVariables)
+                {
+                    if (sourceVarDict.TryGetValue(varName, out var sourceVar))
+                    {
+                        var newVar = new VariableDefinition
+                        {
+                            Name = sourceVar.Name,
+                            Type = sourceVar.Type,
+                            Unk = sourceVar.Unk,
+                            IsArray = sourceVar.IsArray,
+                            ArraySize = sourceVar.ArraySize,
+                            IsInitialized = sourceVar.IsInitialized,
+                            InitialValue = sourceVar.InitialValue,
+                            Id = merged.Variables.Count,
+                            ParentId = sourceVar.ParentId
+                        };
+                        merged.Variables.Add(newVar);
+                        Console.WriteLine($"  + {varName} ({sourceVar.Type})");
+                        fixCount++;
+                    }
+                }
+                Console.WriteLine($"  [OK] Copied {issues.MissingSourceVariables.Count} variable(s)");
+            }
+
+            // Fix 4: Fix wrong ParentIds (set categories to -1)
             if (issues.WrongParentIds.Count > 0)
             {
                 Console.WriteLine($"\nFixing {issues.WrongParentIds.Count} categor(ies) with wrong ParentId...");
@@ -596,6 +693,57 @@ namespace WTGFixer
             throw new FileNotFoundException($"No map files found in {folderPath}");
         }
 
+        static string AutoDetectMergedFile(string folderPath)
+        {
+            if (!Directory.Exists(folderPath))
+                throw new DirectoryNotFoundException($"Folder not found: {folderPath}");
+
+            // Look for merged files first (war3map_merged.*)
+            var mergedW3x = Path.Combine(folderPath, "war3map_merged.w3x");
+            if (File.Exists(mergedW3x))
+                return mergedW3x;
+
+            var mergedW3m = Path.Combine(folderPath, "war3map_merged.w3m");
+            if (File.Exists(mergedW3m))
+                return mergedW3m;
+
+            var mergedWtg = Path.Combine(folderPath, "war3map_merged.wtg");
+            if (File.Exists(mergedWtg))
+                return mergedWtg;
+
+            // Fall back to any pattern matching *_merged.*
+            var mergedFiles = Directory.GetFiles(folderPath, "*_merged.w3x")
+                .Concat(Directory.GetFiles(folderPath, "*_merged.w3m"))
+                .Concat(Directory.GetFiles(folderPath, "*_merged.wtg"))
+                .ToList();
+
+            if (mergedFiles.Count > 0)
+                return mergedFiles[0];
+
+            throw new FileNotFoundException($"No merged file found in {folderPath}. Looking for war3map_merged.* or *_merged.*");
+        }
+
+        static string AutoDetectOriginalFile(string folderPath)
+        {
+            if (!Directory.Exists(folderPath))
+                throw new DirectoryNotFoundException($"Folder not found: {folderPath}");
+
+            // Look for original war3map.* files (not merged)
+            var w3xPath = Path.Combine(folderPath, "war3map.w3x");
+            if (File.Exists(w3xPath))
+                return w3xPath;
+
+            var w3mPath = Path.Combine(folderPath, "war3map.w3m");
+            if (File.Exists(w3mPath))
+                return w3mPath;
+
+            var wtgPath = Path.Combine(folderPath, "war3map.wtg");
+            if (File.Exists(wtgPath))
+                return wtgPath;
+
+            throw new FileNotFoundException($"No original file found in {folderPath}. Looking for war3map.* (not *_merged.*)");
+        }
+
         static string GenerateOutputPath(string inputPath)
         {
             var dir = Path.GetDirectoryName(inputPath) ?? ".";
@@ -709,6 +857,7 @@ namespace WTGFixer
     {
         public int SubVersionIssues { get; set; }
         public List<string> MissingVariables { get; set; } = new();
+        public List<string> MissingSourceVariables { get; set; } = new();
         public List<string> UndefinedVariables { get; set; } = new();
         public List<string> WrongParentIds { get; set; } = new();
         public List<string> OrphanedItems { get; set; } = new();
@@ -717,6 +866,7 @@ namespace WTGFixer
         public int TotalIssues() =>
             SubVersionIssues +
             MissingVariables.Count +
+            MissingSourceVariables.Count +
             UndefinedVariables.Count +
             WrongParentIds.Count +
             OrphanedItems.Count +

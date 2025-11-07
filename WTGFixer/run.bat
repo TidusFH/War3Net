@@ -1,7 +1,7 @@
 @echo off
-echo ╔══════════════════════════════════════════════════════════╗
-echo ║                   WTGFixer Launcher                      ║
-echo ╚══════════════════════════════════════════════════════════╝
+echo ============================================================
+echo                WTGFixer Launcher
+echo ============================================================
 echo.
 
 cd /d "%~dp0"
@@ -15,8 +15,8 @@ if not exist "bin\Release\net8.0\win-x64\publish\WTGFixer.exe" (
 echo.
 echo Running WTGFixer with auto-detection...
 echo Looking for files in:
-echo   ../Merged/   - Your merged/corrupted file
-echo   ../Original/ - Your original file
+echo   ../Target/ - Your target folder (merged + original files)
+echo   ../Source/ - Your source folder (for checking added triggers)
 echo.
 
 bin\Release\net8.0\win-x64\publish\WTGFixer.exe
