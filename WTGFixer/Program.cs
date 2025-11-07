@@ -209,7 +209,7 @@ namespace WTGFixer
             catch (Exception ex)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"\n❌ Error: {ex.Message}");
+                Console.WriteLine($"\n[ERROR] Error: {ex.Message}");
                 Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
                 Console.ResetColor();
                 Environment.Exit(1);
@@ -224,19 +224,19 @@ namespace WTGFixer
             if (triggers.SubVersion == null)
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine("  ⚠ SubVersion is null - ParentId won't be saved!");
+                Console.WriteLine("  [WARNING] SubVersion is null - ParentId won't be saved!");
                 Console.ResetColor();
                 issues.SubVersionIssues = 1;
                 return true;
             }
 
-            Console.WriteLine($"  ✓ SubVersion: {triggers.SubVersion}");
+            Console.WriteLine($"  [OK] SubVersion: {triggers.SubVersion}");
             return false;
         }
 
-        static bool CheckMissingVariables(MapTriggers merged, MapTriggers original, ValidationIssues issues)
+        static bool CheckMissingVariables(MapTriggers merged, MapTriggers original, ValidationIssues issues, string label)
         {
-            Console.WriteLine("\nChecking for missing variables...");
+            Console.WriteLine($"\nChecking for missing variables (from {label})...");
 
             var mergedVarNames = new HashSet<string>(merged.Variables.Select(v => v.Name), StringComparer.OrdinalIgnoreCase);
             var originalVarNames = new HashSet<string>(original.Variables.Select(v => v.Name), StringComparer.OrdinalIgnoreCase);
@@ -246,7 +246,7 @@ namespace WTGFixer
             if (missing.Count > 0)
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"  ⚠ {missing.Count} variable(s) from original are missing:");
+                Console.WriteLine($"  [WARNING] {missing.Count} variable(s) from {label} are missing:");
                 foreach (var varName in missing.Take(10))
                 {
                     var origVar = original.Variables.First(v => v.Name.Equals(varName, StringComparison.OrdinalIgnoreCase));
@@ -259,7 +259,7 @@ namespace WTGFixer
                 return true;
             }
 
-            Console.WriteLine("  ✓ All original variables present");
+            Console.WriteLine($"  [OK] All {label} variables present");
             return false;
         }
 
@@ -315,7 +315,7 @@ namespace WTGFixer
             if (undefined.Count > 0)
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"  ⚠ {undefined.Count} undefined variable(s) used in triggers:");
+                Console.WriteLine($"  [WARNING] {undefined.Count} undefined variable(s) used in triggers:");
                 foreach (var varName in undefined.Take(10))
                 {
                     Console.WriteLine($"    - {varName}");
@@ -327,7 +327,7 @@ namespace WTGFixer
                 return true;
             }
 
-            Console.WriteLine("  ✓ All used variables are defined");
+            Console.WriteLine("  [OK] All used variables are defined");
             return false;
         }
 
@@ -344,7 +344,7 @@ namespace WTGFixer
             if (wrongCategories.Count > 0)
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"  ⚠ {wrongCategories.Count} categor(ies) with ParentId >= 0 (should be -1 for root):");
+                Console.WriteLine($"  [WARNING] {wrongCategories.Count} categor(ies) with ParentId >= 0 (should be -1 for root):");
                 foreach (var cat in wrongCategories.Take(5))
                 {
                     Console.WriteLine($"    - '{cat.Name}' (ParentId={cat.ParentId})");
@@ -356,7 +356,7 @@ namespace WTGFixer
                 return true;
             }
 
-            Console.WriteLine("  ✓ All categories have correct ParentId");
+            Console.WriteLine("  [OK] All categories have correct ParentId");
             return false;
         }
 
@@ -376,7 +376,7 @@ namespace WTGFixer
             if (orphanedTriggers.Count > 0)
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"  ⚠ {orphanedTriggers.Count} orphaned trigger(s) (ParentId points to non-existent category):");
+                Console.WriteLine($"  [WARNING] {orphanedTriggers.Count} orphaned trigger(s) (ParentId points to non-existent category):");
                 foreach (var trigger in orphanedTriggers.Take(5))
                 {
                     Console.WriteLine($"    - '{trigger.Name}' (ParentId={trigger.ParentId})");
@@ -388,7 +388,7 @@ namespace WTGFixer
                 return true;
             }
 
-            Console.WriteLine("  ✓ No orphaned items");
+            Console.WriteLine("  [OK] No orphaned items");
             return false;
         }
 
@@ -404,7 +404,7 @@ namespace WTGFixer
             if (duplicates.Count > 0)
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"  ⚠ {duplicates.Count} duplicate ID(s) found:");
+                Console.WriteLine($"  [WARNING] {duplicates.Count} duplicate ID(s) found:");
                 foreach (var group in duplicates.Take(5))
                 {
                     Console.WriteLine($"    - ID {group.Key}: {string.Join(", ", group.Select(i => i.Name))}");
@@ -416,7 +416,7 @@ namespace WTGFixer
                 return true;
             }
 
-            Console.WriteLine("  ✓ No duplicate IDs");
+            Console.WriteLine("  [OK] No duplicate IDs");
             return false;
         }
 
@@ -509,7 +509,7 @@ namespace WTGFixer
                     cat.ParentId = -1;
                     fixCount++;
                 }
-                Console.WriteLine("  ✓ All categories set to root level");
+                Console.WriteLine("  [OK] All categories set to root level");
             }
 
             // Fix 4: Fix orphaned triggers (assign to first available category or create one)
@@ -545,7 +545,7 @@ namespace WTGFixer
                     trigger.ParentId = targetCategory.Id;
                     fixCount++;
                 }
-                Console.WriteLine("  ✓ Orphaned triggers assigned to category");
+                Console.WriteLine("  [OK] Orphaned triggers assigned to category");
             }
 
             // Fix 5: Fix duplicate IDs
@@ -574,7 +574,7 @@ namespace WTGFixer
                     }
                 }
 
-                Console.WriteLine("  ✓ IDs reassigned");
+                Console.WriteLine("  [OK] IDs reassigned");
                 fixCount++;
             }
 
@@ -582,7 +582,7 @@ namespace WTGFixer
             UpdateTriggerItemCounts(merged);
 
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"\n✓ Applied {fixCount} fix(es)");
+            Console.WriteLine($"\n[OK] Applied {fixCount} fix(es)");
             Console.ResetColor();
         }
 
