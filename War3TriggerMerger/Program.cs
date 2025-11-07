@@ -597,7 +597,6 @@ namespace War3TriggerMerger
         static MapTriggers LoadFromArchive(string path)
         {
             using var archive = MpqArchive.Open(path, true);
-            archive.DiscoverFileNames();
 
             if (!archive.FileExists(MapTriggers.FileName))
             {
@@ -646,7 +645,6 @@ namespace War3TriggerMerger
         static void SaveToArchive(MapTriggers triggers, string originalPath, string outputPath)
         {
             using var originalArchive = MpqArchive.Open(originalPath, true);
-            originalArchive.DiscoverFileNames();
 
             var builder = new MpqArchiveBuilder(originalArchive);
 
