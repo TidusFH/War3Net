@@ -757,6 +757,11 @@ namespace WTGMerger
         /// </summary>
         static MapTriggers ReadWTGFile(string filePath)
         {
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[READ-WTG] Opening file: {filePath}");
+            }
+
             if (!File.Exists(filePath))
             {
                 throw new FileNotFoundException($"WTG file not found: {filePath}");
@@ -764,6 +769,11 @@ namespace WTGMerger
 
             using var fileStream = File.OpenRead(filePath);
             using var reader = new BinaryReader(fileStream);
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[READ-WTG] File size: {fileStream.Length} bytes");
+            }
 
             // Use reflection to call internal constructor: MapTriggers(BinaryReader, TriggerData)
             var constructorInfo = typeof(MapTriggers).GetConstructor(
@@ -780,10 +790,26 @@ namespace WTGMerger
             try
             {
                 var triggers = (MapTriggers)constructorInfo.Invoke(new object[] { reader, TriggerData.Default });
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[READ-WTG] ✓ Parsed successfully");
+                    Console.WriteLine($"[READ-WTG]   Format: SubVersion={triggers.SubVersion?.ToString() ?? "null"} (FormatVersion={triggers.FormatVersion})");
+                    Console.WriteLine($"[READ-WTG]   Variables: {triggers.Variables.Count}");
+                    Console.WriteLine($"[READ-WTG]   TriggerItems: {triggers.TriggerItems.Count}");
+                    Console.WriteLine($"[READ-WTG]   Categories: {triggers.TriggerItems.OfType<TriggerCategoryDefinition>().Count()}");
+                    Console.WriteLine($"[READ-WTG]   Triggers: {triggers.TriggerItems.OfType<TriggerDefinition>().Count()}");
+                }
+
                 return triggers;
             }
             catch (System.Reflection.TargetInvocationException ex)
             {
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[READ-WTG] ✗ Parse failed: {ex.InnerException?.Message ?? ex.Message}");
+                }
+
                 // Show the actual inner exception that caused the problem
                 throw new InvalidOperationException(
                     $"Failed to parse war3map.wtg file. " +
@@ -804,9 +830,12 @@ namespace WTGMerger
         {
             if (DEBUG_MODE)
             {
-                Console.WriteLine($"[DEBUG] WriteWTGFile: Writing to {filePath}");
-                Console.WriteLine($"[DEBUG]   Variables to write: {triggers.Variables.Count}");
-                Console.WriteLine($"[DEBUG]   Trigger items to write: {triggers.TriggerItems.Count}");
+                Console.WriteLine($"[WRITE-WTG] Writing to: {filePath}");
+                Console.WriteLine($"[WRITE-WTG]   Format: SubVersion={triggers.SubVersion?.ToString() ?? "null"} (FormatVersion={triggers.FormatVersion})");
+                Console.WriteLine($"[WRITE-WTG]   Variables: {triggers.Variables.Count}");
+                Console.WriteLine($"[WRITE-WTG]   TriggerItems: {triggers.TriggerItems.Count}");
+                Console.WriteLine($"[WRITE-WTG]   Categories: {triggers.TriggerItems.OfType<TriggerCategoryDefinition>().Count()}");
+                Console.WriteLine($"[WRITE-WTG]   Triggers: {triggers.TriggerItems.OfType<TriggerDefinition>().Count()}");
             }
 
             using var fileStream = File.Create(filePath);
@@ -829,7 +858,7 @@ namespace WTGMerger
 
             if (DEBUG_MODE)
             {
-                Console.WriteLine($"[DEBUG] WriteWTGFile: Completed. File size: {fileStream.Length} bytes");
+                Console.WriteLine($"[WRITE-WTG] ✓ Completed. File size: {fileStream.Length} bytes");
             }
         }
 
@@ -1076,13 +1105,27 @@ namespace WTGMerger
         /// </summary>
         static List<TriggerDefinition> GetTriggersInCategory(MapTriggers triggers, string categoryName)
         {
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[GET-TRIGGERS] Looking for category: '{categoryName}'");
+            }
+
             var category = triggers.TriggerItems
                 .OfType<TriggerCategoryDefinition>()
                 .FirstOrDefault(c => c.Name.Equals(categoryName, StringComparison.OrdinalIgnoreCase));
 
             if (category == null)
             {
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[GET-TRIGGERS] ✗ Category not found: '{categoryName}'");
+                }
                 return new List<TriggerDefinition>();
+            }
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[GET-TRIGGERS] ✓ Found category: ID={category.Id}, ParentId={category.ParentId}");
             }
 
             // Get all triggers that have this category as their parent (using ParentId)
@@ -1090,6 +1133,19 @@ namespace WTGMerger
                 .OfType<TriggerDefinition>()
                 .Where(t => t.ParentId == category.Id)
                 .ToList();
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[GET-TRIGGERS] Found {triggersInCategory.Count} triggers in category '{categoryName}'");
+                foreach (var trigger in triggersInCategory.Take(5))
+                {
+                    Console.WriteLine($"[GET-TRIGGERS]   - '{trigger.Name}' (ID={trigger.Id})");
+                }
+                if (triggersInCategory.Count > 5)
+                {
+                    Console.WriteLine($"[GET-TRIGGERS]   ... and {triggersInCategory.Count - 5} more");
+                }
+            }
 
             return triggersInCategory;
         }
@@ -1099,6 +1155,13 @@ namespace WTGMerger
         /// </summary>
         static void MergeCategory(MapTriggers source, MapTriggers target, string categoryName)
         {
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[MERGE-CAT] Starting merge of category: '{categoryName}'");
+                Console.WriteLine($"[MERGE-CAT]   Source format: SubVersion={source.SubVersion?.ToString() ?? "null"}");
+                Console.WriteLine($"[MERGE-CAT]   Target format: SubVersion={target.SubVersion?.ToString() ?? "null"}");
+            }
+
             // Find source category
             var sourceCategory = source.TriggerItems
                 .OfType<TriggerCategoryDefinition>()
@@ -1107,6 +1170,11 @@ namespace WTGMerger
             if (sourceCategory == null)
             {
                 throw new InvalidOperationException($"Category '{categoryName}' not found in source");
+            }
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[MERGE-CAT] Source category found: ID={sourceCategory.Id}, ParentId={sourceCategory.ParentId}");
             }
 
             // Get triggers from source category
@@ -1121,15 +1189,28 @@ namespace WTGMerger
             if (targetCategory != null)
             {
                 Console.WriteLine($"  Category '{categoryName}' already exists in target - removing it");
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[MERGE-CAT] Existing target category: ID={targetCategory.Id}, ParentId={targetCategory.ParentId}");
+                }
+
                 RemoveCategory(target, categoryName);
             }
 
             // Create new category in target (Type must be set via constructor)
             // Set ParentId based on format (source ParentId might point to non-existent category in target)
             int newParentId = target.SubVersion == null ? 0 : -1;  // Old format uses 0, enhanced uses -1
+            int newId = GetNextId(target);
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[MERGE-CAT] Creating new category with ID={newId}, ParentId={newParentId}");
+            }
+
             var newCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
             {
-                Id = GetNextId(target),
+                Id = newId,
                 ParentId = newParentId,  // Root-level for copied categories
                 Name = sourceCategory.Name,
                 IsComment = sourceCategory.IsComment,
@@ -1144,6 +1225,11 @@ namespace WTGMerger
             CopyMissingVariables(source, target, sourceCategoryTriggers);
 
             // Copy all triggers
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[MERGE-CAT] Copying {sourceCategoryTriggers.Count} triggers...");
+            }
+
             foreach (var sourceTrigger in sourceCategoryTriggers)
             {
                 var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), newCategory.Id);
@@ -1154,8 +1240,18 @@ namespace WTGMerger
             // Update trigger item counts
             UpdateTriggerItemCounts(target);
 
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[MERGE-CAT] Applying auto-fix for format...");
+            }
+
             // AUTOMATIC FIX: Apply version-aware category fixing
             AutoFixCategoriesForFormat(target);
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[MERGE-CAT] ✓ Merge completed");
+            }
         }
 
         /// <summary>
@@ -1322,6 +1418,11 @@ namespace WTGMerger
         /// </summary>
         static void AutoFixCategoriesForFormat(MapTriggers triggers)
         {
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[AUTO-FIX] Checking format: SubVersion={triggers.SubVersion?.ToString() ?? "null"}");
+            }
+
             if (triggers.SubVersion == null)
             {
                 // OLD FORMAT: Re-run the same fix as load time to ensure consistency
@@ -1329,12 +1430,22 @@ namespace WTGMerger
                 var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
                 bool needsFix = false;
 
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[AUTO-FIX] OLD FORMAT: Checking {categories.Count} categories...");
+                }
+
                 // Quick check if IDs match position
                 for (int i = 0; i < categories.Count; i++)
                 {
                     if (categories[i].Id != i || categories[i].ParentId != 0)
                     {
                         needsFix = true;
+
+                        if (DEBUG_MODE)
+                        {
+                            Console.WriteLine($"[AUTO-FIX]   Category [{i}] '{categories[i].Name}': ID={categories[i].Id} (should be {i}), ParentId={categories[i].ParentId} (should be 0)");
+                        }
                         break;
                     }
                 }
@@ -1349,25 +1460,45 @@ namespace WTGMerger
                     }
 
                     // Re-apply the same fix
+                    int fixedCount = 0;
                     for (int i = 0; i < categories.Count; i++)
                     {
-                        categories[i].Id = i;
-                        categories[i].ParentId = 0;
+                        if (categories[i].Id != i || categories[i].ParentId != 0)
+                        {
+                            if (DEBUG_MODE)
+                            {
+                                Console.WriteLine($"[AUTO-FIX]   Fixing '{categories[i].Name}': ID {categories[i].Id}→{i}, ParentId {categories[i].ParentId}→0");
+                            }
+                            categories[i].Id = i;
+                            categories[i].ParentId = 0;
+                            fixedCount++;
+                        }
                     }
 
                     // Update trigger ParentIds if needed
+                    int triggersFixed = 0;
                     foreach (var trigger in triggers.TriggerItems.OfType<TriggerDefinition>())
                     {
                         // Ensure ParentId is within valid range
                         if (trigger.ParentId < 0 || trigger.ParentId >= categories.Count)
                         {
+                            if (DEBUG_MODE)
+                            {
+                                Console.WriteLine($"[AUTO-FIX]   Trigger '{trigger.Name}': invalid ParentId {trigger.ParentId} → 0");
+                            }
                             trigger.ParentId = 0;  // Default to first category
+                            triggersFixed++;
                         }
+                    }
+
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[AUTO-FIX] ✓ Fixed {fixedCount} categories, {triggersFixed} triggers");
                     }
                 }
                 else if (DEBUG_MODE)
                 {
-                    Console.WriteLine($"[AUTO-FIX] Category IDs already correct, no fix needed");
+                    Console.WriteLine($"[AUTO-FIX] ✓ Category IDs already correct, no fix needed");
                 }
             }
             else if (DEBUG_MODE)
@@ -1733,9 +1864,23 @@ namespace WTGMerger
         /// </summary>
         static void RenameVariablesInTrigger(TriggerDefinition trigger, Dictionary<string, string> renameMappings)
         {
+            if (DEBUG_MODE && renameMappings.Count > 0)
+            {
+                Console.WriteLine($"[RENAME-VARS] Renaming variables in trigger '{trigger.Name}':");
+                foreach (var mapping in renameMappings)
+                {
+                    Console.WriteLine($"[RENAME-VARS]   '{mapping.Key}' → '{mapping.Value}'");
+                }
+            }
+
             foreach (var function in trigger.Functions)
             {
                 RenameVariablesInFunction(function, renameMappings);
+            }
+
+            if (DEBUG_MODE && renameMappings.Count > 0)
+            {
+                Console.WriteLine($"[RENAME-VARS] ✓ Completed renaming in '{trigger.Name}'");
             }
         }
 
@@ -2265,6 +2410,11 @@ namespace WTGMerger
         /// </summary>
         static void FixDuplicateIds(MapTriggers triggers)
         {
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[FIX-DUP-IDS] Checking for duplicate IDs in {triggers.TriggerItems.Count} items...");
+            }
+
             // Check if there are any duplicate IDs
             var allIds = triggers.TriggerItems.Select(item => item.Id).ToList();
             var duplicateIds = allIds.GroupBy(id => id)
@@ -2274,11 +2424,30 @@ namespace WTGMerger
 
             if (duplicateIds.Count == 0)
             {
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[FIX-DUP-IDS] ✓ No duplicate IDs found");
+                }
                 return; // No duplicates, nothing to fix
             }
 
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine($"\n⚠ WARNING: Found {duplicateIds.Count} duplicate ID(s) in target file!");
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[FIX-DUP-IDS] Duplicate IDs:");
+                foreach (var dupId in duplicateIds.Take(5))
+                {
+                    var itemsWithId = triggers.TriggerItems.Where(item => item.Id == dupId).ToList();
+                    Console.WriteLine($"[FIX-DUP-IDS]   ID {dupId}: {string.Join(", ", itemsWithId.Select(i => $"'{i.Name}'"))}");
+                }
+                if (duplicateIds.Count > 5)
+                {
+                    Console.WriteLine($"[FIX-DUP-IDS]   ... and {duplicateIds.Count - 5} more");
+                }
+            }
+
             Console.WriteLine("  Reassigning unique IDs to all trigger items...");
             Console.ResetColor();
 
@@ -2338,13 +2507,27 @@ namespace WTGMerger
         /// </summary>
         static void RemoveCategory(MapTriggers triggers, string categoryName)
         {
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[REMOVE-CAT] Removing category: '{categoryName}'");
+            }
+
             var category = triggers.TriggerItems
                 .OfType<TriggerCategoryDefinition>()
                 .FirstOrDefault(c => c.Name.Equals(categoryName, StringComparison.OrdinalIgnoreCase));
 
             if (category == null)
             {
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[REMOVE-CAT] ✗ Category not found: '{categoryName}'");
+                }
                 return;
+            }
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[REMOVE-CAT] Found category: ID={category.Id}, ParentId={category.ParentId}");
             }
 
             var categoryIndex = triggers.TriggerItems.IndexOf(category);
@@ -2360,13 +2543,31 @@ namespace WTGMerger
                     break;
                 }
 
+                if (item is TriggerDefinition trigger)
+                {
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[REMOVE-CAT]   Will remove trigger: '{trigger.Name}' (ID={trigger.Id})");
+                    }
+                }
+
                 itemsToRemove.Add(item);
             }
 
             // Remove all items
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[REMOVE-CAT] Removing {itemsToRemove.Count} items total (1 category + {itemsToRemove.Count - 1} triggers)");
+            }
+
             foreach (var item in itemsToRemove)
             {
                 triggers.TriggerItems.Remove(item);
+            }
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[REMOVE-CAT] ✓ Removed category '{categoryName}' and its triggers");
             }
         }
 
@@ -2377,10 +2578,22 @@ namespace WTGMerger
         {
             if (triggers.TriggerItems.Count == 0)
             {
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[GET-NEXT-ID] No items, returning ID=0");
+                }
                 return 0;
             }
 
-            return triggers.TriggerItems.Max(item => item.Id) + 1;
+            int maxId = triggers.TriggerItems.Max(item => item.Id);
+            int nextId = maxId + 1;
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[GET-NEXT-ID] Max ID={maxId}, returning next ID={nextId}");
+            }
+
+            return nextId;
         }
 
         /// <summary>
@@ -2528,12 +2741,25 @@ namespace WTGMerger
         /// </summary>
         static MapTriggers ReadMapTriggersAuto(string filePath)
         {
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[READ-AUTO] Determining file type: {Path.GetFileName(filePath)}");
+            }
+
             if (IsMapArchive(filePath))
             {
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[READ-AUTO] Detected map archive format");
+                }
                 return ReadMapArchiveFile(filePath);
             }
             else
             {
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[READ-AUTO] Detected raw WTG file");
+                }
                 return ReadWTGFile(filePath);
             }
         }
@@ -2543,6 +2769,11 @@ namespace WTGMerger
         /// </summary>
         static MapTriggers ReadMapArchiveFile(string archivePath)
         {
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[READ-ARCHIVE] Opening: {archivePath}");
+            }
+
             if (!File.Exists(archivePath))
             {
                 throw new FileNotFoundException($"Map archive not found: {archivePath}");
@@ -2551,6 +2782,11 @@ namespace WTGMerger
             Console.WriteLine($"  Opening MPQ archive...");
             using var archive = MpqArchive.Open(archivePath, true);
             archive.DiscoverFileNames();
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[READ-ARCHIVE] Archive opened, files discovered");
+            }
 
             var triggerFileName = MapTriggers.FileName; // "war3map.wtg"
 
@@ -2562,6 +2798,11 @@ namespace WTGMerger
             Console.WriteLine($"  Extracting {triggerFileName}...");
             using var triggerStream = archive.OpenFile(triggerFileName);
             using var reader = new BinaryReader(triggerStream);
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[READ-ARCHIVE] Stream opened for {triggerFileName}");
+            }
 
             // Use reflection to call internal constructor
             var constructorInfo = typeof(MapTriggers).GetConstructor(
@@ -2578,10 +2819,26 @@ namespace WTGMerger
             try
             {
                 var triggers = (MapTriggers)constructorInfo.Invoke(new object[] { reader, TriggerData.Default });
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[READ-ARCHIVE] ✓ Parsed successfully");
+                    Console.WriteLine($"[READ-ARCHIVE]   Format: SubVersion={triggers.SubVersion?.ToString() ?? "null"} (FormatVersion={triggers.FormatVersion})");
+                    Console.WriteLine($"[READ-ARCHIVE]   Variables: {triggers.Variables.Count}");
+                    Console.WriteLine($"[READ-ARCHIVE]   TriggerItems: {triggers.TriggerItems.Count}");
+                    Console.WriteLine($"[READ-ARCHIVE]   Categories: {triggers.TriggerItems.OfType<TriggerCategoryDefinition>().Count()}");
+                    Console.WriteLine($"[READ-ARCHIVE]   Triggers: {triggers.TriggerItems.OfType<TriggerDefinition>().Count()}");
+                }
+
                 return triggers;
             }
             catch (System.Reflection.TargetInvocationException ex)
             {
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[READ-ARCHIVE] ✗ Parse failed: {ex.InnerException?.Message ?? ex.Message}");
+                }
+
                 // Show the actual inner exception that caused the problem
                 throw new InvalidOperationException(
                     $"Failed to parse war3map.wtg from map archive. " +
@@ -2602,14 +2859,23 @@ namespace WTGMerger
         {
             if (DEBUG_MODE)
             {
-                Console.WriteLine($"[DEBUG] WriteMapArchive: Writing to {outputArchivePath}");
-                Console.WriteLine($"[DEBUG]   Variables to write: {triggers.Variables.Count}");
-                Console.WriteLine($"[DEBUG]   Trigger items to write: {triggers.TriggerItems.Count}");
+                Console.WriteLine($"[WRITE-ARCHIVE] Writing to: {outputArchivePath}");
+                Console.WriteLine($"[WRITE-ARCHIVE]   Format: SubVersion={triggers.SubVersion?.ToString() ?? "null"} (FormatVersion={triggers.FormatVersion})");
+                Console.WriteLine($"[WRITE-ARCHIVE]   Variables: {triggers.Variables.Count}");
+                Console.WriteLine($"[WRITE-ARCHIVE]   TriggerItems: {triggers.TriggerItems.Count}");
+                Console.WriteLine($"[WRITE-ARCHIVE]   Categories: {triggers.TriggerItems.OfType<TriggerCategoryDefinition>().Count()}");
+                Console.WriteLine($"[WRITE-ARCHIVE]   Triggers: {triggers.TriggerItems.OfType<TriggerDefinition>().Count()}");
+                Console.WriteLine($"[WRITE-ARCHIVE]   Remove JASS: {removeJassFile}");
             }
 
             Console.WriteLine($"  Opening original archive...");
             using var originalArchive = MpqArchive.Open(originalArchivePath, true);
             originalArchive.DiscoverFileNames();
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[WRITE-ARCHIVE] Original archive opened");
+            }
 
             Console.WriteLine($"  Creating archive builder...");
             var builder = new MpqArchiveBuilder(originalArchive);
@@ -2636,7 +2902,7 @@ namespace WTGMerger
 
             if (DEBUG_MODE)
             {
-                Console.WriteLine($"[DEBUG] Serialized war3map.wtg to memory: {triggerStream.Length} bytes");
+                Console.WriteLine($"[WRITE-ARCHIVE] Serialized war3map.wtg: {triggerStream.Length} bytes");
             }
 
             triggerStream.Position = 0;
@@ -2647,6 +2913,11 @@ namespace WTGMerger
             builder.RemoveFile(triggerFileName);
             builder.AddFile(MpqFile.New(triggerStream, triggerFileName));
 
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[WRITE-ARCHIVE] war3map.wtg replaced in builder");
+            }
+
             // Optionally remove war3map.j to force regeneration
             if (removeJassFile)
             {
@@ -2655,6 +2926,11 @@ namespace WTGMerger
                 {
                     Console.WriteLine($"  Removing {jassFileName} for sync...");
                     builder.RemoveFile(jassFileName);
+
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[WRITE-ARCHIVE] Removed {jassFileName}");
+                    }
                 }
 
                 // Also check for scripts/war3map.j
@@ -2663,6 +2939,11 @@ namespace WTGMerger
                 {
                     Console.WriteLine($"  Removing {jassFileNameAlt} for sync...");
                     builder.RemoveFile(jassFileNameAlt);
+
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[WRITE-ARCHIVE] Removed {jassFileNameAlt}");
+                    }
                 }
             }
 
@@ -2670,6 +2951,12 @@ namespace WTGMerger
             Console.WriteLine($"  Saving to {outputArchivePath}...");
             builder.SaveTo(outputArchivePath);
             Console.WriteLine($"  Archive updated successfully!");
+
+            if (DEBUG_MODE)
+            {
+                var fileInfo = new FileInfo(outputArchivePath);
+                Console.WriteLine($"[WRITE-ARCHIVE] ✓ Completed. Output file size: {fileInfo.Length} bytes");
+            }
         }
 
         /// <summary>
