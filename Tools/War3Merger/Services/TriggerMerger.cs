@@ -179,9 +179,11 @@ namespace War3Net.Tools.TriggerMerger.Services
                 target.TriggerItems = new List<TriggerItem>();
             }
 
-            // Create a new category with a new ID
-            var newCategory = new TriggerCategoryDefinition
+            // Create a new category with proper Type constructor and ID/ParentId
+            var newCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
             {
+                Id = GetNextId(target),
+                ParentId = -1,  // CRITICAL: Root-level category (old format uses -1, not 0)
                 Name = sourceCategory.Name,
                 IsComment = sourceCategory.IsComment,
                 IsExpanded = sourceCategory.IsExpanded,
@@ -190,18 +192,24 @@ namespace War3Net.Tools.TriggerMerger.Services
             // Add the category to the target
             target.TriggerItems.Add(newCategory);
 
-            // Copy all triggers in the category
+            // Copy all triggers in the category with correct ParentId
             foreach (var trigger in categoryTriggers)
             {
-                var newTrigger = CopyTrigger(trigger);
+                var newTrigger = CopyTrigger(trigger, GetNextId(target), newCategory.Id);
                 target.TriggerItems.Add(newTrigger);
             }
+
+            // Update trigger item counts after adding new items
+            UpdateTriggerItemCounts(target);
         }
 
-        private TriggerDefinition CopyTrigger(TriggerDefinition source)
+        private TriggerDefinition CopyTrigger(TriggerDefinition source, int newId, int newParentId)
         {
-            var copy = new TriggerDefinition
+            // Type must be set via constructor (it's read-only)
+            var copy = new TriggerDefinition(source.Type)
             {
+                Id = newId,
+                ParentId = newParentId,  // Set the parent category ID
                 Name = source.Name,
                 Description = source.Description,
                 IsEnabled = source.IsEnabled,
@@ -275,6 +283,49 @@ namespace War3Net.Tools.TriggerMerger.Services
             }
 
             return copy;
+        }
+
+        /// <summary>
+        /// Gets the next available ID for a trigger item.
+        /// </summary>
+        private int GetNextId(MapTriggers triggers)
+        {
+            if (triggers.TriggerItems == null || triggers.TriggerItems.Count == 0)
+            {
+                return 0;
+            }
+
+            return triggers.TriggerItems.Max(item => item.Id) + 1;
+        }
+
+        /// <summary>
+        /// Updates the TriggerItemCounts dictionary based on actual items.
+        /// </summary>
+        private void UpdateTriggerItemCounts(MapTriggers triggers)
+        {
+            if (triggers.TriggerItemCounts == null)
+            {
+                triggers.TriggerItemCounts = new Dictionary<TriggerItemType, int>();
+            }
+
+            triggers.TriggerItemCounts.Clear();
+
+            if (triggers.TriggerItems == null)
+            {
+                return;
+            }
+
+            foreach (var item in triggers.TriggerItems)
+            {
+                if (triggers.TriggerItemCounts.ContainsKey(item.Type))
+                {
+                    triggers.TriggerItemCounts[item.Type]++;
+                }
+                else
+                {
+                    triggers.TriggerItemCounts[item.Type] = 1;
+                }
+            }
         }
     }
 
