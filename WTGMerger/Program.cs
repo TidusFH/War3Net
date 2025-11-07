@@ -2255,7 +2255,8 @@ namespace WTGMerger
 
             // Build ID mapping: oldID → newID (sequential, no conflicts with triggers)
             var idMapping = new Dictionary<int, int>();
-            bool needsFix = false;
+            bool needsIdFix = false;
+            bool needsParentIdFix = false;
 
             for (int position = 0; position < categories.Count; position++)
             {
@@ -2266,26 +2267,44 @@ namespace WTGMerger
 
                 if (oldId != newId)
                 {
-                    needsFix = true;
+                    needsIdFix = true;
+                }
+
+                // Check if ParentId needs fixing (should always be 0 in old format)
+                if (categories[position].ParentId != 0)
+                {
+                    needsParentIdFix = true;
                 }
             }
 
-            if (!needsFix)
+            // IMPORTANT: Always fix ParentIds even if IDs are correct!
+            if (!needsIdFix && !needsParentIdFix)
             {
                 if (DEBUG_MODE)
                 {
-                    Console.WriteLine($"[LOAD-FIX] {mapName}: Category IDs already correct ({startCategoryId}-{startCategoryId + categories.Count - 1})");
+                    Console.WriteLine($"[LOAD-FIX] {mapName}: Category IDs and ParentIds already correct");
                 }
                 return;
             }
 
             // Apply fixes
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"\n⚠ [{mapName}] OLD FORMAT: Fixing category IDs to avoid trigger ID conflicts...");
-            Console.WriteLine($"  Assigning category IDs: {startCategoryId}-{startCategoryId + categories.Count - 1}");
-            Console.ResetColor();
+            if (needsIdFix || needsParentIdFix)
+            {
+                if (needsIdFix)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"\n⚠ [{mapName}] OLD FORMAT: Fixing category IDs to avoid trigger ID conflicts...");
+                    Console.WriteLine($"  Assigning category IDs: {startCategoryId}-{startCategoryId + categories.Count - 1}");
+                    Console.ResetColor();
+                }
 
-            // Fix category IDs
+                if (needsParentIdFix && DEBUG_MODE)
+                {
+                    Console.WriteLine($"[LOAD-FIX] {mapName}: Fixing category ParentIds to 0");
+                }
+            }
+
+            // Fix category IDs and ParentIds
             for (int position = 0; position < categories.Count; position++)
             {
                 int oldId = categories[position].Id;
@@ -2300,9 +2319,13 @@ namespace WTGMerger
                     categories[position].Id = newId;
                 }
 
-                // Always set ParentId=0 for old format
+                // CRITICAL: Always set ParentId=0 for old format
                 if (categories[position].ParentId != 0)
                 {
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[LOAD-FIX]   '{categories[position].Name}': ParentId {categories[position].ParentId} → 0");
+                    }
                     categories[position].ParentId = 0;
                 }
             }
