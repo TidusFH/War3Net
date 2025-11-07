@@ -2228,20 +2228,15 @@ namespace WTGMerger
             var triggersList = triggers.TriggerItems.OfType<TriggerDefinition>().ToList();
             if (categories.Count == 0) return;
 
-            // Get all existing trigger IDs
-            var usedTriggerIds = new HashSet<int>(triggersList.Select(t => t.Id));
+            // CRITICAL: In old format, trigger IDs are NOT saved (all default to 0)
+            // Therefore, there's NO collision between trigger IDs and category IDs!
+            // Category IDs MUST equal their positions for ParentId lookup to work.
+            // DO NOT shift category IDs for old format!
+            int startCategoryId = 0;  // Always use position-based IDs (0, 1, 2, ...)
 
-            // Find the starting ID for categories (after all trigger IDs)
-            int startCategoryId = 0;
-            if (usedTriggerIds.Count > 0)
+            if (DEBUG_MODE)
             {
-                int maxTriggerId = usedTriggerIds.Max();
-                startCategoryId = maxTriggerId + 1;
-
-                if (DEBUG_MODE)
-                {
-                    Console.WriteLine($"[LOAD-FIX] {mapName}: Max trigger ID = {maxTriggerId}, categories will start at ID {startCategoryId}");
-                }
+                Console.WriteLine($"[LOAD-FIX] {mapName}: OLD FORMAT - Using position-based category IDs (0, 1, 2, ...)");
             }
 
             // Build ID mapping: oldID → newID (sequential, no conflicts with triggers)
@@ -2284,8 +2279,8 @@ namespace WTGMerger
                 if (needsIdFix)
                 {
                     Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine($"\n⚠ [{mapName}] OLD FORMAT: Fixing category IDs to avoid trigger ID conflicts...");
-                    Console.WriteLine($"  Assigning category IDs: {startCategoryId}-{startCategoryId + categories.Count - 1}");
+                    Console.WriteLine($"\n⚠ [{mapName}] OLD FORMAT: Fixing category IDs to match positions...");
+                    Console.WriteLine($"  Assigning position-based category IDs: {startCategoryId}-{startCategoryId + categories.Count - 1}");
                     Console.ResetColor();
                 }
 
