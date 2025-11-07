@@ -20,10 +20,10 @@ namespace WTGMerger127
         {
             try
             {
-                Console.WriteLine("╔═══════════════════════════════════════════════════════════╗");
-                Console.WriteLine("║   WTG MERGER FOR WARCRAFT 3 1.27 (OLD FORMAT)            ║");
-                Console.WriteLine("║   Position-Based Category IDs | SubVersion=null           ║");
-                Console.WriteLine("╚═══════════════════════════════════════════════════════════╝");
+                Console.WriteLine("===============================================================");
+                Console.WriteLine("   WTG MERGER FOR WARCRAFT 3 1.27 (OLD FORMAT)");
+                Console.WriteLine("   Position-Based Category IDs | SubVersion=null");
+                Console.WriteLine("===============================================================");
                 Console.WriteLine();
 
                 string sourcePath, targetPath, outputPath;
@@ -61,12 +61,12 @@ namespace WTGMerger127
                 // Read source and target
                 Console.WriteLine($"Reading source...");
                 MapTriggers sourceTriggers = ReadMapTriggersAuto(sourcePath);
-                Console.WriteLine($"✓ Loaded: {sourceTriggers.TriggerItems.Count} items, {sourceTriggers.Variables.Count} variables");
+                Console.WriteLine($"+ Loaded: {sourceTriggers.TriggerItems.Count} items, {sourceTriggers.Variables.Count} variables");
                 ShowFormatInfo(sourceTriggers, "SOURCE");
 
                 Console.WriteLine($"\nReading target...");
                 MapTriggers targetTriggers = ReadMapTriggersAuto(targetPath);
-                Console.WriteLine($"✓ Loaded: {targetTriggers.TriggerItems.Count} items, {targetTriggers.Variables.Count} variables");
+                Console.WriteLine($"+ Loaded: {targetTriggers.TriggerItems.Count} items, {targetTriggers.Variables.Count} variables");
                 ShowFormatInfo(targetTriggers, "TARGET");
 
                 // CRITICAL: Fix category IDs for old format IMMEDIATELY after loading
@@ -77,9 +77,9 @@ namespace WTGMerger127
                 bool modified = false;
                 while (true)
                 {
-                    Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
-                    Console.WriteLine("║                    MERGE OPTIONS                         ║");
-                    Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                    Console.WriteLine("\n===============================================================");
+                    Console.WriteLine("                    MERGE OPTIONS");
+                    Console.WriteLine("===============================================================");
                     Console.WriteLine("1. List all categories from SOURCE");
                     Console.WriteLine("2. List all categories from TARGET");
                     Console.WriteLine("3. List triggers in a specific category");
@@ -123,7 +123,7 @@ namespace WTGMerger127
                             {
                                 Console.WriteLine($"\nMerging category '{categoryName}'...");
                                 MergeCategory(sourceTriggers, targetTriggers, categoryName);
-                                Console.WriteLine("✓ Category merged!");
+                                Console.WriteLine("+ Category merged!");
                                 modified = true;
                             }
                             break;
@@ -145,7 +145,7 @@ namespace WTGMerger127
 
                                     var triggers = triggerNames.Split(',').Select(t => t.Trim()).ToArray();
                                     CopySpecificTriggers(sourceTriggers, targetTriggers, sourceCat, triggers, destCat);
-                                    Console.WriteLine("✓ Trigger(s) copied!");
+                                    Console.WriteLine("+ Trigger(s) copied!");
                                     modified = true;
                                 }
                             }
@@ -162,14 +162,14 @@ namespace WTGMerger127
                             if (Console.ReadLine()?.ToLower() == "y")
                             {
                                 FixCategoryIdsForOldFormat(targetTriggers);
-                                Console.WriteLine("✓ Category IDs fixed!");
+                                Console.WriteLine("+ Category IDs fixed!");
                                 modified = true;
                             }
                             break;
 
                         case "8":
                             DEBUG_MODE = !DEBUG_MODE;
-                            Console.WriteLine($"\n✓ Debug mode: {(DEBUG_MODE ? "ON" : "OFF")}");
+                            Console.WriteLine($"\n+ Debug mode: {(DEBUG_MODE ? "ON" : "OFF")}");
                             break;
 
                         case "9":
@@ -188,7 +188,7 @@ namespace WTGMerger127
                             return;
 
                         default:
-                            Console.WriteLine("\n⚠ Invalid option.");
+                            Console.WriteLine("\n! Invalid option.");
                             break;
                     }
                 }
@@ -196,7 +196,7 @@ namespace WTGMerger127
             catch (Exception ex)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"\n❌ Error: {ex.Message}");
+                Console.WriteLine($"\nERROR: {ex.Message}");
                 Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
                 Console.ResetColor();
                 Environment.Exit(1);
@@ -206,6 +206,9 @@ namespace WTGMerger127
         /// <summary>
         /// CRITICAL FUNCTION: Fix category IDs to match positions for old format
         /// This is THE CORE FIX for WC3 1.27 compatibility
+        ///
+        /// IMPORTANT: In WC3 1.27, categories MUST be stored at positions 0,1,2,3...
+        /// at the BEGINNING of TriggerItems (before any triggers).
         /// </summary>
         static void FixCategoryIdsForOldFormat(MapTriggers triggers)
         {
@@ -220,10 +223,11 @@ namespace WTGMerger127
 
             if (DEBUG_MODE)
             {
-                Console.WriteLine($"[DEBUG] ═══ FixCategoryIdsForOldFormat START ═══");
-                Console.WriteLine($"[DEBUG] SubVersion=null detected → OLD FORMAT (WC3 1.27)");
+                Console.WriteLine($"[DEBUG] === FixCategoryIdsForOldFormat START ===");
+                Console.WriteLine($"[DEBUG] SubVersion=null detected -> OLD FORMAT (WC3 1.27)");
             }
 
+            // Get categories in their current order
             var categories = triggers.TriggerItems
                 .OfType<TriggerCategoryDefinition>()
                 .ToList();
@@ -235,24 +239,26 @@ namespace WTGMerger127
                 return;
             }
 
-            // Build mapping: old ID → new ID (position)
+            // Build mapping: old ID → new ID (position in TriggerItems)
             var idMapping = new Dictionary<int, int>();
             bool needsFix = false;
 
-            for (int position = 0; position < categories.Count; position++)
+            // Check if categories are at the beginning and have correct IDs
+            for (int i = 0; i < categories.Count; i++)
             {
-                var category = categories[position];
+                var category = categories[i];
+                int actualPosition = triggers.TriggerItems.IndexOf(category);
                 int oldId = category.Id;
-                int newId = position; // CRITICAL: ID must equal position
+                int newId = i; // ID should match category index (0, 1, 2, 3...)
 
                 idMapping[oldId] = newId;
 
-                if (oldId != newId)
+                if (oldId != newId || actualPosition != i)
                 {
                     needsFix = true;
                     if (DEBUG_MODE)
                     {
-                        Console.WriteLine($"[DEBUG] Category '{category.Name}': position={position}, oldID={oldId} → newID={newId}");
+                        Console.WriteLine($"[DEBUG] Category '{category.Name}': TriggerItems[{actualPosition}], oldID={oldId} -> newID={newId}");
                     }
                 }
             }
@@ -261,21 +267,27 @@ namespace WTGMerger127
             {
                 if (DEBUG_MODE)
                 {
-                    Console.WriteLine($"[DEBUG] ✓ Category IDs already match positions!");
+                    Console.WriteLine($"[DEBUG] + Category IDs and positions are correct!");
                 }
                 // Still need to fix ParentIds
             }
             else
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"⚠ Fixing category IDs to match positions (WC3 1.27 requirement)...");
+                Console.WriteLine($"! Fixing category structure for WC3 1.27...");
                 Console.ResetColor();
 
-                // Update category IDs
-                for (int position = 0; position < categories.Count; position++)
+                // Remove all categories from TriggerItems
+                foreach (var cat in categories)
                 {
-                    var category = categories[position];
-                    category.Id = position;
+                    triggers.TriggerItems.Remove(cat);
+                }
+
+                // Re-insert all categories at the BEGINNING with correct IDs
+                for (int i = 0; i < categories.Count; i++)
+                {
+                    categories[i].Id = i;
+                    triggers.TriggerItems.Insert(i, categories[i]);
                 }
 
                 // Update trigger ParentIds to use new category IDs
@@ -287,14 +299,14 @@ namespace WTGMerger127
                         int newParentId = idMapping[trigger.ParentId];
                         if (DEBUG_MODE && trigger.ParentId != newParentId)
                         {
-                            Console.WriteLine($"[DEBUG]   Trigger '{trigger.Name}': ParentId {trigger.ParentId} → {newParentId}");
+                            Console.WriteLine($"[DEBUG]   Trigger '{trigger.Name}': ParentId {trigger.ParentId} -> {newParentId}");
                         }
                         trigger.ParentId = newParentId;
                     }
                 }
 
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"✓ Fixed {categories.Count} category IDs to match positions");
+                Console.WriteLine($"+ Fixed {categories.Count} categories to positions 0-{categories.Count - 1}");
                 Console.ResetColor();
             }
 
@@ -306,7 +318,7 @@ namespace WTGMerger127
                 {
                     if (DEBUG_MODE)
                     {
-                        Console.WriteLine($"[DEBUG] Category '{category.Name}': ParentId {category.ParentId} → 0");
+                        Console.WriteLine($"[DEBUG] Category '{category.Name}': ParentId {category.ParentId} -> 0");
                     }
                     category.ParentId = 0;
                     fixedParentIds++;
@@ -316,13 +328,13 @@ namespace WTGMerger127
             if (fixedParentIds > 0)
             {
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"✓ Set {fixedParentIds} category ParentIds to 0 (old format)");
+                Console.WriteLine($"+ Set {fixedParentIds} category ParentIds to 0 (old format)");
                 Console.ResetColor();
             }
 
             if (DEBUG_MODE)
             {
-                Console.WriteLine($"[DEBUG] ═══ FixCategoryIdsForOldFormat END ═══");
+                Console.WriteLine($"[DEBUG] === FixCategoryIdsForOldFormat END ===");
                 Console.WriteLine();
             }
         }
@@ -346,7 +358,7 @@ namespace WTGMerger127
                 }
                 else
                 {
-                    Console.WriteLine($"  ⚠ Warning: Trigger '{triggerName}' not found");
+                    Console.WriteLine($"  ! Warning: Trigger '{triggerName}' not found");
                 }
             }
 
@@ -363,12 +375,12 @@ namespace WTGMerger127
 
             if (destCategory == null)
             {
-                // CRITICAL: For old format, new category ID MUST equal its position
-                var existingCategoryCount = target.TriggerItems
+                // CRITICAL: For old format, new category MUST be inserted at correct position
+                var existingCategories = target.TriggerItems
                     .OfType<TriggerCategoryDefinition>()
-                    .Count();
+                    .ToList();
 
-                int newCategoryId = existingCategoryCount; // Position-based!
+                int newCategoryId = existingCategories.Count; // Next category index
                 int newParentId = (target.SubVersion == null) ? 0 : -1; // 0 for old format
 
                 destCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
@@ -379,33 +391,24 @@ namespace WTGMerger127
                     IsComment = false,
                     IsExpanded = true
                 };
-                target.TriggerItems.Add(destCategory);
 
-                Console.WriteLine($"\n  ✓ Created category '{destCategoryName}' (ID={newCategoryId}, ParentId={newParentId}, Position={existingCategoryCount})");
+                // Insert at position = category count (right after last category)
+                target.TriggerItems.Insert(existingCategories.Count, destCategory);
+
+                Console.WriteLine($"\n  + Created category '{destCategoryName}' at position {existingCategories.Count} (ID={newCategoryId}, ParentId={newParentId})");
             }
 
             // Copy variables used by triggers
             CopyMissingVariables(source, target, triggersToCopy);
 
-            // Find insertion point
-            var categoryIndex = target.TriggerItems.IndexOf(destCategory);
-            int insertIndex = categoryIndex + 1;
-
-            while (insertIndex < target.TriggerItems.Count &&
-                   target.TriggerItems[insertIndex] is not TriggerCategoryDefinition)
-            {
-                insertIndex++;
-            }
-
-            // Copy triggers - ParentId = category position
+            // Copy triggers - add after all categories
             Console.WriteLine($"\n  Copying {triggersToCopy.Count} trigger(s):");
             foreach (var sourceTrigger in triggersToCopy)
             {
-                // CRITICAL: ParentId must be category POSITION (which equals ID for old format)
+                // CRITICAL: ParentId must be category position in TriggerItems
                 var copiedTrigger = CopyTrigger(sourceTrigger, destCategory.Id);
-                target.TriggerItems.Insert(insertIndex, copiedTrigger);
-                insertIndex++;
-                Console.WriteLine($"    ✓ {copiedTrigger.Name} (ParentId={copiedTrigger.ParentId})");
+                target.TriggerItems.Add(copiedTrigger); // Add to end (after categories)
+                Console.WriteLine($"    + {copiedTrigger.Name} (ParentId={copiedTrigger.ParentId})");
             }
 
             // Final fix to ensure everything is correct
@@ -440,12 +443,12 @@ namespace WTGMerger127
                 RemoveCategory(target, categoryName);
             }
 
-            // CRITICAL: For old format, new category ID MUST equal position
-            var existingCategoryCount = target.TriggerItems
+            // CRITICAL: For old format, new category MUST be inserted at correct position
+            var existingCategories = target.TriggerItems
                 .OfType<TriggerCategoryDefinition>()
-                .Count();
+                .ToList();
 
-            int newCategoryId = existingCategoryCount;
+            int newCategoryId = existingCategories.Count;
             int newParentId = (target.SubVersion == null) ? 0 : -1; // 0 for old format
 
             var newCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
@@ -457,8 +460,9 @@ namespace WTGMerger127
                 IsExpanded = sourceCategory.IsExpanded
             };
 
-            target.TriggerItems.Add(newCategory);
-            Console.WriteLine($"  ✓ Added category (ID={newCategoryId}, ParentId={newParentId}, Position={existingCategoryCount})");
+            // Insert at position = category count (right after last category)
+            target.TriggerItems.Insert(existingCategories.Count, newCategory);
+            Console.WriteLine($"  + Added category at position {existingCategories.Count} (ID={newCategoryId}, ParentId={newParentId})");
 
             // Copy variables
             CopyMissingVariables(source, target, sourceTriggers);
@@ -487,7 +491,7 @@ namespace WTGMerger127
 
             if (DEBUG_MODE)
             {
-                Console.WriteLine($"[DEBUG] ═══ AutoFixCategoriesForFormat START ═══");
+                Console.WriteLine($"[DEBUG] === AutoFixCategoriesForFormat START ===");
             }
 
             var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
@@ -499,7 +503,7 @@ namespace WTGMerger127
                 {
                     if (DEBUG_MODE)
                     {
-                        Console.WriteLine($"[DEBUG] Fixing category '{category.Name}': ParentId {category.ParentId} → 0");
+                        Console.WriteLine($"[DEBUG] Fixing category '{category.Name}': ParentId {category.ParentId} -> 0");
                     }
                     category.ParentId = 0;
                 }
@@ -514,7 +518,7 @@ namespace WTGMerger127
                     if (trigger.ParentId >= categories.Count)
                     {
                         Console.ForegroundColor = ConsoleColor.Yellow;
-                        Console.WriteLine($"⚠ Trigger '{trigger.Name}' has invalid ParentId={trigger.ParentId} (max={categories.Count - 1})");
+                        Console.WriteLine($"! Trigger '{trigger.Name}' has invalid ParentId={trigger.ParentId} (max={categories.Count - 1})");
                         Console.WriteLine($"  Setting to 0 (first category)");
                         Console.ResetColor();
                         trigger.ParentId = 0;
@@ -524,7 +528,7 @@ namespace WTGMerger127
 
             if (DEBUG_MODE)
             {
-                Console.WriteLine($"[DEBUG] ═══ AutoFixCategoriesForFormat END ═══");
+                Console.WriteLine($"[DEBUG] === AutoFixCategoriesForFormat END ===");
             }
         }
 
@@ -533,9 +537,9 @@ namespace WTGMerger127
         /// </summary>
         static void SaveMergedMap(string targetPath, string outputPath, MapTriggers triggers)
         {
-            Console.WriteLine($"\n╔══════════════════════════════════════════════════════════╗");
-            Console.WriteLine($"║                    SAVING MERGED MAP                     ║");
-            Console.WriteLine($"╚══════════════════════════════════════════════════════════╝");
+            Console.WriteLine($"\n===============================================================");
+            Console.WriteLine($"                    SAVING MERGED MAP");
+            Console.WriteLine($"===============================================================");
 
             // PRE-SAVE VERIFICATION
             Console.WriteLine($"\nFormat: {triggers.FormatVersion}");
@@ -549,26 +553,38 @@ namespace WTGMerger127
             if (triggers.SubVersion == null)
             {
                 Console.ForegroundColor = ConsoleColor.Cyan;
-                Console.WriteLine("\n✓ SubVersion=null preserved (WC3 1.27 old format)");
+                Console.WriteLine("\n+ SubVersion=null preserved (WC3 1.27 old format)");
                 Console.ResetColor();
             }
 
             // Final category validation
             var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
             bool allCorrect = true;
+
             for (int i = 0; i < categories.Count; i++)
             {
+                int actualPosition = triggers.TriggerItems.IndexOf(categories[i]);
+
                 if (categories[i].Id != i)
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"❌ ERROR: Category at position {i} has ID={categories[i].Id} (should be {i})");
+                    Console.WriteLine($"ERROR: Category '{categories[i].Name}' has ID={categories[i].Id} (should be {i})");
                     Console.ResetColor();
                     allCorrect = false;
                 }
+
+                if (actualPosition != i)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"ERROR: Category '{categories[i].Name}' at TriggerItems[{actualPosition}] (should be at [{i}])");
+                    Console.ResetColor();
+                    allCorrect = false;
+                }
+
                 if (triggers.SubVersion == null && categories[i].ParentId != 0)
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"❌ ERROR: Category '{categories[i].Name}' has ParentId={categories[i].ParentId} (should be 0 for old format)");
+                    Console.WriteLine($"ERROR: Category '{categories[i].Name}' has ParentId={categories[i].ParentId} (should be 0)");
                     Console.ResetColor();
                     allCorrect = false;
                 }
@@ -577,7 +593,7 @@ namespace WTGMerger127
             if (!allCorrect)
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine("\n⚠ Validation failed! Running final fix...");
+                Console.WriteLine("\n! Validation failed! Running final fix...");
                 Console.ResetColor();
                 FixCategoryIdsForOldFormat(triggers);
                 AutoFixCategoriesForFormat(triggers);
@@ -585,7 +601,7 @@ namespace WTGMerger127
             else
             {
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("\n✓ Pre-save validation passed!");
+                Console.WriteLine("\n+ Pre-save validation passed!");
                 Console.ResetColor();
             }
 
@@ -618,7 +634,7 @@ namespace WTGMerger127
                 if (triggers.SubVersion == null && verified.SubVersion != null)
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine("❌ ERROR: SubVersion changed from null!");
+                    Console.WriteLine("ERROR: SubVersion changed from null!");
                     Console.ResetColor();
                     success = false;
                 }
@@ -626,7 +642,7 @@ namespace WTGMerger127
                 if (verified.Variables.Count != triggers.Variables.Count)
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"❌ ERROR: Variable count mismatch!");
+                    Console.WriteLine($"ERROR: Variable count mismatch!");
                     Console.ResetColor();
                     success = false;
                 }
@@ -634,15 +650,15 @@ namespace WTGMerger127
                 if (success)
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine("\n✓✓✓ SAVE SUCCESSFUL! ✓✓✓");
-                    Console.WriteLine("✓ Open in World Editor 1.27 to verify triggers appear in correct categories");
+                    Console.WriteLine("\n+++ SAVE SUCCESSFUL! +++");
+                    Console.WriteLine("+ Open in World Editor 1.27 to verify triggers appear in correct categories");
                     Console.ResetColor();
                 }
             }
             catch (Exception ex)
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"⚠ Could not verify: {ex.Message}");
+                Console.WriteLine($"! Could not verify: {ex.Message}");
                 Console.ResetColor();
             }
         }
@@ -675,17 +691,18 @@ namespace WTGMerger127
             for (int i = 0; i < categories.Count; i++)
             {
                 var cat = categories[i];
+                int actualPos = triggers.TriggerItems.IndexOf(cat);
                 var triggerCount = GetTriggersInCategory(triggers, cat.Name).Count;
 
-                // Highlight if ID != Position
-                if (cat.Id != i)
+                // Highlight if ID != expected or position is wrong
+                if (cat.Id != i || actualPos != i)
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
                 }
 
-                Console.WriteLine($"  {i,3} | {cat.Id,3} | {cat.ParentId,8} | {cat.Name} ({triggerCount} triggers)");
+                Console.WriteLine($"  {actualPos,3} | {cat.Id,3} | {cat.ParentId,8} | {cat.Name} ({triggerCount} triggers)");
 
-                if (cat.Id != i)
+                if (cat.Id != i || actualPos != i)
                 {
                     Console.ResetColor();
                 }
@@ -735,20 +752,18 @@ namespace WTGMerger127
             if (category == null)
                 return;
 
-            var itemsToRemove = new List<TriggerItem> { category };
-            var categoryIndex = triggers.TriggerItems.IndexOf(category);
+            // Remove category
+            triggers.TriggerItems.Remove(category);
 
-            for (int i = categoryIndex + 1; i < triggers.TriggerItems.Count; i++)
-            {
-                var item = triggers.TriggerItems[i];
-                if (item is TriggerCategoryDefinition)
-                    break;
-                itemsToRemove.Add(item);
-            }
+            // Remove all triggers in this category
+            var triggersToRemove = triggers.TriggerItems
+                .OfType<TriggerDefinition>()
+                .Where(t => t.ParentId == category.Id)
+                .ToList();
 
-            foreach (var item in itemsToRemove)
+            foreach (var trigger in triggersToRemove)
             {
-                triggers.TriggerItems.Remove(item);
+                triggers.TriggerItems.Remove(trigger);
             }
         }
 
@@ -863,7 +878,7 @@ namespace WTGMerger127
 
             if (copied > 0)
             {
-                Console.WriteLine($"  ✓ Copied {copied} variable(s)");
+                Console.WriteLine($"  + Copied {copied} variable(s)");
             }
         }
 
@@ -923,9 +938,9 @@ namespace WTGMerger127
 
         static void ShowComprehensiveDebugInfo(MapTriggers source, MapTriggers target)
         {
-            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
-            Console.WriteLine("║              COMPREHENSIVE DEBUG INFO                    ║");
-            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+            Console.WriteLine("\n===============================================================");
+            Console.WriteLine("              COMPREHENSIVE DEBUG INFO");
+            Console.WriteLine("===============================================================");
 
             Console.WriteLine("\n=== SOURCE MAP ===");
             Console.WriteLine($"Format: {source.FormatVersion}");
@@ -950,13 +965,14 @@ namespace WTGMerger127
             for (int i = 0; i < categories.Count; i++)
             {
                 var cat = categories[i];
-                bool match = (cat.Id == i);
-                string matchStr = match ? "✓" : "✗";
+                int actualPos = target.TriggerItems.IndexOf(cat);
+                bool match = (cat.Id == i && actualPos == i);
+                string matchStr = match ? "+" : "X";
 
                 if (!match)
                     Console.ForegroundColor = ConsoleColor.Red;
 
-                Console.WriteLine($"{i,3} | {cat.Id,3} | {cat.ParentId,8} | {matchStr,6} | {cat.Name}");
+                Console.WriteLine($"{actualPos,3} | {cat.Id,3} | {cat.ParentId,8} | {matchStr,6} | {cat.Name}");
 
                 if (!match)
                     Console.ResetColor();
@@ -1021,7 +1037,7 @@ namespace WTGMerger127
             }
 
             writeToMethod.Invoke(triggers, new object[] { writer });
-            Console.WriteLine($"✓ Wrote {fileStream.Length} bytes");
+            Console.WriteLine($"+ Wrote {fileStream.Length} bytes");
         }
 
         static bool IsMapArchive(string filePath)
@@ -1173,7 +1189,7 @@ namespace WTGMerger127
 
             Console.WriteLine($"  Saving to {outputArchivePath}...");
             builder.SaveTo(outputArchivePath);
-            Console.WriteLine($"  ✓ Archive saved!");
+            Console.WriteLine($"  + Archive saved!");
         }
     }
 }
