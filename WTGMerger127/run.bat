@@ -1,8 +1,8 @@
 @echo off
-echo ╔═══════════════════════════════════════════════════════════╗
-echo ║   WTG MERGER FOR WARCRAFT 3 1.27 (OLD FORMAT)            ║
-echo ║   Position-Based Category IDs - SubVersion=null          ║
-echo ╚═══════════════════════════════════════════════════════════╝
+echo ===============================================================
+echo    WTG MERGER FOR WARCRAFT 3 1.27 (OLD FORMAT)
+echo    Position-Based Category IDs - SubVersion=null
+echo ===============================================================
 echo.
 
 REM Check if .NET is installed
@@ -33,13 +33,13 @@ if %errorlevel% neq 0 (
 echo.
 echo Build successful! Running application...
 echo.
-echo ═══════════════════════════════════════════════════════════
+echo ===============================================================
 echo.
 
 REM Run the application
 dotnet run --configuration Release
 
 echo.
-echo ═══════════════════════════════════════════════════════════
+echo ===============================================================
 echo Press any key to exit...
 pause >nul
