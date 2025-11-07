@@ -1,284 +1,513 @@
-# WTG Trigger Merger
+# WC3 1.27 Trigger Merger (Old Format)
 
-A console application to merge triggers between Warcraft 3 maps using the War3Net libraries.
+A production-ready C# .NET 8.0 console application for merging triggers between Warcraft 3 1.27 maps while maintaining **full compatibility** with World Editor 1.27 and the **old format** (`SubVersion=null`).
 
-## 🎉 NEW: Direct .w3x Map Support!
+## Features
 
-**No more manual MPQ extraction!** The tool now works directly with `.w3x` and `.w3m` map files!
+- ✅ **WC3 1.27 Old Format Support** - Preserves `SubVersion=null` for compatibility
+- ✅ **Position-Based Category IDs** - Ensures category IDs match positions (critical for old format)
+- ✅ **Category Structure Validation** - Automatically fixes mismatched IDs
+- ✅ **Interactive Menu** - Easy-to-use interface for selective merging
+- ✅ **Variable Copy** - Automatically copies variables used by triggers
+- ✅ **Map Archive Support** - Works with `.w3x`, `.w3m`, and raw `.wtg` files
+- ✅ **JASS Synchronization** - Option to delete `war3map.j` for regeneration
+- ✅ **Debug Mode** - Detailed logging for troubleshooting
 
-```cmd
-# Just use your map files directly:
-dotnet run -- "SourceMap.w3x" "TargetMap.w3x" "Output.w3x"
+## Quick Start
 
-# The tool automatically:
-✓ Extracts war3map.wtg from the archives
-✓ Processes your trigger operations
-✓ Saves changes back to the map
-✓ Optionally removes war3map.j for proper synchronization
+### Prerequisites
+
+- **.NET 8.0 SDK** - Download from [https://dotnet.microsoft.com/download/dotnet/8.0](https://dotnet.microsoft.com/download/dotnet/8.0)
+- **WC3 1.27 maps** - Source and target maps to merge
+
+### Installation
+
+1. Place your **source map** (with triggers to copy) in the `../Source/` folder
+2. Place your **target map** (to merge triggers into) in the `../Target/` folder
+3. Run `run.bat`
+
+### Basic Usage
+
+```bash
+# Auto-detect maps in Source and Target folders
+run.bat
+
+# Or specify custom paths
+dotnet run -- "path/to/source.w3x" "path/to/target.w3x" "path/to/output.w3x"
 ```
 
-**See [W3X-SUPPORT.md](W3X-SUPPORT.md) for complete details!**
+### Example Workflow
+
+1. **List categories** from source and target maps
+2. **Copy entire category** or **specific triggers**
+3. **Save and exit** - merged map is created with `_merged` suffix
+4. **Open in World Editor 1.27** - triggers appear in correct categories
 
 ---
 
-## What This Does
-
-This tool allows you to:
-- **NEW:** Work directly with `.w3x` and `.w3m` map archives
-- **NEW:** Automatically handle war3map.j synchronization
-- Read raw `.wtg` (trigger) files
-- List all trigger categories and their contents
-- Copy entire categories or specific triggers
-- Copy triggers to different categories
-- Properly handle trigger data using War3Net's built-in parsers
-
-## Why Use War3Net DLLs?
-
-The War3Net libraries provide:
-- ✅ **Proper WTG parsing**: Handles all WTG format versions (v4, v7, and newer)
-- ✅ **Data validation**: Validates file headers and structure
-- ✅ **Complete trigger support**: Preserves all trigger properties, events, conditions, and actions
-- ✅ **Type safety**: Strong typing for all trigger components
-- ✅ **Deep copying**: Properly copies nested functions and parameters
-
-## Setup
-
-1. Make sure you have the .NET SDK installed (8.0 or later)
-2. The War3Net DLLs are already referenced from the `../Libs/` folder
-
-## Build
-
-```bash
-cd WTGMerger
-dotnet build
-```
-
-## Usage
-
-### Interactive Mode
-
-```bash
-dotnet run
-```
-
-The program will:
-1. Read the source WTG file from `../Source/war3map.wtg`
-2. Read the target WTG file from `../Target/war3map.wtg`
-3. Display all categories from both files
-4. Ask you which category to copy
-5. Merge the selected category and save to `../Target/war3map_merged.wtg`
-
-### Modify Source Code for Custom Paths
-
-Edit `Program.cs` and change these lines:
-
-```csharp
-var sourcePath = "../Source/war3map.wtg";
-var targetPath = "../Target/war3map.wtg";
-var outputPath = "../Target/war3map_merged.wtg";
-```
-
 ## How It Works
 
-### 1. Reading WTG Files
+### The Old Format Challenge
 
-```csharp
-using var fileStream = File.OpenRead(filePath);
-using var reader = new BinaryReader(fileStream);
-return new MapTriggers(reader, TriggerData.Default);
+WC3 1.27 uses an **old format** (`SubVersion=null`) with specific requirements:
+
+| Requirement | Description |
+|-------------|-------------|
+| **Category ID = Position** | Category ID MUST equal its position in `TriggerItems` array |
+| **Category ParentId = 0** | All root categories MUST have `ParentId=0` (not -1) |
+| **Trigger ParentId = Position** | Trigger `ParentId` references the POSITION of its category |
+| **SubVersion = null** | NEVER change `SubVersion` from `null` |
+| **Categories First** | ALL categories MUST appear before triggers in `TriggerItems` |
+
+### Why Position-Based IDs?
+
+In WC3 1.27 old format, trigger `ParentId` is a **POSITION INDEX** into the `TriggerItems` array, NOT an ID lookup.
+
+**Example:**
+```
+TriggerItems array:
+[0] Category "Init" (ID=0)
+[1] Category "Heroes" (ID=1)
+[2] Category "Spells" (ID=2)
+[3] Trigger "Map Init" (ParentId=0 → looks up position 0 = "Init")
+[4] Trigger "Hero Spawn" (ParentId=1 → looks up position 1 = "Heroes")
 ```
 
-The `MapTriggers` constructor from War3Net.Build.Core:
-- Validates the file header signature (`WTG!`)
-- Detects the format version (v4, v7, or newer)
-- Parses all trigger items (categories and triggers)
-- Validates trigger data structure
+If category IDs don't match positions, triggers appear in wrong categories in World Editor!
 
-### 2. Merging Categories
+### Key Functions
 
-The merge process:
-1. Finds the source category by name
-2. Gets all triggers belonging to that category
-3. Removes the category from target if it already exists
-4. Creates a new category in the target
-5. Deep copies all triggers with new IDs
-6. Preserves all trigger properties, functions, and parameters
+#### `FixCategoryIdsForOldFormat()`
 
-### 3. Writing WTG Files
+The **most critical function** - ensures category IDs match positions:
 
-```csharp
-using var fileStream = File.Create(filePath);
-using var writer = new BinaryWriter(fileStream);
-triggers.WriteTo(writer);
+1. Get all categories from `TriggerItems`
+2. Build mapping: `oldId → newId` (where `newId = position`)
+3. Remove ALL categories from `TriggerItems`
+4. Re-insert categories at positions 0, 1, 2, 3... with `ID = position`
+5. Update all trigger `ParentIds` using the mapping
+6. Set all category `ParentIds` to 0
+
+**Called:**
+- Immediately after loading maps
+- After merging categories
+- After copying triggers
+- Before saving
+
+#### `CopySpecificTriggers()`
+
+Copies specific triggers from source to target:
+
+1. Find triggers by name in source category
+2. Find or create destination category (with `ID = category count`, `ParentId = 0`)
+3. Insert category at correct position (NOT using `.Add()`!)
+4. Copy variables used by triggers
+5. Copy triggers with `ParentId = destination category ID`
+6. Call `FixCategoryIdsForOldFormat()` to ensure consistency
+
+#### `MergeCategory()`
+
+Merges entire category with all its triggers:
+
+1. Find source category by name
+2. Get all triggers in source category
+3. If category exists in target, remove it and fix structure
+4. Create new category with `ID = category count`, `ParentId = 0`
+5. Insert at correct position
+6. Copy variables and triggers
+7. Call `FixCategoryIdsForOldFormat()`
+
+#### `SaveMergedMap()`
+
+Validates and saves with format preservation:
+
+1. **Pre-save validation:**
+   - Verify `SubVersion == null` (not changed)
+   - Verify category IDs match positions
+   - Verify category `ParentIds == 0`
+   - Verify trigger `ParentIds` reference valid categories
+2. **Save:**
+   - If `.w3x/.w3m`: Update `war3map.wtg` in archive
+   - Optionally delete `war3map.j` (recommended)
+   - If raw `.wtg`: Write directly
+3. **Post-save verification:**
+   - Read file back and verify counts
+   - Verify `SubVersion` still null
+
+---
+
+## Menu Options
+
+```
+1. List all categories from SOURCE
+   - Shows all categories with IDs, positions, and trigger counts
+
+2. List all categories from TARGET
+   - Shows target categories with validation (ID vs position)
+
+3. List triggers in a specific category
+   - Shows triggers with ParentId and enabled status
+
+4. Copy ENTIRE category
+   - Copies category and all its triggers
+   - Removes old category if it exists
+
+5. Copy SPECIFIC trigger(s)
+   - Copy one or more triggers (comma-separated)
+   - Can specify different destination category
+
+6. Show format & structure debug info
+   - Shows format version, SubVersion, category structure
+   - Highlights ID/position mismatches
+
+7. Manually fix target category IDs
+   - Force-fixes category structure if needed
+   - Usually not necessary (auto-fixed after operations)
+
+8. Toggle debug mode
+   - Shows detailed logging of operations
+   - Useful for troubleshooting
+
+9. Save and exit
+   - Validates structure before saving
+   - Creates output file with verification
+
+0. Exit without saving
+   - Discards all changes
 ```
 
-## Common Issues and Solutions
+---
 
-### "Trigger data invalid" Error
+## Technical Details
 
-**Cause**: This usually happens when:
-- The WTG file is corrupted
-- The file format version is not supported
-- The file is not actually a WTG file
+### File Format Specifications
 
-**Solution**: The War3Net parser includes proper validation:
+#### Old Format (WC3 1.27) - What Gets Saved
+
+| Item Type | ID Saved? | ParentId Saved? | Position Saved? |
+|-----------|-----------|-----------------|-----------------|
+| Category | ✅ YES | ❌ NO (always reads as 0) | ❌ NO |
+| Trigger | ❌ NO (becomes 0) | ✅ YES | ❌ NO |
+| Variable | ❌ NO (becomes 0) | ❌ NO | ❌ NO |
+
+#### Format Detection
+
 ```csharp
-// From War3Net.Build.Core
-if (header != FileFormatSignature)
+if (mapTriggers.SubVersion == null)
 {
-    throw new InvalidDataException("Expected file header signature at the start of .wtg file.");
+    // OLD FORMAT - WC3 1.27
+    // Use position-based category IDs
+    // Category ParentId = 0
+}
+else
+{
+    // ENHANCED FORMAT - WC3 Reforged
+    // Use ID-based lookups
+    // Category ParentId can be -1
 }
 ```
 
-### File Version Not Supported
-
-**Supported versions**:
-- Format v4 (Reign of Chaos)
-- Format v7 (The Frozen Throne)
-- Sub-versions for v1.31+, v1.32+, v1.33+, v1.36+
-
-### Variables Not Copied
-
-This tool only copies **trigger categories and their triggers**. It does NOT copy:
-- Global variables (these remain unchanged in the target)
-- Custom script code
-- Trigger strings
-
-If you need to copy variables, you can extend the code to merge the `triggers.Variables` list.
-
-## Example Output
+### Project Structure
 
 ```
-=== War3Net WTG Trigger Merger ===
-
-Reading source WTG: ../Source/war3map.wtg
-✓ Source loaded: 45 items, 12 variables
-
-Reading target WTG: ../Target/war3map.wtg
-✓ Target loaded: 32 items, 8 variables
-
-=== Source Categories ===
-  - Initialization (3 triggers)
-  - Player Actions (7 triggers)
-  - Game Logic (15 triggers)
-
-=== Target Categories (Before Merge) ===
-  - Setup (2 triggers)
-  - Quests (5 triggers)
-
-Enter category name to copy: Game Logic
-
-Merging category 'Game Logic' from source to target...
-  Found 15 triggers in source category
-  Added category 'Game Logic' to target
-    + Copied trigger: Initialize Variables
-    + Copied trigger: Player Enters Region
-    + Copied trigger: Unit Dies
-    ... (12 more)
-
-Saving merged WTG to: ../Target/war3map_merged.wtg
-✓ Merge complete!
-
-=== Target Categories (After Merge) ===
-  - Setup (2 triggers)
-  - Quests (5 triggers)
-  - Game Logic (15 triggers)
+WTGMerger/
+├── Program.cs           # Main implementation (1200+ lines)
+├── WTGMerger.csproj     # .NET 8.0 project configuration
+├── run.bat              # Windows batch script
+├── README.md            # This file
+└── ../Libs/             # War3Net DLLs
+    ├── War3Net.Build.Core.dll
+    ├── War3Net.Build.dll
+    ├── War3Net.Common.dll
+    └── War3Net.IO.Mpq.dll
 ```
 
-## Advantages Over Manual Binary Manipulation
+### Dependencies
 
-### ❌ Manual Approach (What Fails)
+- **War3Net.Build.Core** - Core trigger structures
+- **War3Net.Build** - Map building utilities
+- **War3Net.Common** - Common utilities
+- **War3Net.IO.Mpq** - MPQ archive reading/writing
+
+---
+
+## Important Rules
+
+### ❌ DO NOT
+
+1. **DO NOT change SubVersion**
+   ```csharp
+   // WRONG:
+   triggers.SubVersion = MapTriggersSubVersion.v4; // Breaks 1.27!
+
+   // CORRECT:
+   // Leave SubVersion alone, never modify it
+   ```
+
+2. **DO NOT use .Add() for categories**
+   ```csharp
+   // WRONG:
+   target.TriggerItems.Add(newCategory); // Goes to end!
+
+   // CORRECT:
+   target.TriggerItems.Insert(categoryCount, newCategory);
+   ```
+
+3. **DO NOT forget to fix structure**
+   ```csharp
+   // WRONG:
+   RemoveCategory(target, "Heroes");
+   AddNewCategory(target, "Spells");
+   // Categories now have misaligned IDs!
+
+   // CORRECT:
+   RemoveCategory(target, "Heroes");
+   AddNewCategory(target, "Spells");
+   FixCategoryIdsForOldFormat(target); // Fix everything!
+   ```
+
+### ✅ DO
+
+1. **Always use ParentId=0 for categories**
+2. **Always set category ID = position**
+3. **Always call FixCategoryIdsForOldFormat() after structural changes**
+4. **Always verify SubVersion is still null before saving**
+5. **Always place categories before triggers in TriggerItems**
+
+---
+
+## Troubleshooting
+
+### Triggers appear in wrong categories
+
+**Cause:** Category IDs don't match positions
+
+**Solution:** Use option 7 to manually fix category IDs, or rebuild from scratch
+
+### Map won't open in World Editor
+
+**Cause:** SubVersion was changed from null, or structure is corrupted
+
+**Solution:**
+1. Check if SubVersion is still null (use debug mode)
+2. Verify category structure with option 6
+3. Try loading the original target map
+
+### "Trigger data invalid" error
+
+**Cause:** `war3map.j` is out of sync with `war3map.wtg`
+
+**Solution:**
+1. When saving, choose option 1 to delete war3map.j
+2. World Editor will regenerate it when you open the map
+
+### Variables are missing
+
+**Cause:** Variable copying failed, or variables use different IDs
+
+**Solution:**
+1. Enable debug mode (option 8)
+2. Check which variables are being detected
+3. Manually verify variable names match in source and target
+
+### Build fails
+
+**Cause:** .NET SDK not installed or wrong version
+
+**Solution:**
+1. Install .NET 8.0 SDK from official website
+2. Run `dotnet --version` to verify
+3. Check that War3Net DLLs exist in ../Libs/
+
+---
+
+## Advanced Usage
+
+### Command Line Arguments
+
+```bash
+# Auto-detect maps in Source and Target folders
+dotnet run
+
+# Specify source and target
+dotnet run -- "C:/Maps/source.w3x" "C:/Maps/target.w3x"
+
+# Specify source, target, and output
+dotnet run -- "source.w3x" "target.w3x" "merged.w3x"
+```
+
+### Working with Raw .wtg Files
+
+1. Extract `war3map.wtg` from your `.w3x` using an MPQ editor
+2. Place `war3map.wtg` files in Source and Target folders
+3. Run the merger
+4. Replace `war3map.wtg` in your map archive
+5. **Delete `war3map.j`** from the archive
+6. Open in World Editor to regenerate
+
+### Debug Mode
+
+Enable debug mode (option 8) to see:
+- Category ID → position mappings
+- Trigger ParentId updates
+- Variable detection details
+- Format version information
+- Structure validation results
+
+Example debug output:
+```
+[DEBUG] === FixCategoryIdsForOldFormat (target) ===
+[DEBUG] Old format detected (SubVersion=null)
+[DEBUG] Categories found: 5
+[DEBUG] Category 'Init': ID=2, Position=0, Expected ID=0
+[DEBUG] Re-inserted 'Init' at position 0 with ID=0, ParentId=0
+[DEBUG] Updated trigger 'Map Init': ParentId 2 → 0
+[DEBUG] === Fix Complete ===
+```
+
+---
+
+## Success Criteria
+
+The merger is successful when:
+
+### File Operations
+- ✅ Reads WC3 1.27 maps without errors
+- ✅ Writes merged maps without corruption
+
+### Category Management
+- ✅ Category IDs always equal positions
+- ✅ Category ParentIds always 0 (old format)
+
+### Trigger Management
+- ✅ Trigger ParentIds reference correct category positions
+- ✅ Triggers appear in correct categories in World Editor
+- ✅ Trigger code intact (events, conditions, actions)
+
+### World Editor Compatibility
+- ✅ Merged map opens without errors in World Editor 1.27
+- ✅ Triggers appear in correct categories (not nested)
+- ✅ Variables are accessible
+- ✅ Map runs in-game without errors
+
+---
+
+## Technical Background
+
+### Why This Tool Exists
+
+The original WTGMerger was designed for WC3 Reforged's **enhanced format** (`SubVersion=v4`) which uses:
+- `ParentId=-1` for root categories
+- ID-based lookups (not position-based)
+- Category ParentId saved to file
+
+WC3 1.27 uses the **old format** (`SubVersion=null`) which has different rules:
+- `ParentId=0` for root categories (NOT -1)
+- Position-based lookups (ParentId is array index)
+- Category ParentId NOT saved to file (always reads as 0)
+
+Mixing these formats causes triggers to appear in wrong categories or the map to fail to open.
+
+### The Core Truth
+
+**In WC3 1.27 old format, trigger `ParentId` is a POSITION INDEX into the `TriggerItems` array.**
+
+This is not a bug or design choice - it's how the file format works. Category IDs MUST equal their positions for the lookup to work correctly.
+
+### War3Net Library Usage
+
+This tool uses reflection to access internal War3Net methods:
 
 ```csharp
-// Reading raw bytes - NO validation
-byte[] data = File.ReadAllBytes("war3map.wtg");
+// Reading triggers
+var constructor = typeof(MapTriggers).GetConstructor(
+    BindingFlags.NonPublic | BindingFlags.Instance,
+    null,
+    new[] { typeof(BinaryReader), typeof(TriggerData) },
+    null);
 
-// Manually parsing - error prone
-int version = BitConverter.ToInt32(data, 4);
-// ... more manual parsing
-// ⚠️ Easy to get offsets wrong
-// ⚠️ No validation
-// ⚠️ Doesn't handle different format versions
+// Writing triggers
+var writeMethod = typeof(MapTriggers).GetMethod(
+    "WriteTo",
+    BindingFlags.NonPublic | BindingFlags.Instance,
+    null,
+    new[] { typeof(BinaryWriter) },
+    null);
 ```
 
-### ✅ War3Net Approach (What Works)
+---
 
-```csharp
-// Proper parsing with validation
-using var reader = new BinaryReader(fileStream);
-var triggers = new MapTriggers(reader, TriggerData.Default);
+## Contributing
 
-// Strongly typed access
-foreach (var category in triggers.TriggerItems.OfType<TriggerCategoryDefinition>())
-{
-    Console.WriteLine(category.Name);
-}
+If you find issues or want to add features:
 
-// Proper serialization
-triggers.WriteTo(writer);
-```
+1. Test with WC3 1.27 maps first
+2. Verify the output map opens in World Editor 1.27
+3. Check that SubVersion remains null
+4. Validate category structure with debug mode
 
-## Extending the Tool
-
-### Copy Multiple Categories
-
-```csharp
-var categoriesToCopy = new[] { "Initialization", "Game Logic", "Quests" };
-
-foreach (var categoryName in categoriesToCopy)
-{
-    MergeCategory(sourceTriggers, targetTriggers, categoryName);
-}
-```
-
-### Copy Variables Too
-
-```csharp
-// Merge variables from source to target
-foreach (var sourceVar in sourceTriggers.Variables)
-{
-    // Check if variable already exists
-    var exists = targetTriggers.Variables
-        .Any(v => v.Name == sourceVar.Name);
-
-    if (!exists)
-    {
-        // Create a copy with proper structure
-        var newVar = new VariableDefinition
-        {
-            Name = sourceVar.Name,
-            Type = sourceVar.Type,
-            IsArray = sourceVar.IsArray,
-            ArraySize = sourceVar.ArraySize,
-            IsInitialized = sourceVar.IsInitialized,
-            InitialValue = sourceVar.InitialValue
-        };
-
-        targetTriggers.Variables.Add(newVar);
-    }
-}
-```
-
-### Work with MPQ Archives
-
-If you have `.w3x` or `.w3m` files instead of raw `.wtg`:
-
-```csharp
-using War3Net.IO.Mpq;
-
-using var archive = MpqArchive.Open("map.w3x", true);
-using var triggerStream = archive.OpenFile("war3map.wtg");
-using var reader = new BinaryReader(triggerStream);
-
-var triggers = new MapTriggers(reader, TriggerData.Default);
-```
-
-## References
-
-- [War3Net GitHub](https://github.com/Drake53/War3Net)
-- [War3Net.Build.Core Documentation](https://github.com/Drake53/War3Net/tree/master/src/War3Net.Build.Core)
-- [WTG File Format Specification](https://github.com/stijnherfst/HiveWE/wiki/war3map.wtg-Trigger-File-Format)
+---
 
 ## License
 
-This tool uses the War3Net libraries which are licensed under the MIT License.
+This project uses War3Net libraries. See War3Net repository for license details.
+
+---
+
+## Credits
+
+- **War3Net** - Pik for the excellent WC3 modding libraries
+- **Warcraft 3 Community** - For documenting the old format quirks
+
+---
+
+## Version History
+
+### v2.0.0 - Old Format Support (Current)
+- Complete rewrite for WC3 1.27 old format (`SubVersion=null`)
+- Position-based category ID system
+- Automatic structure fixing with `FixCategoryIdsForOldFormat()`
+- ParentId=0 for root categories (old format standard)
+- Pre/post-save validation
+- Debug mode with detailed logging
+
+### v1.0.0 - Enhanced Format (Previous)
+- Designed for WC3 Reforged enhanced format (`SubVersion=v4`)
+- Used ParentId=-1 for root categories
+- ID-based lookups
+
+---
+
+## FAQ
+
+**Q: Can I use this with WC3 Reforged maps?**
+A: No, this version is specifically for WC3 1.27 old format. Reforged uses enhanced format with different rules.
+
+**Q: Why do categories need ParentId=0 instead of -1?**
+A: Old format doesn't save category ParentId to file, so it always reads as 0. Using -1 would be lost on save.
+
+**Q: What if my source map is Reforged format?**
+A: The tool will detect this and skip position-fixing. However, merging between formats may cause issues.
+
+**Q: Do I need to delete war3map.j?**
+A: Yes! The JASS code file must match the trigger structure file. Deleting it forces World Editor to regenerate it correctly.
+
+**Q: Can I merge triggers between different WC3 versions?**
+A: Not recommended. Stick to WC3 1.27 → 1.27 for best results.
+
+**Q: Why does the tool use reflection?**
+A: War3Net's reading/writing methods are internal. Reflection allows us to access them without modifying the library.
+
+---
+
+## Support
+
+For issues, questions, or contributions:
+- Check debug output (option 8)
+- Verify file format (option 6)
+- Test with clean WC3 1.27 maps first
+- Read this documentation thoroughly
+
+---
+
+**Made with ❤️ for the Warcraft 3 modding community**

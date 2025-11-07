@@ -1,7 +1,7 @@
 @echo off
-echo ===================================
-echo    War3Net WTG Trigger Merger
-echo ===================================
+echo ===============================================================
+echo    WTG MERGER FOR WARCRAFT 3 1.27 (OLD FORMAT)
+echo ===============================================================
 echo.
 
 REM Check if .NET is installed
@@ -16,29 +16,17 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo .NET SDK found. Building project...
-echo.
-
-REM Build the project
+echo Building project...
 dotnet build --configuration Release
 if %errorlevel% neq 0 (
-    echo.
     echo ERROR: Build failed!
-    echo Please check the error messages above.
     pause
     exit /b 1
 )
 
 echo.
-echo Build successful! Running application...
+echo Running application...
 echo.
-echo ===================================
-echo.
-
-REM Run the application
 dotnet run --configuration Release
 
-echo.
-echo ===================================
-echo Press any key to exit...
-pause >nul
+pause
