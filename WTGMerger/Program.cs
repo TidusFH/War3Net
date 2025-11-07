@@ -980,26 +980,17 @@ namespace WTGMerger
 
                 if (target.SubVersion == null)
                 {
-                    // OLD FORMAT: Category IDs must not conflict with trigger IDs
-                    // Find the max trigger ID and use IDs after that for categories
-                    var existingTriggerIds = target.TriggerItems
-                        .OfType<TriggerDefinition>()
-                        .Select(t => t.Id)
-                        .ToList();
-
-                    int startCategoryId = 0;
-                    if (existingTriggerIds.Count > 0)
-                    {
-                        startCategoryId = existingTriggerIds.Max() + 1;
-                    }
-
+                    // OLD FORMAT: Category ID MUST equal its POSITION!
+                    // CRITICAL: In WC3 1.27, trigger ParentId is used as a POSITION index
+                    // into the category array, NOT as an ID lookup!
+                    // Since trigger IDs aren't saved in old format, there's no collision.
                     var existingCategoryCount = target.TriggerItems.OfType<TriggerCategoryDefinition>().Count();
-                    newCategoryId = startCategoryId + existingCategoryCount;
+                    newCategoryId = existingCategoryCount;  // Position-based ID
                     newParentId = 0;  // Old format uses ParentId=0
 
                     if (DEBUG_MODE)
                     {
-                        Console.WriteLine($"[CREATE-CAT] OLD FORMAT: Max trigger ID = {existingTriggerIds.DefaultIfEmpty(-1).Max()}, assigning category ID = {newCategoryId}");
+                        Console.WriteLine($"[CREATE-CAT] OLD FORMAT: Assigning category ID = position = {newCategoryId}");
                     }
                 }
                 else
