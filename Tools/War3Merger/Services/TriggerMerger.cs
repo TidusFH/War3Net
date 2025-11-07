@@ -52,6 +52,13 @@ namespace War3Net.Tools.TriggerMerger.Services
                 target.TriggerItems = new List<TriggerItem>();
             }
 
+            // CRITICAL: Ensure SubVersion is set so ParentId will be saved to disk
+            // Without SubVersion, the binary serializer skips ParentId field entirely
+            if (target.SubVersion == null)
+            {
+                target.SubVersion = MapTriggersSubVersion.v4;
+            }
+
             // Find all categories in source
             var sourceCategories = source.TriggerItems
                 .OfType<TriggerCategoryDefinition>()
