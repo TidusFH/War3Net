@@ -510,7 +510,7 @@ namespace WTGMerger
 
         /// <summary>
         /// Reads a raw WTG file and returns MapTriggers object
-        /// Uses reflection to access internal constructor
+        /// Uses public War3Net extension method
         /// </summary>
         static MapTriggers ReadWTGFile(string filePath)
         {
@@ -522,40 +522,13 @@ namespace WTGMerger
             using var fileStream = File.OpenRead(filePath);
             using var reader = new BinaryReader(fileStream);
 
-            // Use reflection to call internal constructor: MapTriggers(BinaryReader, TriggerData)
-            var constructorInfo = typeof(MapTriggers).GetConstructor(
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-                null,
-                new[] { typeof(BinaryReader), typeof(TriggerData) },
-                null);
-
-            if (constructorInfo == null)
-            {
-                throw new InvalidOperationException("Could not find internal MapTriggers constructor");
-            }
-
-            try
-            {
-                var triggers = (MapTriggers)constructorInfo.Invoke(new object[] { reader, TriggerData.Default });
-                return triggers;
-            }
-            catch (System.Reflection.TargetInvocationException ex)
-            {
-                // Show the actual inner exception that caused the problem
-                throw new InvalidOperationException(
-                    $"Failed to parse war3map.wtg file. " +
-                    $"Inner error: {ex.InnerException?.Message ?? ex.Message}\n" +
-                    $"This might be due to:\n" +
-                    $"  - Corrupted .wtg file\n" +
-                    $"  - Unsupported WTG format version\n" +
-                    $"  - File from very old or very new WC3 version",
-                    ex.InnerException ?? ex);
-            }
+            // Use public War3Net extension method
+            return reader.ReadMapTriggers();
         }
 
         /// <summary>
         /// Writes MapTriggers object to a WTG file
-        /// Uses reflection to access internal WriteTo method
+        /// Uses public War3Net extension method
         /// </summary>
         static void WriteWTGFile(string filePath, MapTriggers triggers)
         {
@@ -569,20 +542,8 @@ namespace WTGMerger
             using var fileStream = File.Create(filePath);
             using var writer = new BinaryWriter(fileStream);
 
-            // Use reflection to call internal WriteTo method with specific parameter type
-            var writeToMethod = typeof(MapTriggers).GetMethod(
-                "WriteTo",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-                null,
-                new[] { typeof(BinaryWriter) },  // Specify the exact parameter type
-                null);
-
-            if (writeToMethod == null)
-            {
-                throw new InvalidOperationException("Could not find internal WriteTo(BinaryWriter) method");
-            }
-
-            writeToMethod.Invoke(triggers, new object[] { writer });
+            // Use public War3Net extension method
+            writer.Write(triggers);
 
             if (DEBUG_MODE)
             {
@@ -1088,7 +1049,10 @@ namespace WTGMerger
                             IsInitialized = sourceVar.IsInitialized,
                             InitialValue = sourceVar.InitialValue,
                             Id = target.Variables.Count,
-                            ParentId = sourceVar.ParentId
+                            // CRITICAL FIX: Always use -1 for ParentId (root level)
+                            // Never inherit ParentId from source - those indices don't exist in target map
+                            // This prevents WE 1.27 from silently dropping variables with foreign ParentIds
+                            ParentId = -1
                         };
 
                         target.Variables.Add(newVar);
@@ -1113,7 +1077,10 @@ namespace WTGMerger
                         IsInitialized = sourceVar.IsInitialized,
                         InitialValue = sourceVar.InitialValue,
                         Id = target.Variables.Count,
-                        ParentId = sourceVar.ParentId
+                        // CRITICAL FIX: Always use -1 for ParentId (root level)
+                        // Never inherit ParentId from source - those indices don't exist in target map
+                        // This prevents WE 1.27 from silently dropping variables with foreign ParentIds
+                        ParentId = -1
                     };
 
                     target.Variables.Add(newVar);
@@ -2030,36 +1997,8 @@ namespace WTGMerger
             using var triggerStream = archive.OpenFile(triggerFileName);
             using var reader = new BinaryReader(triggerStream);
 
-            // Use reflection to call internal constructor
-            var constructorInfo = typeof(MapTriggers).GetConstructor(
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-                null,
-                new[] { typeof(BinaryReader), typeof(TriggerData) },
-                null);
-
-            if (constructorInfo == null)
-            {
-                throw new InvalidOperationException("Could not find internal MapTriggers constructor");
-            }
-
-            try
-            {
-                var triggers = (MapTriggers)constructorInfo.Invoke(new object[] { reader, TriggerData.Default });
-                return triggers;
-            }
-            catch (System.Reflection.TargetInvocationException ex)
-            {
-                // Show the actual inner exception that caused the problem
-                throw new InvalidOperationException(
-                    $"Failed to parse war3map.wtg from map archive. " +
-                    $"Inner error: {ex.InnerException?.Message ?? ex.Message}\n" +
-                    $"This might be due to:\n" +
-                    $"  - Corrupted .wtg file in the map\n" +
-                    $"  - Unsupported WTG format version\n" +
-                    $"  - Map from very old or very new WC3 version\n" +
-                    $"  - Try extracting war3map.wtg manually and check if it's valid",
-                    ex.InnerException ?? ex);
-            }
+            // Use public War3Net extension method
+            return reader.ReadMapTriggers();
         }
 
         /// <summary>
@@ -2081,38 +2020,33 @@ namespace WTGMerger
             Console.WriteLine($"  Creating archive builder...");
             var builder = new MpqArchiveBuilder(originalArchive);
 
-            // Serialize triggers to memory
-            using var triggerStream = new MemoryStream();
-            using var writer = new BinaryWriter(triggerStream);
-
-            // Use reflection to call internal WriteTo method
-            var writeToMethod = typeof(MapTriggers).GetMethod(
-                "WriteTo",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-                null,
-                new[] { typeof(BinaryWriter) },
-                null);
-
-            if (writeToMethod == null)
+            // Serialize triggers to byte array to ensure data persists beyond stream disposal
+            byte[] triggerData;
+            using (var triggerStream = new MemoryStream())
+            using (var writer = new BinaryWriter(triggerStream))
             {
-                throw new InvalidOperationException("Could not find internal WriteTo(BinaryWriter) method");
+                // Use public War3Net extension method
+                writer.Write(triggers);
+                writer.Flush();
+
+                triggerData = triggerStream.ToArray();
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[DEBUG] Serialized war3map.wtg to memory: {triggerData.Length} bytes");
+                }
             }
-
-            writeToMethod.Invoke(triggers, new object[] { writer });
-            writer.Flush();
-
-            if (DEBUG_MODE)
-            {
-                Console.WriteLine($"[DEBUG] Serialized war3map.wtg to memory: {triggerStream.Length} bytes");
-            }
-
-            triggerStream.Position = 0;
 
             // Remove old trigger file and add new one
             var triggerFileName = MapTriggers.FileName; // "war3map.wtg"
             Console.WriteLine($"  Replacing {triggerFileName}...");
             builder.RemoveFile(triggerFileName);
-            builder.AddFile(MpqFile.New(triggerStream, triggerFileName));
+
+            // Create MpqFile from byte array (data is now safely copied)
+            using (var dataStream = new MemoryStream(triggerData))
+            {
+                builder.AddFile(MpqFile.New(dataStream, triggerFileName));
+            }
 
             // Optionally remove war3map.j to force regeneration
             if (removeJassFile)
