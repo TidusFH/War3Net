@@ -351,74 +351,145 @@ namespace WTGMerger
                                 }
 
                                 // VERIFICATION: Read back the saved file to confirm everything was written correctly
-                                Console.WriteLine("\n=== VERIFICATION: Reading saved file ===");
+                                Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                                Console.WriteLine("║              POST-SAVE VERIFICATION                      ║");
+                                Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+
+                                // Wait a moment for file system to flush
+                                System.Threading.Thread.Sleep(500);
+
                                 try
                                 {
                                     MapTriggers verifyTriggers = ReadMapTriggersAuto(outputPath);
 
-                                    // CRITICAL: Check if variables were preserved
+                                    // === VARIABLE VERIFICATION ===
                                     int originalVarCount = targetTriggers.Variables.Count;
                                     int savedVarCount = verifyTriggers.Variables.Count;
 
-                                    Console.WriteLine($"Variables written: {originalVarCount}");
-                                    Console.WriteLine($"Variables in saved file: {savedVarCount}");
+                                    Console.WriteLine("\n=== Variables ===");
+                                    Console.WriteLine($"Expected: {originalVarCount}");
+                                    Console.WriteLine($"Found:    {savedVarCount}");
 
                                     if (savedVarCount == 0 && originalVarCount > 0)
                                     {
                                         Console.ForegroundColor = ConsoleColor.Red;
-                                        Console.WriteLine("\n❌❌❌ CRITICAL ERROR: ALL VARIABLES WERE LOST! ❌❌❌");
-                                        Console.WriteLine($"❌ We tried to write {originalVarCount} variables but the file has 0!");
-                                        Console.WriteLine("❌ This is a BUG in War3Net library's WriteTo method!");
+                                        Console.WriteLine("\n❌ CRITICAL: ALL VARIABLES WERE LOST!");
                                         Console.WriteLine("❌ DO NOT use this file - it will corrupt your map!");
                                         Console.ResetColor();
                                     }
                                     else if (savedVarCount < originalVarCount)
                                     {
                                         Console.ForegroundColor = ConsoleColor.Red;
-                                        Console.WriteLine($"\n❌ ERROR: Variable loss detected!");
-                                        Console.WriteLine($"❌ {originalVarCount - savedVarCount} variables were lost during save!");
+                                        Console.WriteLine($"\n❌ ERROR: {originalVarCount - savedVarCount} variables were lost!");
                                         Console.ResetColor();
                                     }
-                                    else if (savedVarCount > originalVarCount)
+                                    else if (savedVarCount == originalVarCount)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Green;
+                                        Console.WriteLine("✓ All variables saved correctly!");
+                                        Console.ResetColor();
+                                    }
+
+                                    // Show sample variables
+                                    if (savedVarCount > 0)
+                                    {
+                                        Console.WriteLine("\nSample variables:");
+                                        foreach (var v in verifyTriggers.Variables.Take(5))
+                                        {
+                                            Console.WriteLine($"  - {v.Name} ({v.Type})");
+                                        }
+                                        if (savedVarCount > 5)
+                                        {
+                                            Console.WriteLine($"  ... and {savedVarCount - 5} more");
+                                        }
+                                    }
+
+                                    // === TRIGGER NESTING VERIFICATION ===
+                                    Console.WriteLine("\n=== Trigger Organization ===");
+                                    var allTriggers = verifyTriggers.TriggerItems.OfType<TriggerDefinition>().ToList();
+                                    var allCategories = verifyTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
+
+                                    Console.WriteLine($"Total triggers: {allTriggers.Count}");
+                                    Console.WriteLine($"Total categories: {allCategories.Count}");
+
+                                    // Count triggers by category
+                                    var categoryStats = new Dictionary<string, int>();
+                                    foreach (var trigger in allTriggers)
+                                    {
+                                        var parentCat = allCategories.FirstOrDefault(c => verifyTriggers.TriggerItems.IndexOf(c) == trigger.ParentId);
+                                        string catName = parentCat?.Name ?? "<Root/Initialization>";
+
+                                        if (!categoryStats.ContainsKey(catName))
+                                            categoryStats[catName] = 0;
+                                        categoryStats[catName]++;
+                                    }
+
+                                    Console.WriteLine("\nTriggers per category:");
+                                    foreach (var kvp in categoryStats.OrderByDescending(x => x.Value).Take(10))
+                                    {
+                                        Console.WriteLine($"  {kvp.Key}: {kvp.Value} triggers");
+                                    }
+
+                                    // Check for abnormal nesting (all in one category)
+                                    if (categoryStats.Count == 1 && allTriggers.Count > 5)
                                     {
                                         Console.ForegroundColor = ConsoleColor.Yellow;
-                                        Console.WriteLine($"\n⚠ WARNING: Extra variables appeared!");
-                                        Console.WriteLine($"⚠ {savedVarCount - originalVarCount} more variables than expected!");
+                                        Console.WriteLine($"\n⚠ WARNING: All {allTriggers.Count} triggers are in one category!");
+                                        Console.WriteLine("⚠ This might indicate incorrect nesting.");
+                                        Console.ResetColor();
+                                    }
+                                    else if (allTriggers.Count > 0)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Green;
+                                        Console.WriteLine($"\n✓ Triggers properly distributed across {categoryStats.Count} categories");
+                                        Console.ResetColor();
+                                    }
+
+                                    // === OVERALL HEALTH CHECK ===
+                                    Console.WriteLine("\n=== Overall Status ===");
+                                    bool allGood = true;
+
+                                    if (savedVarCount != originalVarCount)
+                                    {
+                                        Console.WriteLine("❌ Variable count mismatch");
+                                        allGood = false;
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine("✓ Variable count correct");
+                                    }
+
+                                    if (allTriggers.Count == 0)
+                                    {
+                                        Console.WriteLine("❌ No triggers found");
+                                        allGood = false;
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine($"✓ {allTriggers.Count} triggers found");
+                                    }
+
+                                    if (allCategories.Count == 0 && allTriggers.Count > 0)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Yellow;
+                                        Console.WriteLine("⚠ No categories (triggers in initialization)");
                                         Console.ResetColor();
                                     }
                                     else
                                     {
-                                        Console.ForegroundColor = ConsoleColor.Green;
-                                        Console.WriteLine("✓ All variables were saved correctly!");
-                                        Console.ResetColor();
+                                        Console.WriteLine($"✓ {allCategories.Count} categories found");
                                     }
 
-                                    // Check categories
-                                    var verifyCats = verifyTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
-                                    var verifyRoot = verifyCats.Count(c => c.ParentId == -1);
-                                    var verifyNested = verifyCats.Count(c => c.ParentId >= 0);
-
-                                    Console.WriteLine($"\nCategories:");
-                                    Console.WriteLine($"  Root-level (ParentId=-1): {verifyRoot}");
-                                    Console.WriteLine($"  Nested (ParentId>=0): {verifyNested}");
-
-                                    if (verifyNested > 0)
+                                    if (allGood)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Green;
+                                        Console.WriteLine("\n✓✓✓ File appears healthy and ready to use! ✓✓✓");
+                                        Console.ResetColor();
+                                    }
+                                    else
                                     {
                                         Console.ForegroundColor = ConsoleColor.Red;
-                                        Console.WriteLine("\n❌ ERROR: ParentIds were NOT saved correctly!");
-                                        Console.WriteLine("The saved file still has nested categories:");
-                                        foreach (var cat in verifyCats.Where(c => c.ParentId >= 0).Take(5))
-                                        {
-                                            Console.WriteLine($"  '{cat.Name}': ParentId={cat.ParentId}");
-                                        }
-                                        Console.WriteLine("\n⚠ This means the ParentId field is NOT being written to disk.");
-                                        Console.WriteLine("⚠ The issue is in the WriteTo method or file format.");
-                                        Console.ResetColor();
-                                    }
-                                    else
-                                    {
-                                        Console.ForegroundColor = ConsoleColor.Green;
-                                        Console.WriteLine("✓ ParentIds were saved correctly!");
+                                        Console.WriteLine("\n❌ Issues detected - review carefully before using!");
                                         Console.ResetColor();
                                     }
                                 }
@@ -426,6 +497,10 @@ namespace WTGMerger
                                 {
                                     Console.ForegroundColor = ConsoleColor.Yellow;
                                     Console.WriteLine($"⚠ Could not verify saved file: {ex.Message}");
+                                    if (DEBUG_MODE)
+                                    {
+                                        Console.WriteLine($"[DEBUG] Stack trace: {ex.StackTrace}");
+                                    }
                                     Console.ResetColor();
                                 }
 
@@ -2154,32 +2229,77 @@ namespace WTGMerger
             Console.WriteLine($"  Creating archive builder...");
             var builder = new MpqArchiveBuilder(originalArchive);
 
-            // Serialize triggers to byte array to ensure data persists beyond stream disposal
-            byte[] triggerData;
-            using (var triggerStream = new MemoryStream())
-            using (var writer = new BinaryWriter(triggerStream))
-            {
-                // Use public War3Net extension method
-                writer.Write(triggers);
-                writer.Flush();
+            // Write WTG using wc3libs to ensure stable serialization
+            Console.WriteLine($"  Writing triggers with wc3libs...");
+            string tempWar3NetFile = Path.GetTempFileName();
+            string tempWc3libsFile = Path.GetTempFileName();
 
-                triggerData = triggerStream.ToArray();
+            try
+            {
+                // Step 1: Write with War3Net to temp file
+                using (var tempStream = new MemoryStream())
+                using (var writer = new BinaryWriter(tempStream))
+                {
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[DEBUG] Writing temp file with War3Net...");
+                    }
+                    writer.Write(triggers);
+                    writer.Flush();
+
+                    File.WriteAllBytes(tempWar3NetFile, tempStream.ToArray());
+                }
 
                 if (DEBUG_MODE)
                 {
-                    Console.WriteLine($"[DEBUG] Serialized war3map.wtg to memory: {triggerData.Length} bytes");
+                    Console.WriteLine($"[DEBUG] War3Net temp file size: {new FileInfo(tempWar3NetFile).Length} bytes");
+                }
+
+                // Step 2: Re-serialize with wc3libs for stable output
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[DEBUG] Re-serializing with wc3libs...");
+                }
+                RunWc3libsCopy(tempWar3NetFile, tempWc3libsFile);
+
+                // Step 3: Read wc3libs output and add to archive
+                byte[] triggerData = File.ReadAllBytes(tempWc3libsFile);
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[DEBUG] wc3libs output size: {triggerData.Length} bytes");
+                }
+
+                // Remove old trigger file and add new one
+                var triggerFileName = MapTriggers.FileName; // "war3map.wtg"
+                Console.WriteLine($"  Replacing {triggerFileName}...");
+                builder.RemoveFile(triggerFileName);
+
+                // Create MpqFile from byte array (data is now safely copied)
+                using (var dataStream = new MemoryStream(triggerData))
+                {
+                    builder.AddFile(MpqFile.New(dataStream, triggerFileName));
                 }
             }
-
-            // Remove old trigger file and add new one
-            var triggerFileName = MapTriggers.FileName; // "war3map.wtg"
-            Console.WriteLine($"  Replacing {triggerFileName}...");
-            builder.RemoveFile(triggerFileName);
-
-            // Create MpqFile from byte array (data is now safely copied)
-            using (var dataStream = new MemoryStream(triggerData))
+            finally
             {
-                builder.AddFile(MpqFile.New(dataStream, triggerFileName));
+                // Clean up temp files
+                if (File.Exists(tempWar3NetFile))
+                {
+                    File.Delete(tempWar3NetFile);
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[DEBUG] Cleaned up War3Net temp file");
+                    }
+                }
+                if (File.Exists(tempWc3libsFile))
+                {
+                    File.Delete(tempWc3libsFile);
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[DEBUG] Cleaned up wc3libs temp file");
+                    }
+                }
             }
 
             // Optionally remove war3map.j to force regeneration
