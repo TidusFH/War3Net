@@ -11,6 +11,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- NuGet package for DotNetZip (required by War3Net.IO.Mpq) -->
+    <PackageReference Include="DotNetZip" Version="1.16.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Reference the War3Net DLLs -->
     <Reference Include="War3Net.Build.Core">
       <HintPath>../Libs/War3Net.Build.Core.dll</HintPath>
