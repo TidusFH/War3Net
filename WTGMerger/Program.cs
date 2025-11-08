@@ -417,11 +417,11 @@ namespace WTGMerger
                                     foreach (var trigger in allTriggers)
                                     {
                                         var parentCat = allCategories.FirstOrDefault(c => verifyTriggers.TriggerItems.IndexOf(c) == trigger.ParentId);
-                                        string catName = parentCat?.Name ?? "<Root/Initialization>";
+                                        string categoryName = parentCat?.Name ?? "<Root/Initialization>";
 
-                                        if (!categoryStats.ContainsKey(catName))
-                                            categoryStats[catName] = 0;
-                                        categoryStats[catName]++;
+                                        if (!categoryStats.ContainsKey(categoryName))
+                                            categoryStats[categoryName] = 0;
+                                        categoryStats[categoryName]++;
                                     }
 
                                     Console.WriteLine("\nTriggers per category:");
