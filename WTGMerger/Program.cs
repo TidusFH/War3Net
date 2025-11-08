@@ -552,149 +552,74 @@ namespace WTGMerger
         }
 
         /// <summary>
-        /// Custom WTG writer that bypasses War3Net's buggy serialization.
-        /// War3Net parser is solid, but the writer has bugs with variable ParentId handling.
-        /// This implementation directly writes the binary format to ensure variables persist correctly.
+        /// Runs wc3libs WTGBridge to copy/re-serialize a WTG file.
+        /// This ensures the output uses wc3libs' stable serialization.
         /// </summary>
-        static void WriteWTGManual(BinaryWriter writer, MapTriggers triggers)
+        static void RunWc3libsCopy(string inputPath, string outputPath)
         {
+            string bridgeScript = Path.Combine(
+                Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? ".",
+                "..", "WTGBridge", "run.sh"
+            );
+
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "/bin/bash",
+                Arguments = $"\"{bridgeScript}\" copy \"{Path.GetFullPath(inputPath)}\" \"{Path.GetFullPath(outputPath)}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
             if (DEBUG_MODE)
             {
-                Console.WriteLine($"[DEBUG] WriteWTGManual: Writing custom WTG format...");
-                Console.WriteLine($"[DEBUG]   Variables={triggers.Variables.Count}, Items={triggers.TriggerItems.Count}");
-                Console.WriteLine($"[DEBUG]   FormatVersion={triggers.FormatVersion}, SubVersion={triggers.SubVersion}");
+                Console.WriteLine($"[DEBUG] RunWc3libsCopy: Executing: {startInfo.FileName} {startInfo.Arguments}");
             }
 
-            // File signature: "WTG!" as int32
-            writer.Write(MapTriggers.FileFormatSignature);
-
-            if (triggers.SubVersion is null)
+            using (var process = System.Diagnostics.Process.Start(startInfo))
             {
-                // Old format (without SubVersion)
-                writer.Write((int)triggers.FormatVersion);
-
-                var triggerCategories = triggers.TriggerItems.Where(item => item is TriggerCategoryDefinition && item.Type != TriggerItemType.RootCategory).ToArray();
-                writer.Write(triggerCategories.Length);
-                foreach (var triggerCategory in triggerCategories)
+                if (process == null)
                 {
-                    writer.Write(triggerCategory, triggers.FormatVersion, triggers.SubVersion);
+                    throw new Exception("Failed to start wc3libs WTGBridge process");
                 }
 
-                writer.Write(triggers.GameVersion);
+                string output = process.StandardOutput.ReadToEnd();
+                string error = process.StandardError.ReadToEnd();
 
-                // Write variables (old format - no Id/ParentId)
-                writer.Write(triggers.Variables.Count);
-                foreach (var variable in triggers.Variables)
+                process.WaitForExit();
+
+                if (DEBUG_MODE && !string.IsNullOrEmpty(output))
                 {
-                    WriteVariableManual(writer, variable, triggers.FormatVersion, null);
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.WriteLine("[DEBUG] wc3libs output:");
+                    Console.WriteLine(output);
+                    Console.ResetColor();
                 }
 
-                var triggersOnly = triggers.TriggerItems.Where(item => item is TriggerDefinition).ToArray();
-                writer.Write(triggersOnly.Length);
-                foreach (var trigger in triggersOnly)
+                if (process.ExitCode != 0)
                 {
-                    writer.Write(trigger, triggers.FormatVersion, triggers.SubVersion);
-                }
-            }
-            else
-            {
-                // New format (with SubVersion) - this is what we need to fix
-                writer.Write((int)triggers.SubVersion);
-                writer.Write((int)triggers.FormatVersion);
-
-                // Write trigger item counts and deleted items
-                foreach (TriggerItemType triggerItemType in Enum.GetValues(typeof(TriggerItemType)))
-                {
-                    int count = triggers.TriggerItemCounts.TryGetValue(triggerItemType, out var existingCount)
-                        ? existingCount
-                        : triggers.TriggerItems.Count(item => item.Type == triggerItemType);
-                    writer.Write(count);
-
-                    var deletedItems = triggers.TriggerItems
-                        .Where(item => item is DeletedTriggerItem && item.Type == triggerItemType && item.Id != -1)
-                        .ToList();
-                    writer.Write(deletedItems.Count);
-                    foreach (var deletedItem in deletedItems)
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"[ERROR] wc3libs WTGBridge failed with exit code {process.ExitCode}");
+                    if (!string.IsNullOrEmpty(error))
                     {
-                        writer.Write(deletedItem, triggers.FormatVersion, triggers.SubVersion);
+                        Console.WriteLine("Error output:");
+                        Console.WriteLine(error);
                     }
+                    Console.ResetColor();
+                    throw new Exception($"wc3libs WTGBridge failed: {error}");
                 }
-
-                writer.Write(triggers.GameVersion);
-
-                // CRITICAL: Write variables with custom implementation
-                writer.Write(triggers.Variables.Count);
-                if (DEBUG_MODE)
-                {
-                    Console.WriteLine($"[DEBUG] WriteWTGManual: Writing {triggers.Variables.Count} variables with custom serialization");
-                }
-                foreach (var variable in triggers.Variables)
-                {
-                    WriteVariableManual(writer, variable, triggers.FormatVersion, triggers.SubVersion);
-                }
-
-                // Write trigger items
-                var nonDeletedItems = triggers.TriggerItems.Where(item => item is not DeletedTriggerItem).ToList();
-                writer.Write(nonDeletedItems.Count);
-                foreach (var triggerItem in nonDeletedItems)
-                {
-                    writer.Write((int)triggerItem.Type);
-                    writer.Write(triggerItem, triggers.FormatVersion, triggers.SubVersion);
-                }
-            }
-
-            if (DEBUG_MODE)
-            {
-                Console.WriteLine($"[DEBUG] WriteWTGManual: Custom write complete");
-            }
-        }
-
-        /// <summary>
-        /// Manually write a variable definition to ensure correct ParentId serialization.
-        /// This bypasses War3Net's buggy variable writer that corrupts ParentId=-1.
-        /// </summary>
-        static void WriteVariableManual(BinaryWriter writer, VariableDefinition variable, MapTriggersFormatVersion formatVersion, MapTriggersSubVersion? subVersion)
-        {
-            // Write name (null-terminated UTF-8 string)
-            writer.WriteString(variable.Name ?? string.Empty);
-
-            // Write type (null-terminated UTF-8 string)
-            writer.WriteString(variable.Type ?? string.Empty);
-
-            // Write Unk field (int32)
-            writer.Write(variable.Unk);
-
-            // Write IsArray (4-byte bool: 0 or 1)
-            writer.WriteBool(variable.IsArray);
-
-            // Write ArraySize if format version >= v7
-            if (formatVersion >= MapTriggersFormatVersion.v7)
-            {
-                writer.Write(variable.ArraySize);
-            }
-
-            // Write IsInitialized (4-byte bool: 0 or 1)
-            writer.WriteBool(variable.IsInitialized);
-
-            // Write InitialValue (null-terminated UTF-8 string)
-            writer.WriteString(variable.InitialValue ?? string.Empty);
-
-            // CRITICAL: Write Id and ParentId if SubVersion is set
-            if (subVersion is not null)
-            {
-                writer.Write(variable.Id);
-                writer.Write(variable.ParentId);
 
                 if (DEBUG_MODE)
                 {
-                    Console.WriteLine($"[DEBUG]   WriteVariableManual: {variable.Name} (Type={variable.Type}, Id={variable.Id}, ParentId={variable.ParentId})");
+                    Console.WriteLine($"[DEBUG] RunWc3libsCopy: wc3libs completed successfully");
                 }
             }
         }
 
         /// <summary>
-        /// Writes MapTriggers object to a WTG file
-        /// Uses custom manual writer to bypass War3Net bugs
+        /// Writes WTG file using wc3libs for stable serialization.
+        /// Uses War3Net to write temp file, then wc3libs to re-serialize it correctly.
         /// </summary>
         static void WriteWTGFile(string filePath, MapTriggers triggers)
         {
@@ -705,15 +630,48 @@ namespace WTGMerger
                 Console.WriteLine($"[DEBUG]   Trigger items to write: {triggers.TriggerItems.Count}");
             }
 
-            using var fileStream = File.Create(filePath);
-            using var writer = new BinaryWriter(fileStream);
-
-            // Use custom manual writer instead of War3Net's buggy serialization
-            WriteWTGManual(writer, triggers);
-
-            if (DEBUG_MODE)
+            // Step 1: Write using War3Net to a temporary file
+            string tempFile = filePath + ".war3net.tmp";
+            try
             {
-                Console.WriteLine($"[DEBUG] WriteWTGFile: Completed. File size: {fileStream.Length} bytes");
+                using (var fileStream = File.Create(tempFile))
+                using (var writer = new BinaryWriter(fileStream))
+                {
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[DEBUG] WriteWTGFile: Writing temporary file with War3Net...");
+                    }
+                    writer.Write(triggers);
+                }
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[DEBUG] WriteWTGFile: Temp file written: {new FileInfo(tempFile).Length} bytes");
+                }
+
+                // Step 2: Re-serialize using wc3libs for stable output
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[DEBUG] WriteWTGFile: Re-serializing with wc3libs for stable output...");
+                }
+                RunWc3libsCopy(tempFile, filePath);
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[DEBUG] WriteWTGFile: Completed. File size: {new FileInfo(filePath).Length} bytes");
+                }
+            }
+            finally
+            {
+                // Clean up temp file
+                if (File.Exists(tempFile))
+                {
+                    File.Delete(tempFile);
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[DEBUG] WriteWTGFile: Cleaned up temp file");
+                    }
+                }
             }
         }
 
