@@ -297,10 +297,26 @@ namespace WTGFixer
             catch (Exception ex)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"\n[ERROR] Error: {ex.Message}");
-                Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
+                Console.WriteLine($"\n[ERROR] Fatal Error: {ex.Message}");
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
+                }
+                else
+                {
+                    Console.WriteLine("\n(Set DEBUG_MODE=true for full stack trace)");
+                }
+
                 Console.ResetColor();
-                Environment.Exit(1);
+
+                Console.WriteLine("\nPress Enter to exit...");
+                Console.ReadLine();
+
+                // Set exit code to indicate failure
+                // More graceful than Environment.Exit(1) as it allows cleanup
+                Environment.ExitCode = 1;
+                return;
             }
         }
 

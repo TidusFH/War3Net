@@ -37,8 +37,15 @@ namespace WTGMerger
                     {
                         var targetFileName = Path.GetFileNameWithoutExtension(targetPath);
                         var targetExt = Path.GetExtension(targetPath);
-                        outputPath = Path.Combine(Path.GetDirectoryName(targetPath) ?? "../Target",
-                                                  $"{targetFileName}_merged{targetExt}");
+                        var targetDir = Path.GetDirectoryName(targetPath);
+
+                        if (string.IsNullOrEmpty(targetDir))
+                        {
+                            // If no directory component, use current directory
+                            targetDir = Directory.GetCurrentDirectory();
+                        }
+
+                        outputPath = Path.Combine(targetDir, $"{targetFileName}_merged{targetExt}");
                     }
                     else
                     {
@@ -501,10 +508,26 @@ namespace WTGMerger
             catch (Exception ex)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"\n❌ Error: {ex.Message}");
-                Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
+                Console.WriteLine($"\n❌ Fatal Error: {ex.Message}");
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
+                }
+                else
+                {
+                    Console.WriteLine("\n(Run with debug mode enabled for full stack trace)");
+                }
+
                 Console.ResetColor();
-                Environment.Exit(1);
+
+                Console.WriteLine("\nPress Enter to exit...");
+                Console.ReadLine();
+
+                // Set exit code to indicate failure
+                // This is more graceful than Environment.Exit(1) as it allows cleanup
+                Environment.ExitCode = 1;
+                return;
             }
         }
 
@@ -1712,21 +1735,11 @@ namespace WTGMerger
             // Reassign IDs to ALL items (0, 1, 2, 3, ...)
             for (int i = 0; i < triggers.TriggerItems.Count; i++)
             {
-                var oldId = triggers.TriggerItems[i].Id;
                 triggers.TriggerItems[i].Id = i;
             }
 
-            // Build a mapping of old ID -> new ID
-            var oldIdToNewId = new Dictionary<int, int>();
-            for (int i = 0; i < triggers.TriggerItems.Count; i++)
-            {
-                var item = triggers.TriggerItems[i];
-                // Store mapping: we just reassigned IDs sequentially
-                // The item at index i now has ID = i
-                oldIdToNewId[i] = i;
-            }
-
             // Update ParentIds in ALL items (both categories and triggers)
+            // Note: After reassignment above, each item's ID equals its index in the list
             foreach (var item in triggers.TriggerItems)
             {
                 // Skip root-level items (ParentId -1 or 0 should stay that way)
@@ -1934,7 +1947,17 @@ namespace WTGMerger
             var w3xFiles = Directory.GetFiles(folderPath, "*.w3x");
             if (w3xFiles.Length > 0)
             {
-                Console.WriteLine($"  Detected: {Path.GetFileName(w3xFiles[0])} (WC3 map archive)");
+                if (w3xFiles.Length > 1)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"  ⚠ WARNING: Found {w3xFiles.Length} .w3x files in {folderPath}");
+                    Console.WriteLine($"  Using first one: {Path.GetFileName(w3xFiles[0])}");
+                    Console.ResetColor();
+                }
+                else
+                {
+                    Console.WriteLine($"  Detected: {Path.GetFileName(w3xFiles[0])} (WC3 map archive)");
+                }
                 return w3xFiles[0];
             }
 
@@ -1942,7 +1965,17 @@ namespace WTGMerger
             var w3mFiles = Directory.GetFiles(folderPath, "*.w3m");
             if (w3mFiles.Length > 0)
             {
-                Console.WriteLine($"  Detected: {Path.GetFileName(w3mFiles[0])} (WC3 campaign archive)");
+                if (w3mFiles.Length > 1)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"  ⚠ WARNING: Found {w3mFiles.Length} .w3m files in {folderPath}");
+                    Console.WriteLine($"  Using first one: {Path.GetFileName(w3mFiles[0])}");
+                    Console.ResetColor();
+                }
+                else
+                {
+                    Console.WriteLine($"  Detected: {Path.GetFileName(w3mFiles[0])} (WC3 campaign archive)");
+                }
                 return w3mFiles[0];
             }
 
