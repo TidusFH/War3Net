@@ -632,15 +632,19 @@ namespace WTGMerger
         /// </summary>
         static void RunWc3libsCopy(string inputPath, string outputPath)
         {
-            string bridgeScript = Path.Combine(
+            string bridgeDir = Path.Combine(
                 Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? ".",
-                "..", "WTGBridge", "run.sh"
+                "..", "WTGBridge"
             );
+            string wc3libsDir = Path.Combine(bridgeDir, "..", "wc3libs");
+
+            // Build Java classpath (cross-platform)
+            string classpath = $"{bridgeDir}{Path.PathSeparator}{wc3libsDir}{Path.DirectorySeparatorChar}*";
 
             var startInfo = new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "/bin/bash",
-                Arguments = $"\"{bridgeScript}\" copy \"{Path.GetFullPath(inputPath)}\" \"{Path.GetFullPath(outputPath)}\"",
+                FileName = "java",
+                Arguments = $"-cp \"{classpath}\" WTGBridge copy \"{Path.GetFullPath(inputPath)}\" \"{Path.GetFullPath(outputPath)}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
