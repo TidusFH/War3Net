@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 using War3Net.Build.Script;
 
@@ -208,6 +209,212 @@ namespace War3Net.Tools.TriggerMerger.Services
 
             // Update trigger item counts after adding new items
             UpdateTriggerItemCounts(target);
+
+            // CRITICAL: Copy variables used by the copied triggers
+            CopyRequiredVariables(source, target, categoryTriggers);
+        }
+
+        /// <summary>
+        /// Copies variables required by copied triggers from source to target.
+        /// CRITICAL: Always sets ParentId = -1 to avoid foreign ParentId references.
+        /// </summary>
+        private void CopyRequiredVariables(MapTriggers source, MapTriggers target, List<TriggerDefinition> copiedTriggers)
+        {
+            if (source.Variables == null || !source.Variables.Any())
+            {
+                return;
+            }
+
+            if (target.Variables == null)
+            {
+                target.Variables = new List<VariableDefinition>();
+            }
+
+            // Collect all variable names referenced in copied triggers
+            var referencedVariableNames = CollectVariableReferences(copiedTriggers);
+
+            if (!referencedVariableNames.Any())
+            {
+                return;
+            }
+
+            // Copy each referenced variable if it doesn't exist in target
+            foreach (var varName in referencedVariableNames)
+            {
+                var sourceVar = source.Variables.FirstOrDefault(v => v.Name.Equals(varName, StringComparison.OrdinalIgnoreCase));
+                if (sourceVar == null)
+                {
+                    continue;
+                }
+
+                var targetVar = target.Variables.FirstOrDefault(v => v.Name.Equals(varName, StringComparison.OrdinalIgnoreCase));
+                if (targetVar != null)
+                {
+                    continue; // Variable already exists in target
+                }
+
+                // Copy the variable with normalized ParentId
+                CopyVariable(sourceVar, target);
+            }
+        }
+
+        /// <summary>
+        /// Collects all variable names referenced in triggers.
+        /// </summary>
+        private HashSet<string> CollectVariableReferences(List<TriggerDefinition> triggers)
+        {
+            var variableNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var trigger in triggers)
+            {
+                if (trigger.Functions == null)
+                {
+                    continue;
+                }
+
+                foreach (var function in trigger.Functions)
+                {
+                    CollectVariableReferencesFromFunction(function, variableNames);
+                }
+            }
+
+            return variableNames;
+        }
+
+        /// <summary>
+        /// Recursively collects variable references from a trigger function.
+        /// </summary>
+        private void CollectVariableReferencesFromFunction(TriggerFunction function, HashSet<string> variableNames)
+        {
+            if (function.Parameters != null)
+            {
+                foreach (var param in function.Parameters)
+                {
+                    // Check if parameter value references a variable
+                    if (!string.IsNullOrEmpty(param.Value))
+                    {
+                        // Variable references typically use format: udg_VariableName or just VariableName
+                        var match = Regex.Match(param.Value, @"\budg_(\w+)\b");
+                        if (match.Success)
+                        {
+                            variableNames.Add(match.Groups[1].Value);
+                        }
+                    }
+
+                    // Recursively check nested functions
+                    if (param.Function != null)
+                    {
+                        CollectVariableReferencesFromFunction(param.Function, variableNames);
+                    }
+                }
+            }
+
+            // Recursively check child functions (if-then-else blocks, etc.)
+            if (function.ChildFunctions != null)
+            {
+                foreach (var childFunc in function.ChildFunctions)
+                {
+                    CollectVariableReferencesFromFunction(childFunc, variableNames);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Copies a variable from source to target.
+        /// CRITICAL: Always sets ParentId = -1 to avoid foreign ParentId references.
+        /// </summary>
+        private void CopyVariable(VariableDefinition source, MapTriggers target)
+        {
+            if (target.Variables == null)
+            {
+                target.Variables = new List<VariableDefinition>();
+            }
+
+            var newVariable = new VariableDefinition
+            {
+                Name = source.Name,
+                Type = source.Type,
+                IsArray = source.IsArray,
+                ArraySize = source.ArraySize,
+                IsInitialized = source.IsInitialized,
+                InitialValue = source.InitialValue,
+                // CRITICAL: Always use -1 for ParentId (root level in old format)
+                // Never inherit ParentId from source as those indices don't exist in target
+                ParentId = -1,
+                Id = GetNextVariableId(target),
+            };
+
+            target.Variables.Add(newVariable);
+        }
+
+        /// <summary>
+        /// Copies a variable with a new name.
+        /// CRITICAL: Always sets ParentId = -1 to avoid foreign ParentId references.
+        /// </summary>
+        private void CopyVariableWithNewName(VariableDefinition source, MapTriggers target, string newName)
+        {
+            if (target.Variables == null)
+            {
+                target.Variables = new List<VariableDefinition>();
+            }
+
+            var newVariable = new VariableDefinition
+            {
+                Name = newName,
+                Type = source.Type,
+                IsArray = source.IsArray,
+                ArraySize = source.ArraySize,
+                IsInitialized = source.IsInitialized,
+                InitialValue = source.InitialValue,
+                // CRITICAL: Always use -1 for ParentId (root level in old format)
+                // Never inherit ParentId from source as those indices don't exist in target
+                ParentId = -1,
+                Id = GetNextVariableId(target),
+            };
+
+            target.Variables.Add(newVariable);
+        }
+
+        /// <summary>
+        /// Gets the next available ID for a variable.
+        /// </summary>
+        private int GetNextVariableId(MapTriggers triggers)
+        {
+            if (triggers.Variables == null || triggers.Variables.Count == 0)
+            {
+                return 0;
+            }
+
+            return triggers.Variables.Max(v => v.Id) + 1;
+        }
+
+        /// <summary>
+        /// Prepares triggers for saving by normalizing variables and ensuring compatibility.
+        /// CRITICAL: Always called before saving to prevent variable loss in WE 1.27.
+        /// </summary>
+        public void PrepareForSave(MapTriggers triggers)
+        {
+            // CRITICAL: Force SubVersion = v4 to guarantee variable block serialization
+            // Don't gate this on null check - always set it to ensure ParentId fields are written
+            triggers.SubVersion = MapTriggersSubVersion.v4;
+
+            // Normalize all variables: make IDs contiguous and set ParentId = -1
+            if (triggers.Variables != null && triggers.Variables.Any())
+            {
+                // Sort variables by ID to maintain order
+                var sortedVariables = triggers.Variables.OrderBy(v => v.Id).ToList();
+
+                // Reassign IDs contiguously starting from 0
+                for (int i = 0; i < sortedVariables.Count; i++)
+                {
+                    sortedVariables[i].Id = i;
+                    // CRITICAL: Force ParentId = -1 for all variables
+                    // This prevents WE 1.27 from silently dropping variables with foreign ParentIds
+                    sortedVariables[i].ParentId = -1;
+                }
+
+                triggers.Variables = sortedVariables;
+            }
         }
 
         private TriggerDefinition CopyTrigger(TriggerDefinition source, int newId, int newParentId)

@@ -80,6 +80,12 @@ namespace War3Net.Tools.TriggerMerger.Services
                         throw new FileNotFoundException($"Original map file not found: {originalMapPath}");
                     }
 
+                    // CRITICAL: Prepare triggers for saving
+                    // This normalizes variables (ParentId = -1, contiguous IDs) and forces SubVersion = v4
+                    // Prevents WE 1.27 from silently dropping variables with foreign ParentIds
+                    var merger = new TriggerMerger();
+                    merger.PrepareForSave(triggers);
+
                     // Create a temporary directory for working with files
                     var tempDir = Path.Combine(Path.GetTempPath(), $"War3NetTriggerMerger_{Guid.NewGuid():N}");
                     Directory.CreateDirectory(tempDir);
