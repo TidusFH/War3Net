@@ -1061,8 +1061,7 @@ namespace WTGFixer
         }
 
         /// <summary>
-        /// Writes WTG file using wc3libs for stable serialization.
-        /// Uses War3Net to write temp file, then wc3libs to re-serialize it correctly.
+        /// Writes WTG file directly using War3Net's BinaryWriter.
         /// </summary>
         static void WriteWTGFile(string filePath, MapTriggers triggers)
         {
@@ -1070,34 +1069,15 @@ namespace WTGFixer
             DebugLog($"WriteWTGFile: Writing {triggers.Variables.Count} variables, {triggers.TriggerItems.Count} trigger items");
             DebugLog($"WriteWTGFile: SubVersion = {triggers.SubVersion}");
 
-            // Step 1: Write using War3Net to a temporary file
-            string tempFile = filePath + ".war3net.tmp";
-            try
+            // Write directly with War3Net
+            using (var fileStream = File.Create(filePath))
+            using (var writer = new BinaryWriter(fileStream))
             {
-                using (var fileStream = File.Create(tempFile))
-                using (var writer = new BinaryWriter(fileStream))
-                {
-                    DebugLog($"WriteWTGFile: Writing temporary file with War3Net...");
-                    writer.Write(triggers);
-                }
-
-                DebugLog($"WriteWTGFile: Temp file written: {new FileInfo(tempFile).Length} bytes");
-
-                // Step 2: Re-serialize using wc3libs for stable output
-                DebugLog($"WriteWTGFile: Re-serializing with wc3libs for stable output...");
-                RunWc3libsCopy(tempFile, filePath);
-
-                DebugLog($"WriteWTGFile: Final file size = {new FileInfo(filePath).Length} bytes");
+                writer.Write(triggers);
+                writer.Flush();
             }
-            finally
-            {
-                // Clean up temp file
-                if (File.Exists(tempFile))
-                {
-                    File.Delete(tempFile);
-                    DebugLog($"WriteWTGFile: Cleaned up temp file");
-                }
-            }
+
+            DebugLog($"WriteWTGFile: Final file size = {new FileInfo(filePath).Length} bytes");
         }
 
         static void WriteMapArchive(string originalArchivePath, string outputArchivePath, MapTriggers triggers)
@@ -1112,59 +1092,27 @@ namespace WTGFixer
 
             var builder = new MpqArchiveBuilder(originalArchive);
 
-            // Write WTG using wc3libs to ensure stable serialization
-            string tempWar3NetFile = Path.GetTempFileName();
-            string tempWc3libsFile = Path.GetTempFileName();
-
-            try
+            // Write WTG directly with War3Net
+            using (var triggerStream = new MemoryStream())
+            using (var writer = new BinaryWriter(triggerStream))
             {
-                // Step 1: Write with War3Net to temp file
-                using (var tempStream = new MemoryStream())
-                using (var writer = new BinaryWriter(tempStream))
-                {
-                    DebugLog($"WriteMapArchive: Writing temp file with War3Net...");
-                    writer.Write(triggers);
-                    writer.Flush();
+                writer.Write(triggers);
+                writer.Flush();
 
-                    File.WriteAllBytes(tempWar3NetFile, tempStream.ToArray());
-                }
-
-                DebugLog($"WriteMapArchive: War3Net temp file size: {new FileInfo(tempWar3NetFile).Length} bytes");
-
-                // Step 2: Re-serialize with wc3libs for stable output
-                DebugLog($"WriteMapArchive: Re-serializing with wc3libs...");
-                RunWc3libsCopy(tempWar3NetFile, tempWc3libsFile);
-
-                // Step 3: Read wc3libs output and add to archive
-                byte[] triggerData = File.ReadAllBytes(tempWc3libsFile);
-                DebugLog($"WriteMapArchive: wc3libs output size: {triggerData.Length} bytes");
-
+                // Remove old trigger file and add new one
                 var triggerFileName = MapTriggers.FileName;
                 builder.RemoveFile(triggerFileName);
 
-                using (var dataStream = new MemoryStream(triggerData))
-                {
-                    builder.AddFile(MpqFile.New(dataStream, triggerFileName));
-                }
+                // Reset stream position and create MpqFile
+                triggerStream.Position = 0;
+                builder.AddFile(MpqFile.New(triggerStream, triggerFileName));
 
-                DebugLog($"WriteMapArchive: Building archive...");
-                builder.SaveTo(outputArchivePath);
-                DebugLog($"WriteMapArchive: Archive saved successfully");
+                DebugLog($"WriteMapArchive: Trigger file size: {triggerStream.Length} bytes");
             }
-            finally
-            {
-                // Clean up temp files
-                if (File.Exists(tempWar3NetFile))
-                {
-                    File.Delete(tempWar3NetFile);
-                    DebugLog($"WriteMapArchive: Cleaned up War3Net temp file");
-                }
-                if (File.Exists(tempWc3libsFile))
-                {
-                    File.Delete(tempWc3libsFile);
-                    DebugLog($"WriteMapArchive: Cleaned up wc3libs temp file");
-                }
-            }
+
+            DebugLog($"WriteMapArchive: Building archive...");
+            builder.SaveTo(outputArchivePath);
+            DebugLog($"WriteMapArchive: Archive saved successfully");
         }
 
         #endregion

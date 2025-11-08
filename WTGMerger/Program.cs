@@ -276,17 +276,11 @@ namespace WTGMerger
                                     }
                                 }
 
-                                // CRITICAL: Set SubVersion if null to enable ParentId writing
-                                if (targetTriggers.SubVersion == null)
+                                // Note: We preserve the original SubVersion to avoid War3Net writer bugs
+                                // Modifying SubVersion can cause War3Net to write corrupted format data
+                                if (DEBUG_MODE && targetTriggers.SubVersion == null)
                                 {
-                                    Console.ForegroundColor = ConsoleColor.Yellow;
-                                    Console.WriteLine("\n⚠ WARNING: Target map has SubVersion=null, ParentId won't be saved!");
-                                    Console.WriteLine("   Setting SubVersion=v4 to enable ParentId support...");
-                                    Console.ResetColor();
-                                    targetTriggers.SubVersion = MapTriggersSubVersion.v4;
-                                    Console.ForegroundColor = ConsoleColor.Green;
-                                    Console.WriteLine("   ✓ SubVersion set to v4");
-                                    Console.ResetColor();
+                                    Console.WriteLine("[DEBUG] SubVersion is null (this is normal for WC3 1.27 and earlier)");
                                 }
 
                                 // CRITICAL: Update trigger item counts before saving
@@ -720,8 +714,7 @@ namespace WTGMerger
         }
 
         /// <summary>
-        /// Writes WTG file using wc3libs for stable serialization.
-        /// Uses War3Net to write temp file, then wc3libs to re-serialize it correctly.
+        /// Writes WTG file directly using War3Net's BinaryWriter.
         /// </summary>
         static void WriteWTGFile(string filePath, MapTriggers triggers)
         {
@@ -732,48 +725,17 @@ namespace WTGMerger
                 Console.WriteLine($"[DEBUG]   Trigger items to write: {triggers.TriggerItems.Count}");
             }
 
-            // Step 1: Write using War3Net to a temporary file
-            string tempFile = filePath + ".war3net.tmp";
-            try
+            // Write directly with War3Net
+            using (var fileStream = File.Create(filePath))
+            using (var writer = new BinaryWriter(fileStream))
             {
-                using (var fileStream = File.Create(tempFile))
-                using (var writer = new BinaryWriter(fileStream))
-                {
-                    if (DEBUG_MODE)
-                    {
-                        Console.WriteLine($"[DEBUG] WriteWTGFile: Writing temporary file with War3Net...");
-                    }
-                    writer.Write(triggers);
-                }
-
-                if (DEBUG_MODE)
-                {
-                    Console.WriteLine($"[DEBUG] WriteWTGFile: Temp file written: {new FileInfo(tempFile).Length} bytes");
-                }
-
-                // Step 2: Re-serialize using wc3libs for stable output
-                if (DEBUG_MODE)
-                {
-                    Console.WriteLine($"[DEBUG] WriteWTGFile: Re-serializing with wc3libs for stable output...");
-                }
-                RunWc3libsCopy(tempFile, filePath);
-
-                if (DEBUG_MODE)
-                {
-                    Console.WriteLine($"[DEBUG] WriteWTGFile: Completed. File size: {new FileInfo(filePath).Length} bytes");
-                }
+                writer.Write(triggers);
+                writer.Flush();
             }
-            finally
+
+            if (DEBUG_MODE)
             {
-                // Clean up temp file
-                if (File.Exists(tempFile))
-                {
-                    File.Delete(tempFile);
-                    if (DEBUG_MODE)
-                    {
-                        Console.WriteLine($"[DEBUG] WriteWTGFile: Cleaned up temp file");
-                    }
-                }
+                Console.WriteLine($"[DEBUG] WriteWTGFile: Completed. File size: {new FileInfo(filePath).Length} bytes");
             }
         }
 
@@ -2256,76 +2218,26 @@ namespace WTGMerger
             Console.WriteLine($"  Creating archive builder...");
             var builder = new MpqArchiveBuilder(originalArchive);
 
-            // Write WTG using wc3libs to ensure stable serialization
-            Console.WriteLine($"  Writing triggers with wc3libs...");
-            string tempWar3NetFile = Path.GetTempFileName();
-            string tempWc3libsFile = Path.GetTempFileName();
-
-            try
+            // Write WTG directly with War3Net
+            Console.WriteLine($"  Writing triggers...");
+            using (var triggerStream = new MemoryStream())
+            using (var writer = new BinaryWriter(triggerStream))
             {
-                // Step 1: Write with War3Net to temp file
-                using (var tempStream = new MemoryStream())
-                using (var writer = new BinaryWriter(tempStream))
-                {
-                    if (DEBUG_MODE)
-                    {
-                        Console.WriteLine($"[DEBUG] Writing temp file with War3Net...");
-                    }
-                    writer.Write(triggers);
-                    writer.Flush();
-
-                    File.WriteAllBytes(tempWar3NetFile, tempStream.ToArray());
-                }
-
-                if (DEBUG_MODE)
-                {
-                    Console.WriteLine($"[DEBUG] War3Net temp file size: {new FileInfo(tempWar3NetFile).Length} bytes");
-                }
-
-                // Step 2: Re-serialize with wc3libs for stable output
-                if (DEBUG_MODE)
-                {
-                    Console.WriteLine($"[DEBUG] Re-serializing with wc3libs...");
-                }
-                RunWc3libsCopy(tempWar3NetFile, tempWc3libsFile);
-
-                // Step 3: Read wc3libs output and add to archive
-                byte[] triggerData = File.ReadAllBytes(tempWc3libsFile);
-
-                if (DEBUG_MODE)
-                {
-                    Console.WriteLine($"[DEBUG] wc3libs output size: {triggerData.Length} bytes");
-                }
+                writer.Write(triggers);
+                writer.Flush();
 
                 // Remove old trigger file and add new one
                 var triggerFileName = MapTriggers.FileName; // "war3map.wtg"
                 Console.WriteLine($"  Replacing {triggerFileName}...");
                 builder.RemoveFile(triggerFileName);
 
-                // Create MpqFile from byte array (data is now safely copied)
-                using (var dataStream = new MemoryStream(triggerData))
+                // Reset stream position and create MpqFile
+                triggerStream.Position = 0;
+                builder.AddFile(MpqFile.New(triggerStream, triggerFileName));
+
+                if (DEBUG_MODE)
                 {
-                    builder.AddFile(MpqFile.New(dataStream, triggerFileName));
-                }
-            }
-            finally
-            {
-                // Clean up temp files
-                if (File.Exists(tempWar3NetFile))
-                {
-                    File.Delete(tempWar3NetFile);
-                    if (DEBUG_MODE)
-                    {
-                        Console.WriteLine($"[DEBUG] Cleaned up War3Net temp file");
-                    }
-                }
-                if (File.Exists(tempWc3libsFile))
-                {
-                    File.Delete(tempWc3libsFile);
-                    if (DEBUG_MODE)
-                    {
-                        Console.WriteLine($"[DEBUG] Cleaned up wc3libs temp file");
-                    }
+                    Console.WriteLine($"[DEBUG] Trigger file size: {triggerStream.Length} bytes");
                 }
             }
 
