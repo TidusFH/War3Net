@@ -572,10 +572,13 @@ namespace WTGFixer
                             IsInitialized = origVar.IsInitialized,
                             InitialValue = origVar.InitialValue,
                             Id = merged.Variables.Count,
-                            ParentId = origVar.ParentId
+                            // CRITICAL FIX: Always use -1 for ParentId (root level)
+                            // Never inherit ParentId from source - those indices don't exist in merged map
+                            // This prevents WE 1.27 from silently dropping variables with foreign ParentIds
+                            ParentId = -1
                         };
                         merged.Variables.Add(newVar);
-                        DebugLog($"  Added variable {varName} with Id={newVar.Id}, Type={newVar.Type}");
+                        DebugLog($"  Added variable {varName} with Id={newVar.Id}, Type={newVar.Type}, ParentId={newVar.ParentId}");
                         Console.WriteLine($"  + {varName} ({origVar.Type})");
                         fixCount++;
                     }
@@ -613,10 +616,13 @@ namespace WTGFixer
                             IsInitialized = sourceVar.IsInitialized,
                             InitialValue = sourceVar.InitialValue,
                             Id = merged.Variables.Count,
-                            ParentId = sourceVar.ParentId
+                            // CRITICAL FIX: Always use -1 for ParentId (root level)
+                            // Never inherit ParentId from source - those indices don't exist in merged map
+                            // This prevents WE 1.27 from silently dropping variables with foreign ParentIds
+                            ParentId = -1
                         };
                         merged.Variables.Add(newVar);
-                        DebugLog($"  Added variable {varName} with Id={newVar.Id}, Type={newVar.Type}");
+                        DebugLog($"  Added variable {varName} with Id={newVar.Id}, Type={newVar.Type}, ParentId={newVar.ParentId}");
                         Console.WriteLine($"  + {varName} ({sourceVar.Type})");
                         fixCount++;
                     }
@@ -929,16 +935,8 @@ namespace WTGFixer
             using var fileStream = File.OpenRead(filePath);
             using var reader = new BinaryReader(fileStream);
 
-            var constructorInfo = typeof(MapTriggers).GetConstructor(
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-                null,
-                new[] { typeof(BinaryReader), typeof(TriggerData) },
-                null);
-
-            if (constructorInfo == null)
-                throw new InvalidOperationException("Could not find internal MapTriggers constructor");
-
-            var result = (MapTriggers)constructorInfo.Invoke(new object[] { reader, TriggerData.Default });
+            // Use public War3Net extension method instead of reflection
+            var result = reader.ReadMapTriggers();
             DebugLog($"ReadWTGFile: Loaded {result.Variables.Count} variables, {result.TriggerItems.Count} trigger items");
             return result;
         }
@@ -955,16 +953,8 @@ namespace WTGFixer
             using var triggerStream = archive.OpenFile(triggerFileName);
             using var reader = new BinaryReader(triggerStream);
 
-            var constructorInfo = typeof(MapTriggers).GetConstructor(
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-                null,
-                new[] { typeof(BinaryReader), typeof(TriggerData) },
-                null);
-
-            if (constructorInfo == null)
-                throw new InvalidOperationException("Could not find internal MapTriggers constructor");
-
-            return (MapTriggers)constructorInfo.Invoke(new object[] { reader, TriggerData.Default });
+            // Use public War3Net extension method instead of reflection
+            return reader.ReadMapTriggers();
         }
 
         static void WriteWTGFile(string filePath, MapTriggers triggers)
@@ -976,18 +966,9 @@ namespace WTGFixer
             using var fileStream = File.Create(filePath);
             using var writer = new BinaryWriter(fileStream);
 
-            var writeToMethod = typeof(MapTriggers).GetMethod(
-                "WriteTo",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-                null,
-                new[] { typeof(BinaryWriter) },
-                null);
-
-            if (writeToMethod == null)
-                throw new InvalidOperationException("Could not find internal WriteTo method");
-
-            DebugLog($"WriteWTGFile: Invoking WriteTo method...");
-            writeToMethod.Invoke(triggers, new object[] { writer });
+            // Use public War3Net extension method instead of reflection
+            DebugLog($"WriteWTGFile: Writing MapTriggers...");
+            writer.Write(triggers);
 
             writer.Flush();
             fileStream.Flush();
@@ -1007,29 +988,28 @@ namespace WTGFixer
 
             var builder = new MpqArchiveBuilder(originalArchive);
 
-            using var triggerStream = new MemoryStream();
-            using var writer = new BinaryWriter(triggerStream);
+            // Serialize triggers to byte array to ensure data persists beyond stream disposal
+            byte[] triggerData;
+            using (var triggerStream = new MemoryStream())
+            using (var writer = new BinaryWriter(triggerStream))
+            {
+                // Use public War3Net extension method instead of reflection
+                DebugLog($"WriteMapArchive: Writing MapTriggers...");
+                writer.Write(triggers);
+                writer.Flush();
 
-            var writeToMethod = typeof(MapTriggers).GetMethod(
-                "WriteTo",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-                null,
-                new[] { typeof(BinaryWriter) },
-                null);
+                triggerData = triggerStream.ToArray();
+                DebugLog($"WriteMapArchive: Trigger data size = {triggerData.Length} bytes");
+            }
 
-            if (writeToMethod == null)
-                throw new InvalidOperationException("Could not find internal WriteTo method");
-
-            DebugLog($"WriteMapArchive: Invoking WriteTo method...");
-            writeToMethod.Invoke(triggers, new object[] { writer });
-            writer.Flush();
-            triggerStream.Position = 0;
-
-            DebugLog($"WriteMapArchive: Trigger stream size = {triggerStream.Length} bytes");
-
+            // Create MpqFile from byte array (data is now safely copied)
             var triggerFileName = MapTriggers.FileName;
             builder.RemoveFile(triggerFileName);
-            builder.AddFile(MpqFile.New(triggerStream, triggerFileName));
+
+            using (var dataStream = new MemoryStream(triggerData))
+            {
+                builder.AddFile(MpqFile.New(dataStream, triggerFileName));
+            }
 
             DebugLog($"WriteMapArchive: Building archive...");
             builder.SaveTo(outputArchivePath);
