@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using War3Net.Build.Script;
 using War3Net.IO.Mpq;
 using War3Net.Build.Extensions;
+using War3Net.Common.Extensions;
 
 namespace WTGMerger
 {
@@ -550,8 +552,149 @@ namespace WTGMerger
         }
 
         /// <summary>
+        /// Custom WTG writer that bypasses War3Net's buggy serialization.
+        /// War3Net parser is solid, but the writer has bugs with variable ParentId handling.
+        /// This implementation directly writes the binary format to ensure variables persist correctly.
+        /// </summary>
+        static void WriteWTGManual(BinaryWriter writer, MapTriggers triggers)
+        {
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[DEBUG] WriteWTGManual: Writing custom WTG format...");
+                Console.WriteLine($"[DEBUG]   Variables={triggers.Variables.Count}, Items={triggers.TriggerItems.Count}");
+                Console.WriteLine($"[DEBUG]   FormatVersion={triggers.FormatVersion}, SubVersion={triggers.SubVersion}");
+            }
+
+            // File signature: "WTG!" as int32
+            writer.Write(MapTriggers.FileFormatSignature);
+
+            if (triggers.SubVersion is null)
+            {
+                // Old format (without SubVersion)
+                writer.Write((int)triggers.FormatVersion);
+
+                var triggerCategories = triggers.TriggerItems.Where(item => item is TriggerCategoryDefinition && item.Type != TriggerItemType.RootCategory).ToArray();
+                writer.Write(triggerCategories.Length);
+                foreach (var triggerCategory in triggerCategories)
+                {
+                    writer.Write(triggerCategory, triggers.FormatVersion, triggers.SubVersion);
+                }
+
+                writer.Write(triggers.GameVersion);
+
+                // Write variables (old format - no Id/ParentId)
+                writer.Write(triggers.Variables.Count);
+                foreach (var variable in triggers.Variables)
+                {
+                    WriteVariableManual(writer, variable, triggers.FormatVersion, null);
+                }
+
+                var triggersOnly = triggers.TriggerItems.Where(item => item is TriggerDefinition).ToArray();
+                writer.Write(triggersOnly.Length);
+                foreach (var trigger in triggersOnly)
+                {
+                    writer.Write(trigger, triggers.FormatVersion, triggers.SubVersion);
+                }
+            }
+            else
+            {
+                // New format (with SubVersion) - this is what we need to fix
+                writer.Write((int)triggers.SubVersion);
+                writer.Write((int)triggers.FormatVersion);
+
+                // Write trigger item counts and deleted items
+                foreach (TriggerItemType triggerItemType in Enum.GetValues(typeof(TriggerItemType)))
+                {
+                    int count = triggers.TriggerItemCounts.TryGetValue(triggerItemType, out var existingCount)
+                        ? existingCount
+                        : triggers.TriggerItems.Count(item => item.Type == triggerItemType);
+                    writer.Write(count);
+
+                    var deletedItems = triggers.TriggerItems
+                        .Where(item => item is DeletedTriggerItem && item.Type == triggerItemType && item.Id != -1)
+                        .ToList();
+                    writer.Write(deletedItems.Count);
+                    foreach (var deletedItem in deletedItems)
+                    {
+                        writer.Write(deletedItem, triggers.FormatVersion, triggers.SubVersion);
+                    }
+                }
+
+                writer.Write(triggers.GameVersion);
+
+                // CRITICAL: Write variables with custom implementation
+                writer.Write(triggers.Variables.Count);
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[DEBUG] WriteWTGManual: Writing {triggers.Variables.Count} variables with custom serialization");
+                }
+                foreach (var variable in triggers.Variables)
+                {
+                    WriteVariableManual(writer, variable, triggers.FormatVersion, triggers.SubVersion);
+                }
+
+                // Write trigger items
+                var nonDeletedItems = triggers.TriggerItems.Where(item => item is not DeletedTriggerItem).ToList();
+                writer.Write(nonDeletedItems.Count);
+                foreach (var triggerItem in nonDeletedItems)
+                {
+                    writer.Write((int)triggerItem.Type);
+                    writer.Write(triggerItem, triggers.FormatVersion, triggers.SubVersion);
+                }
+            }
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[DEBUG] WriteWTGManual: Custom write complete");
+            }
+        }
+
+        /// <summary>
+        /// Manually write a variable definition to ensure correct ParentId serialization.
+        /// This bypasses War3Net's buggy variable writer that corrupts ParentId=-1.
+        /// </summary>
+        static void WriteVariableManual(BinaryWriter writer, VariableDefinition variable, MapTriggersFormatVersion formatVersion, MapTriggersSubVersion? subVersion)
+        {
+            // Write name (null-terminated UTF-8 string)
+            writer.WriteString(variable.Name ?? string.Empty);
+
+            // Write type (null-terminated UTF-8 string)
+            writer.WriteString(variable.Type ?? string.Empty);
+
+            // Write Unk field (int32)
+            writer.Write(variable.Unk);
+
+            // Write IsArray (4-byte bool: 0 or 1)
+            writer.WriteBool(variable.IsArray);
+
+            // Write ArraySize if format version >= v7
+            if (formatVersion >= MapTriggersFormatVersion.v7)
+            {
+                writer.Write(variable.ArraySize);
+            }
+
+            // Write IsInitialized (4-byte bool: 0 or 1)
+            writer.WriteBool(variable.IsInitialized);
+
+            // Write InitialValue (null-terminated UTF-8 string)
+            writer.WriteString(variable.InitialValue ?? string.Empty);
+
+            // CRITICAL: Write Id and ParentId if SubVersion is set
+            if (subVersion is not null)
+            {
+                writer.Write(variable.Id);
+                writer.Write(variable.ParentId);
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[DEBUG]   WriteVariableManual: {variable.Name} (Type={variable.Type}, Id={variable.Id}, ParentId={variable.ParentId})");
+                }
+            }
+        }
+
+        /// <summary>
         /// Writes MapTriggers object to a WTG file
-        /// Uses public War3Net extension method
+        /// Uses custom manual writer to bypass War3Net bugs
         /// </summary>
         static void WriteWTGFile(string filePath, MapTriggers triggers)
         {
@@ -565,8 +708,8 @@ namespace WTGMerger
             using var fileStream = File.Create(filePath);
             using var writer = new BinaryWriter(fileStream);
 
-            // Use public War3Net extension method
-            writer.Write(triggers);
+            // Use custom manual writer instead of War3Net's buggy serialization
+            WriteWTGManual(writer, triggers);
 
             if (DEBUG_MODE)
             {
