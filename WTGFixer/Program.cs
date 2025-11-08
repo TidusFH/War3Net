@@ -979,11 +979,27 @@ namespace WTGFixer
         /// </summary>
         static void RunWc3libsCopy(string inputPath, string outputPath)
         {
-            string bridgeDir = Path.Combine(
-                Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? ".",
-                "..", "WTGBridge"
-            );
-            string wc3libsDir = Path.Combine(bridgeDir, "..", "wc3libs");
+            // Get the executable directory (e.g., WTGFixer/bin/Debug/net8.0)
+            string exeDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? ".";
+
+            // Go up to the project root (WTGFixer/ directory)
+            // From bin/Debug/net8.0 we need to go up 3 levels
+            string projectRoot = Path.GetFullPath(Path.Combine(exeDir, "..", "..", ".."));
+
+            // WTGBridge and wc3libs are siblings to the WTGFixer directory
+            string solutionRoot = Path.GetFullPath(Path.Combine(projectRoot, ".."));
+            string bridgeDir = Path.Combine(solutionRoot, "WTGBridge");
+            string wc3libsDir = Path.Combine(solutionRoot, "wc3libs");
+
+            // Verify directories exist
+            if (!Directory.Exists(bridgeDir))
+            {
+                throw new DirectoryNotFoundException($"WTGBridge directory not found at: {bridgeDir}\nPlease ensure WTGBridge is in the solution root.");
+            }
+            if (!Directory.Exists(wc3libsDir))
+            {
+                throw new DirectoryNotFoundException($"wc3libs directory not found at: {wc3libsDir}\nPlease ensure wc3libs is in the solution root.");
+            }
 
             // Build Java classpath (cross-platform)
             string classpath = $"{bridgeDir}{Path.PathSeparator}{wc3libsDir}{Path.DirectorySeparatorChar}*";
@@ -998,6 +1014,13 @@ namespace WTGFixer
                 CreateNoWindow = true
             };
 
+            DebugLog($"RunWc3libsCopy: Paths resolved:");
+            DebugLog($"  Executable: {exeDir}");
+            DebugLog($"  Project root: {projectRoot}");
+            DebugLog($"  Solution root: {solutionRoot}");
+            DebugLog($"  WTGBridge: {bridgeDir}");
+            DebugLog($"  wc3libs: {wc3libsDir}");
+            DebugLog($"  Classpath: {classpath}");
             DebugLog($"RunWc3libsCopy: Executing: {startInfo.FileName} {startInfo.Arguments}");
 
             using (var process = System.Diagnostics.Process.Start(startInfo))
