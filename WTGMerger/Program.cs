@@ -2220,25 +2220,28 @@ namespace WTGMerger
 
             // Write WTG directly with War3Net
             Console.WriteLine($"  Writing triggers...");
+            byte[] triggerData;
             using (var triggerStream = new MemoryStream())
             using (var writer = new BinaryWriter(triggerStream))
             {
                 writer.Write(triggers);
                 writer.Flush();
-
-                // Remove old trigger file and add new one
-                var triggerFileName = MapTriggers.FileName; // "war3map.wtg"
-                Console.WriteLine($"  Replacing {triggerFileName}...");
-                builder.RemoveFile(triggerFileName);
-
-                // Reset stream position and create MpqFile
-                triggerStream.Position = 0;
-                builder.AddFile(MpqFile.New(triggerStream, triggerFileName));
+                triggerData = triggerStream.ToArray();
 
                 if (DEBUG_MODE)
                 {
-                    Console.WriteLine($"[DEBUG] Trigger file size: {triggerStream.Length} bytes");
+                    Console.WriteLine($"[DEBUG] Trigger file size: {triggerData.Length} bytes");
                 }
+            }
+
+            // Add trigger file to archive
+            var triggerFileName = MapTriggers.FileName; // "war3map.wtg"
+            Console.WriteLine($"  Replacing {triggerFileName}...");
+            builder.RemoveFile(triggerFileName);
+
+            using (var dataStream = new MemoryStream(triggerData))
+            {
+                builder.AddFile(MpqFile.New(dataStream, triggerFileName));
             }
 
             // Optionally remove war3map.j to force regeneration

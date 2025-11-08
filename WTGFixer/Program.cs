@@ -1093,21 +1093,24 @@ namespace WTGFixer
             var builder = new MpqArchiveBuilder(originalArchive);
 
             // Write WTG directly with War3Net
+            byte[] triggerData;
             using (var triggerStream = new MemoryStream())
             using (var writer = new BinaryWriter(triggerStream))
             {
                 writer.Write(triggers);
                 writer.Flush();
+                triggerData = triggerStream.ToArray();
 
-                // Remove old trigger file and add new one
-                var triggerFileName = MapTriggers.FileName;
-                builder.RemoveFile(triggerFileName);
+                DebugLog($"WriteMapArchive: Trigger file size: {triggerData.Length} bytes");
+            }
 
-                // Reset stream position and create MpqFile
-                triggerStream.Position = 0;
-                builder.AddFile(MpqFile.New(triggerStream, triggerFileName));
+            // Add trigger file to archive
+            var triggerFileName = MapTriggers.FileName;
+            builder.RemoveFile(triggerFileName);
 
-                DebugLog($"WriteMapArchive: Trigger file size: {triggerStream.Length} bytes");
+            using (var dataStream = new MemoryStream(triggerData))
+            {
+                builder.AddFile(MpqFile.New(dataStream, triggerFileName));
             }
 
             DebugLog($"WriteMapArchive: Building archive...");
