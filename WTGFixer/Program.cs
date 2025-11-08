@@ -571,6 +571,11 @@ namespace WTGFixer
                 DebugLog($"Variable count BEFORE copying: {merged.Variables.Count}");
                 DebugLogVariables("BEFORE copying from original", merged);
 
+                // CRITICAL: Use existing ParentId from merged map's first variable
+                // This ensures we match the structure that already exists
+                int targetParentId = merged.Variables.Count > 0 ? merged.Variables[0].ParentId : 0;
+                DebugLog($"Using ParentId={targetParentId} for new variables (from existing merged variables)");
+
                 var originalVarDict = original.Variables.ToDictionary(v => v.Name, v => v, StringComparer.OrdinalIgnoreCase);
 
                 foreach (var varName in issues.MissingVariables)
@@ -588,10 +593,10 @@ namespace WTGFixer
                             IsInitialized = origVar.IsInitialized,
                             InitialValue = origVar.InitialValue,
                             Id = merged.Variables.Count,
-                            // CRITICAL FIX: Always use -1 for ParentId (root level)
-                            // Never inherit ParentId from source - those indices don't exist in merged map
-                            // This prevents WE 1.27 from silently dropping variables with foreign ParentIds
-                            ParentId = -1
+                            // CRITICAL FIX: Use ParentId from existing variables in merged map
+                            // This matches the structure War3Net expects and prevents WE 1.27 from dropping variables
+                            // Avoids War3Net serialization bug where ParentId=-1 can cause incomplete writes
+                            ParentId = targetParentId
                         };
                         merged.Variables.Add(newVar);
                         DebugLog($"  Added variable {varName} with Id={newVar.Id}, Type={newVar.Type}, ParentId={newVar.ParentId}");
@@ -615,6 +620,10 @@ namespace WTGFixer
                 Console.WriteLine($"\nCopying {issues.MissingSourceVariables.Count} missing variable(s) from source...");
                 DebugLog($"Variable count BEFORE copying from source: {merged.Variables.Count}");
 
+                // Use same ParentId as existing variables
+                int targetParentId = merged.Variables.Count > 0 ? merged.Variables[0].ParentId : 0;
+                DebugLog($"Using ParentId={targetParentId} for source variables");
+
                 var sourceVarDict = source.Variables.ToDictionary(v => v.Name, v => v, StringComparer.OrdinalIgnoreCase);
 
                 foreach (var varName in issues.MissingSourceVariables)
@@ -632,10 +641,10 @@ namespace WTGFixer
                             IsInitialized = sourceVar.IsInitialized,
                             InitialValue = sourceVar.InitialValue,
                             Id = merged.Variables.Count,
-                            // CRITICAL FIX: Always use -1 for ParentId (root level)
-                            // Never inherit ParentId from source - those indices don't exist in merged map
-                            // This prevents WE 1.27 from silently dropping variables with foreign ParentIds
-                            ParentId = -1
+                            // CRITICAL FIX: Match existing variable ParentId structure
+                            // This ensures consistent structure that War3Net can serialize correctly
+                            // Avoids War3Net bug where ParentId=-1 causes incomplete serialization
+                            ParentId = targetParentId
                         };
                         merged.Variables.Add(newVar);
                         DebugLog($"  Added variable {varName} with Id={newVar.Id}, Type={newVar.Type}, ParentId={newVar.ParentId}");
