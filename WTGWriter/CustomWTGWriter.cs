@@ -24,60 +24,71 @@ namespace WTGWriter
             writer.Write(Encoding.ASCII.GetBytes("WTG!"));
 
             // Format Version (int32)
-            // From diagnostic: TARGET shows 07 00 00 00 (format 7)
             int formatVersion = (int)triggers.FormatVersion;
             writer.Write(formatVersion);
+
+            Console.WriteLine($"[CustomWriter] Header written:");
+            Console.WriteLine($"  Format Version: {formatVersion}");
 
             // Get counts
             var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
             var triggerDefs = triggers.TriggerItems.OfType<TriggerDefinition>().ToList();
 
-            Console.WriteLine($"[CustomWriter] Writing format {formatVersion}");
-            Console.WriteLine($"[CustomWriter] Categories: {categories.Count}");
-            Console.WriteLine($"[CustomWriter] Triggers: {triggerDefs.Count}");
-            Console.WriteLine($"[CustomWriter] Variables: {triggers.Variables.Count}");
+            Console.WriteLine($"[CustomWriter] Counts:");
+            Console.WriteLine($"  Categories: {categories.Count}");
+            Console.WriteLine($"  Triggers: {triggerDefs.Count}");
+            Console.WriteLine($"  Variables: {triggers.Variables.Count}");
 
             // === CATEGORY COUNT (int32) ===
-            // From diagnostic: TARGET shows 20 00 00 00 at offset 0x08 (32 categories)
+            // At offset 0x08 according to format spec
             writer.Write(categories.Count);
 
             // === SUBVERSION (int32) ===
-            // From diagnostic: TARGET shows 00 00 00 00 at offset 0x0C
-            // SubVersion appears to be written as int32, with null = 0
+            // At offset 0x0C according to format spec
             int subVersion = triggers.SubVersion.HasValue ? (int)triggers.SubVersion.Value : 0;
             writer.Write(subVersion);
+            Console.WriteLine($"  SubVersion: {subVersion}");
 
             // === CATEGORY DEFINITIONS ===
             foreach (var category in categories)
             {
-                // From hex dump: category name is null-terminated string
+                // Category name (null-terminated)
                 WriteNullTerminatedString(writer, category.Name);
 
-                // Appears to be followed by padding/flags (need to analyze more)
-                writer.Write((int)0); // Unknown field 1
-                writer.Write((int)0); // Unknown field 2
+                // Unknown field 1 (int32) - observed as 0
+                writer.Write(0);
 
-                // Category ID
+                // Unknown field 2 (int32) - observed as 0
+                writer.Write(0);
+
+                // Category ID (int32)
                 writer.Write(category.Id);
 
-                // Parent ID (-1 for root, or ID of parent category)
+                // Parent ID (int32, -1 for root)
                 writer.Write(category.ParentId);
             }
 
             // === VARIABLE COUNT (int32) ===
             writer.Write(triggers.Variables.Count);
+            Console.WriteLine($"[CustomWriter] Writing {triggers.Variables.Count} variables...");
 
             // === VARIABLE DEFINITIONS ===
+            int varIndex = 0;
             foreach (var variable in triggers.Variables)
             {
+                if (varIndex < 3) // Log first few for debugging
+                {
+                    Console.WriteLine($"[CustomWriter]   Var {varIndex}: {variable.Name} ({variable.Type})");
+                }
+
                 // Variable name (null-terminated)
                 WriteNullTerminatedString(writer, variable.Name);
 
                 // Type (null-terminated)
                 WriteNullTerminatedString(writer, variable.Type);
 
-                // Unknown field (appears to be 01 00 00 00 in hex dumps)
-                writer.Write((int)1);
+                // Unk field (int32, usually 1)
+                writer.Write(variable.Unk);
 
                 // IsArray (int32)
                 writer.Write(variable.IsArray ? 1 : 0);
@@ -91,17 +102,21 @@ namespace WTGWriter
                 // InitialValue (null-terminated string)
                 WriteNullTerminatedString(writer, variable.InitialValue);
 
-                // ID
+                // Variable ID (int32)
                 writer.Write(variable.Id);
 
-                // ParentId
+                // Parent ID (int32)
                 writer.Write(variable.ParentId);
+
+                varIndex++;
             }
 
             // === TRIGGER COUNT (int32) ===
             writer.Write(triggerDefs.Count);
+            Console.WriteLine($"[CustomWriter] Writing {triggerDefs.Count} triggers...");
 
             // === TRIGGER DEFINITIONS ===
+            // Simplified for now - just write minimal data
             foreach (var trigger in triggerDefs)
             {
                 // Trigger name (null-terminated)
@@ -122,10 +137,10 @@ namespace WTGWriter
                 // RunOnMapInit (int32)
                 writer.Write(trigger.RunOnMapInit ? 1 : 0);
 
-                // ID
+                // Trigger ID (int32)
                 writer.Write(trigger.Id);
 
-                // Category ID (ParentId)
+                // Category ID/Parent ID (int32)
                 writer.Write(trigger.ParentId);
 
                 // Filter functions by type
