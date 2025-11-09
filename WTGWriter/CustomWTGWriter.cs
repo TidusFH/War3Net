@@ -30,24 +30,24 @@ namespace WTGWriter
             Console.WriteLine($"[CustomWriter] Header written:");
             Console.WriteLine($"  Format Version: {formatVersion}");
 
-            // Get counts
-            var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
+            // Get counts (filter out RootCategory from categories - War3Net doesn't write those)
+            var categories = triggers.TriggerItems
+                .Where(item => item is TriggerCategoryDefinition && item.Type != TriggerItemType.RootCategory)
+                .Cast<TriggerCategoryDefinition>()
+                .ToList();
             var triggerDefs = triggers.TriggerItems.OfType<TriggerDefinition>().ToList();
 
             Console.WriteLine($"[CustomWriter] Counts:");
             Console.WriteLine($"  Categories: {categories.Count}");
             Console.WriteLine($"  Triggers: {triggerDefs.Count}");
             Console.WriteLine($"  Variables: {triggers.Variables.Count}");
+            Console.WriteLine($"  SubVersion: {(triggers.SubVersion.HasValue ? triggers.SubVersion.Value.ToString() : "null")}");
+
+            // For passing to write methods
+            int subVersion = triggers.SubVersion.HasValue ? (int)triggers.SubVersion.Value : 0;
 
             // === CATEGORY COUNT (int32) ===
-            // At offset 0x08 according to format spec
             writer.Write(categories.Count);
-
-            // === SUBVERSION (int32) ===
-            // At offset 0x0C according to format spec
-            int subVersion = triggers.SubVersion.HasValue ? (int)triggers.SubVersion.Value : 0;
-            writer.Write(subVersion);
-            Console.WriteLine($"  SubVersion: {subVersion}");
 
             // === CATEGORY DEFINITIONS ===
             foreach (var category in categories)
@@ -71,6 +71,11 @@ namespace WTGWriter
                     writer.Write(category.ParentId);
                 }
             }
+
+            // === GAME VERSION (int32) ===
+            // CRITICAL: This field comes AFTER categories and BEFORE variables
+            writer.Write(triggers.GameVersion);
+            Console.WriteLine($"  GameVersion: {triggers.GameVersion}");
 
             // === VARIABLE COUNT (int32) ===
             writer.Write(triggers.Variables.Count);
