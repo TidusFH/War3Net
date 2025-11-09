@@ -12,11 +12,30 @@ namespace WTGDiagnostic
 {
     class Program
     {
+        // Dual output writer - writes to both console and file
+        static StreamWriter logFile;
+        static TextWriter originalConsoleOut;
+        static string logFileName;
+
         static void Main(string[] args)
         {
+            // Set up log file
+            logFileName = $"WTG_Diagnostic_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.txt";
+            logFile = new StreamWriter(logFileName, false, Encoding.UTF8);
+            logFile.AutoFlush = true;
+
+            // Save original console output
+            originalConsoleOut = Console.Out;
+
+            // Create a MultiTextWriter that writes to both console and file
+            var multiWriter = new MultiTextWriter(originalConsoleOut, logFile);
+            Console.SetOut(multiWriter);
+
             Console.WriteLine("===============================================================");
             Console.WriteLine("           WTG Binary Diagnostic Tool");
             Console.WriteLine("===============================================================");
+            Console.WriteLine();
+            Console.WriteLine($"Output will be saved to: {logFileName}");
             Console.WriteLine();
 
             // Default paths - look in Source/ and Target/ folders
@@ -174,6 +193,17 @@ namespace WTGDiagnostic
                 Console.WriteLine("Stack trace:");
                 Console.WriteLine(ex.StackTrace);
                 Console.ResetColor();
+            }
+            finally
+            {
+                // Restore console output and close log file
+                Console.SetOut(originalConsoleOut);
+
+                if (logFile != null)
+                {
+                    logFile.Close();
+                    Console.WriteLine($"\n✓ Diagnostic results saved to: {logFileName}");
+                }
             }
         }
 
@@ -565,6 +595,73 @@ namespace WTGDiagnostic
                     Console.ResetColor();
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Text writer that writes to multiple TextWriter instances simultaneously
+    /// </summary>
+    class MultiTextWriter : TextWriter
+    {
+        private readonly TextWriter[] writers;
+
+        public MultiTextWriter(params TextWriter[] writers)
+        {
+            this.writers = writers;
+        }
+
+        public override Encoding Encoding => Encoding.UTF8;
+
+        public override void Write(char value)
+        {
+            foreach (var writer in writers)
+            {
+                writer.Write(value);
+            }
+        }
+
+        public override void Write(string value)
+        {
+            foreach (var writer in writers)
+            {
+                writer.Write(value);
+            }
+        }
+
+        public override void WriteLine(string value)
+        {
+            foreach (var writer in writers)
+            {
+                writer.WriteLine(value);
+            }
+        }
+
+        public override void WriteLine()
+        {
+            foreach (var writer in writers)
+            {
+                writer.WriteLine();
+            }
+        }
+
+        public override void Flush()
+        {
+            foreach (var writer in writers)
+            {
+                writer.Flush();
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                foreach (var writer in writers)
+                {
+                    writer.Flush();
+                }
+            }
+            base.Dispose(disposing);
         }
     }
 }
