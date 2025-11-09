@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
-using War3Net.Build.Core;
+using War3Net.Build;
 using War3Net.IO.Mpq;
 
 namespace WTGDiagnostic
@@ -16,29 +16,58 @@ namespace WTGDiagnostic
             Console.WriteLine("===============================================================");
             Console.WriteLine();
 
-            if (args.Length < 3)
+            // Default paths - look in Source/ and Target/ folders
+            string sourcePath = "Source/war3map.wtg";
+            string targetPath = "Target/war3map.wtg";
+            string mergedPath = "Target/war3map_merged.wtg";
+
+            // Allow overriding with command line arguments
+            if (args.Length >= 3)
             {
-                Console.WriteLine("Usage: WTGDiagnostic <source.wtg/.w3x> <target.wtg/.w3x> <merged.wtg/.w3x>");
+                sourcePath = args[0];
+                targetPath = args[1];
+                mergedPath = args[2];
+            }
+            else if (args.Length > 0)
+            {
+                Console.WriteLine("Usage: WTGDiagnostic [source.wtg/.w3x] [target.wtg/.w3x] [merged.wtg/.w3x]");
                 Console.WriteLine();
-                Console.WriteLine("This tool compares WTG files to diagnose War3Net writer bugs.");
+                Console.WriteLine("If no arguments provided, uses default paths:");
+                Console.WriteLine("  Source: Source/war3map.wtg");
+                Console.WriteLine("  Target: Target/war3map.wtg");
+                Console.WriteLine("  Merged: Target/war3map_merged.wtg");
                 Console.WriteLine();
-                Console.WriteLine("Arguments:");
-                Console.WriteLine("  <source>  - Source WTG/map (1.31 format)");
-                Console.WriteLine("  <target>  - Target WTG/map (1.27 format)");
-                Console.WriteLine("  <merged>  - Merged WTG/map (War3Net output)");
-                Console.WriteLine();
-                Console.WriteLine("The tool will:");
-                Console.WriteLine("  1. Parse all three files with War3Net");
-                Console.WriteLine("  2. Show statistics (variables, triggers, categories)");
-                Console.WriteLine("  3. Dump binary hex data");
-                Console.WriteLine("  4. Compare byte-by-byte to find differences");
-                Console.WriteLine("  5. Identify what War3Net is doing wrong");
                 return;
             }
 
-            string sourcePath = args[0];
-            string targetPath = args[1];
-            string mergedPath = args[2];
+            Console.WriteLine("File paths:");
+            Console.WriteLine($"  Source: {sourcePath}");
+            Console.WriteLine($"  Target: {targetPath}");
+            Console.WriteLine($"  Merged: {mergedPath}");
+            Console.WriteLine();
+
+            // Verify files exist
+            if (!File.Exists(sourcePath))
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[ERROR] Source file not found: {sourcePath}");
+                Console.ResetColor();
+                return;
+            }
+            if (!File.Exists(targetPath))
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[ERROR] Target file not found: {targetPath}");
+                Console.ResetColor();
+                return;
+            }
+            if (!File.Exists(mergedPath))
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[ERROR] Merged file not found: {mergedPath}");
+                Console.ResetColor();
+                return;
+            }
 
             try
             {

@@ -40,33 +40,65 @@ dotnet build WTGDiagnostic.csproj
 
 ## Usage
 
-### With WTG files:
+### Default Mode (Recommended):
+The tool looks for files in these default locations:
+- `Source/war3map.wtg`
+- `Target/war3map.wtg`
+- `Target/war3map_merged.wtg`
+
+Just run:
 ```bash
-dotnet run --project WTGDiagnostic.csproj source.wtg target.wtg merged.wtg
+dotnet run
 ```
 
-### With map archives:
-```bash
-dotnet run --project WTGDiagnostic.csproj source.w3x target.w3x merged.w3x
+Or on Windows:
+```batch
+run.bat
 ```
 
-The tool automatically extracts war3map.wtg from .w3x archives.
+### Custom Paths:
+You can also specify custom file paths:
+```bash
+dotnet run source.wtg target.wtg merged.wtg
+```
+
+Or with map archives (auto-extracts war3map.wtg):
+```bash
+dotnet run source.w3x target.w3x merged.w3x
+```
 
 ## Example Workflow
 
-1. **Run WTGMerger** to create a merged output:
+1. **Prepare folders**:
+   ```
+   WTGDiagnostic/
+     Source/
+       war3map.wtg      (extract from source 1.31 map)
+     Target/
+       war3map.wtg      (extract from target 1.27 map)
+       war3map_merged.wtg   (output from WTGMerger)
+   ```
+
+2. **Extract WTG files from maps** (using MPQ Editor or similar):
+   - Extract from source.w3x → `Source/war3map.wtg`
+   - Extract from target.w3x → `Target/war3map.wtg`
+
+3. **Run WTGMerger** to create merged output:
    ```bash
    cd WTGMerger/bin/Debug/net8.0
-   WTGMerger.exe source.w3x target.w3x merged.w3x
+   WTGMerger.exe source.w3x target.w3x output.w3x
    ```
 
-2. **Run diagnostic** to analyze the output:
+4. **Extract merged WTG**:
+   - Extract from output.w3x → `WTGDiagnostic/Target/war3map_merged.wtg`
+
+5. **Run diagnostic**:
    ```bash
    cd WTGDiagnostic
-   dotnet run source.w3x target.w3x merged.w3x
+   dotnet run
    ```
 
-3. **Review the output**:
+6. **Review the output**:
    - Check if MERGED has correct variable/trigger counts
    - Look for "[ERROR]" or "[WARNING]" messages
    - Review hex dumps to see if data looks valid
