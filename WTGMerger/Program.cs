@@ -881,9 +881,9 @@ namespace WTGMerger
             Console.WriteLine($"\n  Copying {triggersToCopy.Count} trigger(s) to category '{destCategoryName}':");
             foreach (var sourceTrigger in triggersToCopy)
             {
-                // CRITICAL FIX: ParentId must be the INDEX of the category in TriggerItems, not the Id field!
-                int parentIndex = target.TriggerItems.IndexOf(destCategory);
-                var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), parentIndex);
+                // CRITICAL: ParentId must be set to the category's Id field (not the index!)
+                // In old WTG format, triggers reference categories by their Id property.
+                var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), destCategory.Id);
                 target.TriggerItems.Insert(insertIndex, copiedTrigger);
                 insertIndex++;
                 Console.WriteLine($"    ✓ {copiedTrigger.Name}");
@@ -907,11 +907,11 @@ namespace WTGMerger
                 return new List<TriggerDefinition>();
             }
 
-            // CRITICAL FIX: ParentId references the INDEX in TriggerItems list, not the Id field!
-            int categoryIndex = triggers.TriggerItems.IndexOf(category);
+            // CRITICAL: In old WTG format (SubVersion=null), ParentId stores the category's Id field, not index!
+            // Triggers reference their parent category using the category's Id property.
             var triggersInCategory = triggers.TriggerItems
                 .OfType<TriggerDefinition>()
-                .Where(t => t.ParentId == categoryIndex)
+                .Where(t => t.ParentId == category.Id)
                 .ToList();
 
             return triggersInCategory;
@@ -969,9 +969,9 @@ namespace WTGMerger
             // Copy all triggers
             foreach (var sourceTrigger in sourceCategoryTriggers)
             {
-                // CRITICAL FIX: ParentId must be the INDEX of the category in TriggerItems, not the Id field!
-                int parentIndex = target.TriggerItems.IndexOf(newCategory);
-                var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), parentIndex);
+                // CRITICAL: ParentId must be set to the category's Id field (not the index!)
+                // In old WTG format, triggers reference categories by their Id property.
+                var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), newCategory.Id);
                 target.TriggerItems.Add(copiedTrigger);
                 Console.WriteLine($"    + Copied trigger: {copiedTrigger.Name}");
             }
@@ -1901,14 +1901,14 @@ namespace WTGMerger
             Console.WriteLine("  Reassigning unique IDs to all trigger items...");
             Console.ResetColor();
 
-            // CRITICAL FIX: Create mapping of OLD ID -> ITEM before reassigning
-            // This allows us to find items by their old IDs when updating ParentIds
-            var oldIdToItem = new Dictionary<int, TriggerItem>();
-            foreach (var item in triggers.TriggerItems)
+            // CRITICAL: Create mapping of OLD ID -> NEW ID before reassigning
+            // In old WTG format, ParentId references the category's Id field, not index.
+            var oldIdToNewId = new Dictionary<int, int>();
+
+            // Build the mapping: old ID -> new ID (which will be the index)
+            for (int i = 0; i < triggers.TriggerItems.Count; i++)
             {
-                // Use the item reference as the value, not the ID
-                // Multiple items might have the same old ID (that's why we're fixing), so use last one
-                oldIdToItem[item.Id] = item;
+                oldIdToNewId[triggers.TriggerItems[i].Id] = i;
             }
 
             // Reassign IDs to ALL items (0, 1, 2, 3, ...)
@@ -1917,8 +1917,7 @@ namespace WTGMerger
                 triggers.TriggerItems[i].Id = i;
             }
 
-            // Update ParentIds in ALL items (both categories and triggers)
-            // Note: After reassignment above, each item's ID equals its index in the list
+            // Update ParentIds in ALL items to use the new IDs
             foreach (var item in triggers.TriggerItems)
             {
                 // Skip root-level items (ParentId -1 or 0 should stay that way)
@@ -1927,57 +1926,16 @@ namespace WTGMerger
                     continue;
                 }
 
-                if (item is TriggerDefinition trigger)
+                // Update ParentId to use the new ID
+                // Old ParentId referenced an old Id value, we need to map it to the new Id value
+                if (oldIdToNewId.TryGetValue(item.ParentId, out int newParentId))
                 {
-                    // Find the category this trigger belongs to by OLD ParentId
-                    // Search through all items to find the one that had this ID BEFORE reassignment
-                    TriggerCategoryDefinition category = null;
-                    foreach (var potentialParent in triggers.TriggerItems.OfType<TriggerCategoryDefinition>())
-                    {
-                        // Check if this category's OLD index/position matches the trigger's ParentId
-                        // Since ParentId often references the item's position in the list, we need to check
-                        // if the trigger's ParentId matches this category's current index
-                        if (triggers.TriggerItems.IndexOf(potentialParent) == trigger.ParentId)
-                        {
-                            category = potentialParent;
-                            break;
-                        }
-                    }
-
-                    if (category != null)
-                    {
-                        // ParentId should be the category's NEW ID (which is its index)
-                        trigger.ParentId = triggers.TriggerItems.IndexOf(category);
-                    }
-                    else
-                    {
-                        // No parent found, make it root-level
-                        trigger.ParentId = -1;
-                    }
+                    item.ParentId = newParentId;
                 }
-                else if (item is TriggerCategoryDefinition category)
+                else
                 {
-                    // Categories can also be nested - find parent category
-                    TriggerCategoryDefinition parentCategory = null;
-                    foreach (var potentialParent in triggers.TriggerItems.OfType<TriggerCategoryDefinition>())
-                    {
-                        if (triggers.TriggerItems.IndexOf(potentialParent) == category.ParentId)
-                        {
-                            parentCategory = potentialParent;
-                            break;
-                        }
-                    }
-
-                    if (parentCategory != null)
-                    {
-                        // Update to parent's new ID
-                        category.ParentId = triggers.TriggerItems.IndexOf(parentCategory);
-                    }
-                    else
-                    {
-                        // No parent found, make it root-level
-                        category.ParentId = -1;
-                    }
+                    // Parent not found, make it root-level
+                    item.ParentId = -1;
                 }
             }
 
