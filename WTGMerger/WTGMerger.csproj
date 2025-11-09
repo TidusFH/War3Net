@@ -16,6 +16,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Reference our custom WTG writer -->
+    <ProjectReference Include="..\WTGWriter\WTGWriter.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Reference the War3Net DLLs you've already added -->
     <Reference Include="War3Net.Build.Core">
       <HintPath>../Libs/War3Net.Build.Core.dll</HintPath>

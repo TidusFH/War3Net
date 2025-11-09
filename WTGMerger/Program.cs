@@ -7,6 +7,7 @@ using War3Net.Build.Script;
 using War3Net.IO.Mpq;
 using War3Net.Build.Extensions;
 using War3Net.Common.Extensions;
+using WTGWriter;
 
 namespace WTGMerger
 {
@@ -725,12 +726,10 @@ namespace WTGMerger
                 Console.WriteLine($"[DEBUG]   Trigger items to write: {triggers.TriggerItems.Count}");
             }
 
-            // Write directly with War3Net
+            // Write with custom WTG writer (War3Net's writer is broken)
             using (var fileStream = File.Create(filePath))
-            using (var writer = new BinaryWriter(fileStream))
             {
-                writer.Write(triggers);
-                writer.Flush();
+                CustomWTGWriter.Write(fileStream, triggers);
             }
 
             if (DEBUG_MODE)
@@ -2218,14 +2217,12 @@ namespace WTGMerger
             Console.WriteLine($"  Creating archive builder...");
             var builder = new MpqArchiveBuilder(originalArchive);
 
-            // Write WTG directly with War3Net
+            // Write WTG with custom writer (War3Net's writer is broken)
             Console.WriteLine($"  Writing triggers...");
             byte[] triggerData;
             using (var triggerStream = new MemoryStream())
-            using (var writer = new BinaryWriter(triggerStream))
             {
-                writer.Write(triggers);
-                writer.Flush();
+                CustomWTGWriter.Write(triggerStream, triggers);
                 triggerData = triggerStream.ToArray();
 
                 if (DEBUG_MODE)

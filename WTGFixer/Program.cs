@@ -7,6 +7,7 @@ using War3Net.Build.Script;
 using War3Net.IO.Mpq;
 using War3Net.Build.Extensions;
 using War3Net.Common.Extensions;
+using WTGWriter;
 
 namespace WTGFixer
 {
@@ -1069,12 +1070,10 @@ namespace WTGFixer
             DebugLog($"WriteWTGFile: Writing {triggers.Variables.Count} variables, {triggers.TriggerItems.Count} trigger items");
             DebugLog($"WriteWTGFile: SubVersion = {triggers.SubVersion}");
 
-            // Write directly with War3Net
+            // Write with custom WTG writer (War3Net's writer is broken)
             using (var fileStream = File.Create(filePath))
-            using (var writer = new BinaryWriter(fileStream))
             {
-                writer.Write(triggers);
-                writer.Flush();
+                CustomWTGWriter.Write(fileStream, triggers);
             }
 
             DebugLog($"WriteWTGFile: Final file size = {new FileInfo(filePath).Length} bytes");
@@ -1092,13 +1091,11 @@ namespace WTGFixer
 
             var builder = new MpqArchiveBuilder(originalArchive);
 
-            // Write WTG directly with War3Net
+            // Write WTG with custom writer (War3Net's writer is broken)
             byte[] triggerData;
             using (var triggerStream = new MemoryStream())
-            using (var writer = new BinaryWriter(triggerStream))
             {
-                writer.Write(triggers);
-                writer.Flush();
+                CustomWTGWriter.Write(triggerStream, triggers);
                 triggerData = triggerStream.ToArray();
 
                 DebugLog($"WriteMapArchive: Trigger file size: {triggerData.Length} bytes");
