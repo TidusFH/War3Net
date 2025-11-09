@@ -52,20 +52,24 @@ namespace WTGWriter
             // === CATEGORY DEFINITIONS ===
             foreach (var category in categories)
             {
-                // Category name (null-terminated)
-                WriteNullTerminatedString(writer, category.Name);
-
-                // Unknown field 1 (int32) - observed as 0
-                writer.Write(0);
-
-                // Unknown field 2 (int32) - observed as 0
-                writer.Write(0);
-
-                // Category ID (int32)
+                // Category ID (int32) - FIRST!
                 writer.Write(category.Id);
 
-                // Parent ID (int32, -1 for root)
-                writer.Write(category.ParentId);
+                // Category name (null-terminated string)
+                WriteNullTerminatedString(writer, category.Name);
+
+                // IsComment (bool) - only if formatVersion >= v7
+                if (formatVersion >= 7)
+                {
+                    writer.Write(category.IsComment ? 1 : 0);
+                }
+
+                // IsExpanded (bool) - only if subVersion is not null
+                if (subVersion != 0)
+                {
+                    writer.Write(category.IsExpanded ? 1 : 0);
+                    writer.Write(category.ParentId);
+                }
             }
 
             // === VARIABLE COUNT (int32) ===
@@ -116,57 +120,48 @@ namespace WTGWriter
             Console.WriteLine($"[CustomWriter] Writing {triggerDefs.Count} triggers...");
 
             // === TRIGGER DEFINITIONS ===
-            // Simplified for now - just write minimal data
             foreach (var trigger in triggerDefs)
             {
-                // Trigger name (null-terminated)
+                // Name (null-terminated)
                 WriteNullTerminatedString(writer, trigger.Name);
 
                 // Description (null-terminated)
                 WriteNullTerminatedString(writer, trigger.Description ?? string.Empty);
 
-                // IsEnabled (int32)
+                // IsComment (bool) - only if formatVersion >= v7
+                if (formatVersion >= 7)
+                {
+                    writer.Write(trigger.IsComment ? 1 : 0);
+                }
+
+                // ID (int32) - only if subVersion is not null
+                if (subVersion != 0)
+                {
+                    writer.Write(trigger.Id);
+                }
+
+                // IsEnabled (bool)
                 writer.Write(trigger.IsEnabled ? 1 : 0);
 
-                // IsCustomScript (int32)
+                // IsCustomTextTrigger (bool)
                 writer.Write(trigger.IsCustomTextTrigger ? 1 : 0);
 
-                // IsInitiallyOn (int32)
-                writer.Write(trigger.IsInitiallyOn ? 1 : 0);
+                // IsInitiallyOn (bool) - NOTE: NEGATED!
+                writer.Write(trigger.IsInitiallyOn ? 0 : 1);
 
-                // RunOnMapInit (int32)
+                // RunOnMapInit (bool)
                 writer.Write(trigger.RunOnMapInit ? 1 : 0);
 
-                // Trigger ID (int32)
-                writer.Write(trigger.Id);
-
-                // Category ID/Parent ID (int32)
+                // ParentId (int32)
                 writer.Write(trigger.ParentId);
 
-                // Filter functions by type
-                var events = trigger.Functions.Where(f => f.Type == TriggerFunctionType.Event).ToList();
-                var conditions = trigger.Functions.Where(f => f.Type == TriggerFunctionType.Condition).ToList();
-                var actions = trigger.Functions.Where(f => f.Type == TriggerFunctionType.Action).ToList();
+                // Functions count
+                writer.Write(trigger.Functions.Count);
 
-                // === EVENTS ===
-                writer.Write(events.Count);
-                foreach (var evt in events)
+                // Write all functions (not separated by type)
+                foreach (var function in trigger.Functions)
                 {
-                    WriteTriggerFunction(writer, evt);
-                }
-
-                // === CONDITIONS ===
-                writer.Write(conditions.Count);
-                foreach (var condition in conditions)
-                {
-                    WriteTriggerFunction(writer, condition);
-                }
-
-                // === ACTIONS ===
-                writer.Write(actions.Count);
-                foreach (var action in actions)
-                {
-                    WriteTriggerFunction(writer, action);
+                    WriteTriggerFunction(writer, function, formatVersion, subVersion);
                 }
             }
 
@@ -176,62 +171,74 @@ namespace WTGWriter
 
         private static void WriteNullTerminatedString(BinaryWriter writer, string value)
         {
-            // Write string bytes
+            // Write each character as 2 bytes (char in C# is UTF-16)
+            // This matches War3Net's WriteString behavior
             if (!string.IsNullOrEmpty(value))
             {
-                byte[] bytes = Encoding.UTF8.GetBytes(value);
-                writer.Write(bytes);
+                foreach (var c in value)
+                {
+                    writer.Write(c);  // Writes 2 bytes per character
+                }
             }
 
-            // Write null terminator
-            writer.Write((byte)0);
+            // Write null terminator (2 bytes for char.MinValue)
+            writer.Write(char.MinValue);
         }
 
-        private static void WriteTriggerFunction(BinaryWriter writer, TriggerFunction function)
+        private static void WriteTriggerFunction(BinaryWriter writer, TriggerFunction function, int formatVersion, int subVersion)
         {
-            // Function type (int32)
+            // Type (int32)
             writer.Write((int)function.Type);
 
-            // Function name (null-terminated)
+            // Branch (int32) - only for child functions
+            if (function.Branch.HasValue)
+            {
+                writer.Write(function.Branch.Value);
+            }
+
+            // Name (null-terminated string)
             WriteNullTerminatedString(writer, function.Name ?? string.Empty);
 
-            // IsEnabled (int32)
+            // IsEnabled (bool as int32)
             writer.Write(function.IsEnabled ? 1 : 0);
 
-            // Parameters count
-            writer.Write(function.Parameters.Count);
-
-            // Parameters
+            // Parameters (NO count written - determined from TriggerData)
             foreach (var param in function.Parameters)
             {
-                WriteTriggerFunctionParameter(writer, param);
+                WriteTriggerFunctionParameter(writer, param, formatVersion, subVersion);
+            }
+
+            // ChildFunctions (only if formatVersion >= v7)
+            if (formatVersion >= 7)
+            {
+                writer.Write(function.ChildFunctions.Count);
+                foreach (var childFunction in function.ChildFunctions)
+                {
+                    WriteTriggerFunction(writer, childFunction, formatVersion, subVersion);
+                }
             }
         }
 
-        private static void WriteTriggerFunctionParameter(BinaryWriter writer, TriggerFunctionParameter param)
+        private static void WriteTriggerFunctionParameter(BinaryWriter writer, TriggerFunctionParameter param, int formatVersion, int subVersion)
         {
-            // Parameter type (int32)
+            // Type (int32)
             writer.Write((int)param.Type);
 
             // Value (null-terminated string)
             WriteNullTerminatedString(writer, param.Value ?? string.Empty);
 
-            // Has function (int32 boolean)
-            bool hasFunction = param.Function != null;
-            writer.Write(hasFunction ? 1 : 0);
-
-            if (hasFunction)
+            // Has function (bool as int32)
+            writer.Write(param.Function != null ? 1 : 0);
+            if (param.Function != null)
             {
-                WriteTriggerFunction(writer, param.Function!);
+                WriteTriggerFunction(writer, param.Function, formatVersion, subVersion);
             }
 
-            // Has array index (int32 boolean)
-            bool hasArrayIndex = param.ArrayIndexer != null;
-            writer.Write(hasArrayIndex ? 1 : 0);
-
-            if (hasArrayIndex)
+            // Has array indexer (bool as int32)
+            writer.Write(param.ArrayIndexer != null ? 1 : 0);
+            if (param.ArrayIndexer != null)
             {
-                WriteTriggerFunctionParameter(writer, param.ArrayIndexer!);
+                WriteTriggerFunctionParameter(writer, param.ArrayIndexer, formatVersion, subVersion);
             }
         }
     }
