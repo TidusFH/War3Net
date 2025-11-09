@@ -402,20 +402,26 @@ namespace WTGDiagnostic
                 // Check if it's a known version
                 if (formatVersion == 7)
                 {
-                    // Read category count or subversion
-                    int categoryCountOrSubVersion = BitConverter.ToInt32(data, 8);
-                    WriteLine($"  SubVersion: {categoryCountOrSubVersion}");
+                    // For WC3 1.27 files: Offset 8 = Category Count
+                    // For WC3 1.31+ files: Offset 8 = SubVersion (then Category Count)
+                    int valueAtOffset8 = BitConverter.ToInt32(data, 8);
 
-                    if (data.Length >= 16)
+                    // Heuristic: If value at offset 8 is small (< 1000), it's likely a category count (1.27 format)
+                    // If it's very large or has specific patterns, it might be SubVersion
+                    if (valueAtOffset8 < 1000)
                     {
-                        int variableCount = BitConverter.ToInt32(data, 12);
-                        WriteLine($"  Variable Count: {variableCount}");
-
-                        if (variableCount == 0)
-                        {
-                            WriteColorLine(ConsoleColor.Yellow, "  [WARNING] Zero variables - this might indicate empty/corrupted file");
-                        }
+                        WriteLine($"  Category Count: {valueAtOffset8}");
+                        WriteLine($"  SubVersion: null (1.27 or earlier format)");
+                        WriteLine($"  Note: Variables/triggers can only be counted by full War3Net parse");
                     }
+                    else
+                    {
+                        WriteLine($"  Possible SubVersion: {valueAtOffset8}");
+                        WriteLine($"  Note: This appears to be 1.31+ format");
+                    }
+
+                    WriteLine();
+                    WriteColorLine(ConsoleColor.Cyan, "  ℹ For accurate counts, use War3Net parser (shown in statistics above)");
                 }
                 else
                 {
