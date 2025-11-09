@@ -124,10 +124,22 @@ namespace WTGDiagnostic
                 ShowStats("MERGED", mergedTriggers);
                 WriteLine();
 
-                // Skip hex dump to reduce file size
                 WriteLine("===============================================================");
-                WriteLine("STEP 2: Binary Hex Dumps - SKIPPED (reduces file size)");
+                WriteLine("STEP 2: Binary Hex Dumps");
                 WriteLine("===============================================================");
+                WriteLine();
+
+                // Dump hex for each file (limited to 512 bytes)
+                WriteLine("--- SOURCE (first 512 bytes) ---");
+                DumpHex(sourceData, 512);
+                WriteLine();
+
+                WriteLine("--- TARGET (first 512 bytes) ---");
+                DumpHex(targetData, 512);
+                WriteLine();
+
+                WriteLine("--- MERGED (first 512 bytes) ---");
+                DumpHex(mergedData, 512);
                 WriteLine();
 
                 WriteLine("===============================================================");
@@ -234,6 +246,58 @@ namespace WTGDiagnostic
             }
 
             return (wtgData, triggers);
+        }
+
+        static void DumpHex(byte[] data, int maxBytes)
+        {
+            int bytesToShow = Math.Min(data.Length, maxBytes);
+
+            for (int i = 0; i < bytesToShow; i += 16)
+            {
+                // Offset
+                Write($"{i:X8}  ");
+
+                // Hex bytes
+                for (int j = 0; j < 16; j++)
+                {
+                    if (i + j < bytesToShow)
+                    {
+                        Write($"{data[i + j]:X2} ");
+                    }
+                    else
+                    {
+                        Write("   ");
+                    }
+
+                    if (j == 7)
+                    {
+                        Write(" ");
+                    }
+                }
+
+                Write(" |");
+
+                // ASCII representation
+                for (int j = 0; j < 16 && i + j < bytesToShow; j++)
+                {
+                    byte b = data[i + j];
+                    char c = (b >= 32 && b < 127) ? (char)b : '.';
+                    Write(c.ToString());
+                }
+
+                WriteLine("|");
+            }
+
+            if (bytesToShow < data.Length)
+            {
+                WriteLine($"... {data.Length - bytesToShow:N0} more bytes not shown");
+            }
+        }
+
+        static void Write(string message)
+        {
+            Console.Write(message);
+            logFile?.Write(message);
         }
 
         static void ShowStats(string label, MapTriggers triggers)
@@ -452,9 +516,33 @@ namespace WTGDiagnostic
         static void PrintCategoryTree(TriggerCategoryDefinition category,
             List<TriggerCategoryDefinition> allCategories,
             List<TriggerDefinition> allTriggers,
-            int depth)
+            int depth,
+            HashSet<int> visitedCategories = null)
         {
-            string indent = new string(' ', depth * 2);
+            // Prevent infinite recursion
+            if (depth > 50)
+            {
+                WriteColorLine(ConsoleColor.Red, $"[ERROR] Max depth reached at category '{category.Name}' - possible circular reference!");
+                return;
+            }
+
+            // Track visited categories to detect circular references
+            if (visitedCategories == null)
+            {
+                visitedCategories = new HashSet<int>();
+            }
+
+            if (visitedCategories.Contains(category.Id))
+            {
+                WriteColorLine(ConsoleColor.Red, $"[ERROR] Circular reference detected for category '{category.Name}' (ID={category.Id})!");
+                return;
+            }
+
+            visitedCategories.Add(category.Id);
+
+            // Limit indent to prevent huge spacing
+            int maxIndent = Math.Min(depth * 2, 100);
+            string indent = new string(' ', maxIndent);
 
             // Count triggers directly in this category
             var triggersInCategory = allTriggers.Where(t => t.ParentId == category.Id).Count();
@@ -466,7 +554,7 @@ namespace WTGDiagnostic
 
             foreach (var subcat in subcategories)
             {
-                PrintCategoryTree(subcat, allCategories, allTriggers, depth + 1);
+                PrintCategoryTree(subcat, allCategories, allTriggers, depth + 1, new HashSet<int>(visitedCategories));
             }
         }
 
