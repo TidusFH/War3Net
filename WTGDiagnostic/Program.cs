@@ -139,6 +139,14 @@ namespace WTGDiagnostic
                 AnalyzeWTGStructure(mergedData, "MERGED");
                 Console.WriteLine();
 
+                // NEW: Comprehensive hierarchy analysis
+                ShowHierarchy("SOURCE", sourceTriggers);
+                ShowHierarchy("TARGET", targetTriggers);
+                ShowHierarchy("MERGED", mergedTriggers);
+
+                // NEW: Compare hierarchies
+                CompareHierarchies(sourceTriggers, targetTriggers, mergedTriggers);
+
                 Console.WriteLine("===============================================================");
                 Console.WriteLine("DIAGNOSIS COMPLETE");
                 Console.WriteLine("===============================================================");
@@ -148,6 +156,13 @@ namespace WTGDiagnostic
                 Console.WriteLine("  2. If MERGED binary data looks valid");
                 Console.WriteLine("  3. What bytes are different between MERGED and TARGET");
                 Console.WriteLine("  4. Whether the WTG header/structure is correct");
+                Console.WriteLine("  5. COMPLETE CATEGORY/TRIGGER HIERARCHIES for each file");
+                Console.WriteLine("  6. ParentId distribution and nesting issues");
+                Console.WriteLine();
+                Console.WriteLine("Pay special attention to:");
+                Console.WriteLine("  - Are all triggers nested under one category?");
+                Console.WriteLine("  - Do category ParentIds match between files?");
+                Console.WriteLine("  - Are there orphaned triggers with invalid ParentIds?");
             }
             catch (Exception ex)
             {
@@ -380,6 +395,174 @@ namespace WTGDiagnostic
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine($"  [ERROR] Failed to parse structure: {ex.Message}");
                 Console.ResetColor();
+            }
+        }
+
+        /// <summary>
+        /// Shows complete category and trigger hierarchy
+        /// </summary>
+        static void ShowHierarchy(string label, MapTriggers triggers)
+        {
+            Console.WriteLine($"\n===============================================================");
+            Console.WriteLine($"{label} - COMPLETE HIERARCHY");
+            Console.WriteLine($"===============================================================");
+
+            var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
+            var triggerDefs = triggers.TriggerItems.OfType<TriggerDefinition>().ToList();
+
+            Console.WriteLine($"\nTotal Categories: {categories.Count}");
+            Console.WriteLine($"Total Triggers: {triggerDefs.Count}");
+
+            // Show category tree
+            Console.WriteLine($"\n--- CATEGORY HIERARCHY ---");
+            var rootCategories = categories.Where(c => c.ParentId == -1 || c.ParentId == 0).ToList();
+
+            if (rootCategories.Count == 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("  [WARNING] No root-level categories found!");
+                Console.ResetColor();
+
+                // Show all categories with their ParentIds
+                Console.WriteLine("\n  All categories:");
+                foreach (var cat in categories.OrderBy(c => c.Id))
+                {
+                    Console.WriteLine($"    - {cat.Name} (ID={cat.Id}, ParentId={cat.ParentId})");
+                }
+            }
+            else
+            {
+                foreach (var rootCat in rootCategories.OrderBy(c => c.Id))
+                {
+                    PrintCategoryTree(rootCat, categories, triggerDefs, 0);
+                }
+            }
+
+            // Check for orphaned triggers (triggers not in any category)
+            Console.WriteLine($"\n--- TRIGGER DISTRIBUTION ---");
+            foreach (var category in categories.OrderBy(c => c.Name))
+            {
+                var triggersInCat = triggerDefs.Where(t => t.ParentId == category.Id).ToList();
+                if (triggersInCat.Count > 0)
+                {
+                    Console.WriteLine($"  {category.Name} (ID={category.Id}): {triggersInCat.Count} trigger(s)");
+                }
+            }
+
+            // Check for orphaned triggers
+            var orphanedTriggers = triggerDefs.Where(t =>
+                !categories.Any(c => c.Id == t.ParentId) && t.ParentId != -1 && t.ParentId != 0).ToList();
+
+            if (orphanedTriggers.Count > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"\n  [WARNING] {orphanedTriggers.Count} orphaned trigger(s) found:");
+                foreach (var t in orphanedTriggers.Take(10))
+                {
+                    Console.WriteLine($"    - {t.Name} (ID={t.Id}, ParentId={t.ParentId})");
+                }
+                if (orphanedTriggers.Count > 10)
+                {
+                    Console.WriteLine($"    ... and {orphanedTriggers.Count - 10} more");
+                }
+                Console.ResetColor();
+            }
+
+            // Check for triggers with ParentId=0 or -1 (root-level triggers)
+            var rootTriggers = triggerDefs.Where(t => t.ParentId == 0 || t.ParentId == -1).ToList();
+            if (rootTriggers.Count > 0)
+            {
+                Console.WriteLine($"\n  Root-level triggers (ParentId=0 or -1): {rootTriggers.Count}");
+                foreach (var t in rootTriggers.Take(5))
+                {
+                    Console.WriteLine($"    - {t.Name} (ID={t.Id}, ParentId={t.ParentId})");
+                }
+                if (rootTriggers.Count > 5)
+                {
+                    Console.WriteLine($"    ... and {rootTriggers.Count - 5} more");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Recursively prints category tree
+        /// </summary>
+        static void PrintCategoryTree(TriggerCategoryDefinition category,
+            List<TriggerCategoryDefinition> allCategories,
+            List<TriggerDefinition> allTriggers,
+            int depth)
+        {
+            string indent = new string(' ', depth * 2);
+
+            // Count triggers directly in this category
+            var triggersInCategory = allTriggers.Where(t => t.ParentId == category.Id).Count();
+
+            Console.WriteLine($"{indent}📁 {category.Name} (ID={category.Id}, ParentId={category.ParentId}) - {triggersInCategory} trigger(s)");
+
+            // Find subcategories
+            var subcategories = allCategories.Where(c => c.ParentId == category.Id).OrderBy(c => c.Name).ToList();
+
+            foreach (var subcat in subcategories)
+            {
+                PrintCategoryTree(subcat, allCategories, allTriggers, depth + 1);
+            }
+        }
+
+        /// <summary>
+        /// Compares hierarchies between two files
+        /// </summary>
+        static void CompareHierarchies(MapTriggers source, MapTriggers target, MapTriggers merged)
+        {
+            Console.WriteLine($"\n===============================================================");
+            Console.WriteLine($"HIERARCHY COMPARISON");
+            Console.WriteLine($"===============================================================");
+
+            Console.WriteLine("\n--- Category Count ---");
+            Console.WriteLine($"  SOURCE: {source.TriggerItems.OfType<TriggerCategoryDefinition>().Count()}");
+            Console.WriteLine($"  TARGET: {target.TriggerItems.OfType<TriggerCategoryDefinition>().Count()}");
+            Console.WriteLine($"  MERGED: {merged.TriggerItems.OfType<TriggerCategoryDefinition>().Count()}");
+
+            Console.WriteLine("\n--- Trigger Count ---");
+            Console.WriteLine($"  SOURCE: {source.TriggerItems.OfType<TriggerDefinition>().Count()}");
+            Console.WriteLine($"  TARGET: {target.TriggerItems.OfType<TriggerDefinition>().Count()}");
+            Console.WriteLine($"  MERGED: {merged.TriggerItems.OfType<TriggerDefinition>().Count()}");
+
+            // Check ParentId distribution in MERGED
+            Console.WriteLine("\n--- MERGED: ParentId Analysis ---");
+            var mergedTriggers = merged.TriggerItems.OfType<TriggerDefinition>().ToList();
+            var parentIdGroups = mergedTriggers.GroupBy(t => t.ParentId).OrderByDescending(g => g.Count());
+
+            Console.WriteLine("  Triggers grouped by ParentId:");
+            foreach (var group in parentIdGroups.Take(10))
+            {
+                var category = merged.TriggerItems.OfType<TriggerCategoryDefinition>()
+                    .FirstOrDefault(c => c.Id == group.Key);
+
+                string categoryName = category != null ? category.Name : $"<Unknown/Missing ID={group.Key}>";
+                Console.WriteLine($"    ParentId {group.Key} ({categoryName}): {group.Count()} trigger(s)");
+            }
+
+            // Detect potential nesting issues
+            Console.WriteLine("\n--- NESTING ISSUE DETECTION ---");
+            var firstCategory = merged.TriggerItems.OfType<TriggerCategoryDefinition>().FirstOrDefault();
+            if (firstCategory != null)
+            {
+                var triggersInFirst = mergedTriggers.Where(t => t.ParentId == firstCategory.Id).Count();
+                var totalTriggers = mergedTriggers.Count;
+
+                if (triggersInFirst > totalTriggers * 0.8)  // More than 80% in one category
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"  ❌ CRITICAL: {triggersInFirst}/{totalTriggers} triggers are in '{firstCategory.Name}'!");
+                    Console.WriteLine($"     This indicates a ParentId assignment bug.");
+                    Console.ResetColor();
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"  ✓ Triggers appear to be distributed across categories");
+                    Console.ResetColor();
+                }
             }
         }
     }
