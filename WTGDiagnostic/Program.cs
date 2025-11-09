@@ -212,11 +212,9 @@ namespace WTGDiagnostic
 
             var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().Count();
             var triggerDefs = triggers.TriggerItems.OfType<TriggerDefinition>().Count();
-            var comments = triggers.TriggerItems.OfType<TriggerCommentDefinition>().Count();
 
             Console.WriteLine($"      - Categories: {categories}");
             Console.WriteLine($"      - Triggers: {triggerDefs}");
-            Console.WriteLine($"      - Comments: {comments}");
 
             // Sample variables
             if (triggers.Variables.Count > 0)
