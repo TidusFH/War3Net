@@ -99,23 +99,27 @@ namespace WTGWriter
                 // Unk field (int32, usually 1)
                 writer.Write(variable.Unk);
 
-                // IsArray (int32)
+                // IsArray (bool as int32)
                 writer.Write(variable.IsArray ? 1 : 0);
 
-                // ArraySize (int32)
-                writer.Write(variable.ArraySize);
+                // ArraySize (int32) - only if formatVersion >= v7
+                if (formatVersion >= 7)
+                {
+                    writer.Write(variable.ArraySize);
+                }
 
-                // IsInitialized (int32)
+                // IsInitialized (bool as int32)
                 writer.Write(variable.IsInitialized ? 1 : 0);
 
                 // InitialValue (null-terminated string)
                 WriteNullTerminatedString(writer, variable.InitialValue);
 
-                // Variable ID (int32)
-                writer.Write(variable.Id);
-
-                // Parent ID (int32)
-                writer.Write(variable.ParentId);
+                // Variable ID and ParentId - ONLY if subVersion is not null
+                if (subVersion != 0)
+                {
+                    writer.Write(variable.Id);
+                    writer.Write(variable.ParentId);
+                }
 
                 varIndex++;
             }
