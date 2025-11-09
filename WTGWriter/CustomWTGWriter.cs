@@ -128,23 +128,28 @@ namespace WTGWriter
                 // Category ID (ParentId)
                 writer.Write(trigger.ParentId);
 
+                // Filter functions by type
+                var events = trigger.Functions.Where(f => f.Type == TriggerFunctionType.Event).ToList();
+                var conditions = trigger.Functions.Where(f => f.Type == TriggerFunctionType.Condition).ToList();
+                var actions = trigger.Functions.Where(f => f.Type == TriggerFunctionType.Action).ToList();
+
                 // === EVENTS ===
-                writer.Write(trigger.Events.Count);
-                foreach (var evt in trigger.Events)
+                writer.Write(events.Count);
+                foreach (var evt in events)
                 {
                     WriteTriggerFunction(writer, evt);
                 }
 
                 // === CONDITIONS ===
-                writer.Write(trigger.Conditions.Count);
-                foreach (var condition in trigger.Conditions)
+                writer.Write(conditions.Count);
+                foreach (var condition in conditions)
                 {
                     WriteTriggerFunction(writer, condition);
                 }
 
                 // === ACTIONS ===
-                writer.Write(trigger.Actions.Count);
-                foreach (var action in trigger.Actions)
+                writer.Write(actions.Count);
+                foreach (var action in actions)
                 {
                     WriteTriggerFunction(writer, action);
                 }
