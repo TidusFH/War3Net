@@ -4,9 +4,9 @@ setlocal
 set SCRIPT_DIR=%~dp0
 set WC3LIBS_DIR=%SCRIPT_DIR%..\wc3libs
 
-echo ╔═══════════════════════════════════════════════════════════╗
-echo ║          Building WTGMerger (Pure Java Edition)           ║
-echo ╚═══════════════════════════════════════════════════════════╝
+echo ===============================================================
+echo           Building WTGMerger (Pure Java Edition)
+echo ===============================================================
 echo.
 
 REM Create output directory
@@ -20,12 +20,12 @@ javac -cp "%CP%" -d "%SCRIPT_DIR%bin" "%SCRIPT_DIR%src\WTGMerger.java"
 
 if %ERRORLEVEL% neq 0 (
     echo.
-    echo ❌ Build failed!
+    echo [ERROR] Build failed!
     exit /b 1
 )
 
 echo.
-echo ✓ Build complete!
+echo [SUCCESS] Build complete!
 echo.
 echo To run:
-echo   run.bat ^<source.w3x^> ^<target.w3x^> ^<output.w3x^>
+echo   run.bat input.wtg output.wtg

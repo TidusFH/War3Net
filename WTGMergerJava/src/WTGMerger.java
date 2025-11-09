@@ -9,9 +9,9 @@ import java.io.*;
 public class WTGMerger {
 
     public static void main(String[] args) {
-        System.out.println("╔═══════════════════════════════════════════════════════════╗");
-        System.out.println("║         WTG Test Tool - wc3libs Proof of Concept         ║");
-        System.out.println("╚═══════════════════════════════════════════════════════════╝");
+        System.out.println("===============================================================");
+        System.out.println("         WTG Test Tool - wc3libs Proof of Concept");
+        System.out.println("===============================================================");
         System.out.println();
 
         if (args.length < 2) {
@@ -35,7 +35,7 @@ public class WTGMerger {
             File inputFile = new File(inputPath);
             WTG wtg = new WTG(inputFile);
 
-            System.out.println("✓ WTG loaded successfully");
+            System.out.println("[OK] WTG loaded successfully");
             System.out.println();
             System.out.println("Statistics:");
             System.out.println("  Variables:  " + wtg.getVars().size());
@@ -68,19 +68,19 @@ public class WTGMerger {
                 wtg.write(wos);
             }
 
-            System.out.println("✓ WTG written successfully");
+            System.out.println("[OK] WTG written successfully");
             System.out.println("  Output size: " + outputFile.length() + " bytes");
             System.out.println();
-            System.out.println("╔═══════════════════════════════════════════════════════════╗");
-            System.out.println("║                       SUCCESS!                            ║");
-            System.out.println("╚═══════════════════════════════════════════════════════════╝");
+            System.out.println("===============================================================");
+            System.out.println("                       SUCCESS!");
+            System.out.println("===============================================================");
             System.out.println();
             System.out.println("Now test if the output WTG file opens correctly in World Editor.");
             System.out.println("If it does, wc3libs is working correctly.");
 
         } catch (Exception e) {
             System.err.println();
-            System.err.println("❌ ERROR: " + e.getMessage());
+            System.err.println("[ERROR] " + e.getMessage());
             e.printStackTrace();
             System.exit(1);
         }
