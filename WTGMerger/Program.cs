@@ -123,11 +123,10 @@ namespace WTGMerger
                     Console.WriteLine("3. List triggers in a specific category");
                     Console.WriteLine("4. Copy ENTIRE category");
                     Console.WriteLine("5. Copy SPECIFIC trigger(s)");
-                    Console.WriteLine("6. Fix all TARGET categories to root-level (ParentId = -1)");
-                    Console.WriteLine("7. Repair orphaned triggers (fix invalid ParentIds)");
-                    Console.WriteLine("8. Diagnose orphans (show orphaned triggers/categories)");
-                    Console.WriteLine("9. DEBUG: Show comprehensive debug information");
-                    Console.WriteLine("10. Run War3Diagnostic (comprehensive WTG file analysis)");
+                    Console.WriteLine("6. Repair orphaned triggers (fix invalid ParentIds)");
+                    Console.WriteLine("7. Diagnose orphans (show orphaned triggers/categories)");
+                    Console.WriteLine("8. DEBUG: Show comprehensive debug information");
+                    Console.WriteLine("9. Run War3Diagnostic (comprehensive WTG file analysis)");
                     Console.WriteLine($"d. DEBUG: Toggle debug mode (currently: {(DEBUG_MODE ? "ON" : "OFF")})");
                     Console.WriteLine("s. Save and exit");
                     Console.WriteLine("0. Exit without saving");
@@ -194,38 +193,6 @@ namespace WTGMerger
 
                         case "6":
                             Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
-                            Console.WriteLine("║          FIX CATEGORY NESTING                            ║");
-                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
-                            Console.WriteLine("\nThis will set ALL categories in TARGET to root-level (ParentId = -1).");
-                            Console.WriteLine("Use this if your categories are incorrectly nested.");
-                            Console.Write("\nProceed? (y/n): ");
-                            string? confirmFix = Console.ReadLine();
-                            if (confirmFix?.ToLower() == "y")
-                            {
-                                int fixedCount = FixAllCategoriesToRoot(targetTriggers);
-                                Console.WriteLine($"\n✓ Fixed {fixedCount} categories to root-level");
-
-                                // Verify the fix worked
-                                Console.WriteLine("\n=== Verification ===");
-                                var categories = targetTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
-                                var rootCount = categories.Count(c => c.ParentId == -1);
-                                var nestedCount = categories.Count(c => c.ParentId >= 0);
-                                Console.WriteLine($"Categories with ParentId=-1: {rootCount}");
-                                Console.WriteLine($"Categories with ParentId>=0: {nestedCount}");
-
-                                if (nestedCount > 0)
-                                {
-                                    Console.ForegroundColor = ConsoleColor.Red;
-                                    Console.WriteLine("❌ WARNING: Some categories still have ParentId >= 0!");
-                                    Console.ResetColor();
-                                }
-
-                                modified = true;
-                            }
-                            break;
-
-                        case "7":
-                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
                             Console.WriteLine("║          REPAIR ORPHANED TRIGGERS                        ║");
                             Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
                             Console.WriteLine("\nThis will fix triggers with invalid ParentIds.");
@@ -255,15 +222,15 @@ namespace WTGMerger
                             }
                             break;
 
-                        case "8":
+                        case "7":
                             OrphanRepair.DiagnoseOrphans(targetTriggers);
                             break;
 
-                        case "9":
+                        case "8":
                             ShowComprehensiveDebugInfo(sourceTriggers, targetTriggers);
                             break;
 
-                        case "10":
+                        case "9":
                             Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
                             Console.WriteLine("║        WAR3DIAGNOSTIC - COMPREHENSIVE ANALYSIS           ║");
                             Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
@@ -383,6 +350,27 @@ namespace WTGMerger
                                 if (targetTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().Count() > 5)
                                 {
                                     Console.WriteLine($"  ... and {targetTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().Count() - 5} more");
+                                }
+
+                                // AUTOMATIC NESTING FIX for WC3 1.27 format
+                                if (targetTriggers.SubVersion == null)
+                                {
+                                    bool hasNestingIssue = CheckForNestingIssue(targetTriggers);
+                                    if (hasNestingIssue)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Yellow;
+                                        Console.WriteLine("\n⚠ NESTING ISSUE DETECTED!");
+                                        Console.WriteLine("Categories appear after triggers in file order.");
+                                        Console.WriteLine("This causes incorrect visual nesting in World Editor.");
+                                        Console.WriteLine("\n✓ Automatically fixing file order...");
+                                        Console.ResetColor();
+
+                                        FixFileOrder(targetTriggers);
+
+                                        Console.ForegroundColor = ConsoleColor.Green;
+                                        Console.WriteLine("✓ File order fixed: All categories now appear before triggers");
+                                        Console.ResetColor();
+                                    }
                                 }
 
                                 Console.WriteLine($"\nWriting file...");
@@ -1057,6 +1045,80 @@ namespace WTGMerger
             }
 
             return fixedCount;
+        }
+
+        /// <summary>
+        /// Checks if there's a nesting issue (categories appearing after triggers in file order)
+        /// This is critical for WC3 1.27 format where visual nesting is based on file order
+        /// </summary>
+        static bool CheckForNestingIssue(MapTriggers triggers)
+        {
+            int firstTriggerIndex = -1;
+            int lastCategoryIndex = -1;
+
+            for (int i = 0; i < triggers.TriggerItems.Count; i++)
+            {
+                var item = triggers.TriggerItems[i];
+                if (item is TriggerDefinition && firstTriggerIndex == -1)
+                {
+                    firstTriggerIndex = i;
+                }
+                if (item is TriggerCategoryDefinition && item.Type != TriggerItemType.RootCategory)
+                {
+                    lastCategoryIndex = i;
+                }
+            }
+
+            // Issue exists if any category appears after the first trigger
+            return firstTriggerIndex != -1 && lastCategoryIndex > firstTriggerIndex;
+        }
+
+        /// <summary>
+        /// Fixes file order by moving all categories before triggers
+        /// This ensures correct visual nesting in World Editor for WC3 1.27 format
+        /// </summary>
+        static void FixFileOrder(MapTriggers triggers)
+        {
+            // Separate items by type
+            var categories = new List<TriggerItem>();
+            var triggerDefs = new List<TriggerItem>();
+            var otherItems = new List<TriggerItem>();
+
+            foreach (var item in triggers.TriggerItems)
+            {
+                if (item is TriggerCategoryDefinition && item.Type != TriggerItemType.RootCategory)
+                {
+                    categories.Add(item);
+                }
+                else if (item is TriggerDefinition)
+                {
+                    triggerDefs.Add(item);
+                }
+                else
+                {
+                    otherItems.Add(item);
+                }
+            }
+
+            // Rebuild TriggerItems with correct order: categories first, then triggers, then other items
+            triggers.TriggerItems.Clear();
+            foreach (var item in categories)
+            {
+                triggers.TriggerItems.Add(item);
+            }
+            foreach (var item in triggerDefs)
+            {
+                triggers.TriggerItems.Add(item);
+            }
+            foreach (var item in otherItems)
+            {
+                triggers.TriggerItems.Add(item);
+            }
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[DEBUG] Reordered: {categories.Count} categories, {triggerDefs.Count} triggers, {otherItems.Count} other items");
+            }
         }
 
         /// <summary>
