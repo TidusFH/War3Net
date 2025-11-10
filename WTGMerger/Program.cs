@@ -124,12 +124,14 @@ namespace WTGMerger
                     Console.WriteLine("4. Copy ENTIRE category");
                     Console.WriteLine("5. Copy SPECIFIC trigger(s)");
                     Console.WriteLine("6. Fix all TARGET categories to root-level (ParentId = -1)");
-                    Console.WriteLine("7. DEBUG: Show comprehensive debug information");
-                    Console.WriteLine($"8. DEBUG: Toggle debug mode (currently: {(DEBUG_MODE ? "ON" : "OFF")})");
-                    Console.WriteLine("9. Save and exit");
+                    Console.WriteLine("7. Repair orphaned triggers (fix invalid ParentIds)");
+                    Console.WriteLine("8. Diagnose orphans (show orphaned triggers/categories)");
+                    Console.WriteLine("9. DEBUG: Show comprehensive debug information");
+                    Console.WriteLine($"d. DEBUG: Toggle debug mode (currently: {(DEBUG_MODE ? "ON" : "OFF")})");
+                    Console.WriteLine("s. Save and exit");
                     Console.WriteLine("0. Exit without saving");
                     Console.WriteLine();
-                    Console.Write("Select option (0-9): ");
+                    Console.Write("Select option: ");
 
                     string? choice = Console.ReadLine();
 
@@ -222,17 +224,54 @@ namespace WTGMerger
                             break;
 
                         case "7":
-                            ShowComprehensiveDebugInfo(sourceTriggers, targetTriggers);
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║          REPAIR ORPHANED TRIGGERS                        ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nThis will fix triggers with invalid ParentIds.");
+                            Console.WriteLine("Modes:");
+                            Console.WriteLine("  1. Smart - Try to match triggers to categories by name");
+                            Console.WriteLine("  2. Root - Move all orphaned triggers to root level");
+                            Console.Write("\nSelect mode (1-2): ");
+                            string? repairMode = Console.ReadLine();
+
+                            if (repairMode == "1" || repairMode == "2")
+                            {
+                                string mode = repairMode == "1" ? "smart" : "root";
+                                int repaired = OrphanRepair.RepairOrphanedTriggers(targetTriggers, mode);
+                                if (repaired > 0)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine($"\n✓ Repaired {repaired} orphaned trigger(s)");
+                                    Console.ResetColor();
+                                    modified = true;
+                                }
+                                else
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine("\n✓ No orphaned triggers found");
+                                    Console.ResetColor();
+                                }
+                            }
                             break;
 
                         case "8":
+                            OrphanRepair.DiagnoseOrphans(targetTriggers);
+                            break;
+
+                        case "9":
+                            ShowComprehensiveDebugInfo(sourceTriggers, targetTriggers);
+                            break;
+
+                        case "d":
+                        case "D":
                             DEBUG_MODE = !DEBUG_MODE;
                             Console.ForegroundColor = DEBUG_MODE ? ConsoleColor.Yellow : ConsoleColor.Green;
                             Console.WriteLine($"\n✓ Debug mode is now {(DEBUG_MODE ? "ON" : "OFF")}");
                             Console.ResetColor();
                             break;
 
-                        case "9":
+                        case "s":
+                        case "S":
                             if (modified)
                             {
                                 Console.WriteLine($"\nPreparing to save merged WTG to: {outputPath}");
@@ -267,16 +306,17 @@ namespace WTGMerger
                                     }
                                 }
 
-                                // CRITICAL: Set SubVersion if null to enable ParentId writing
+                                // NOTE: SubVersion handling
+                                // If SubVersion=null (WC3 1.27 format), ParentIds won't be saved
+                                // This is expected behavior for 1.27 compatibility
+                                // Variable IDs also won't be saved (they stay at 0)
                                 if (targetTriggers.SubVersion == null)
                                 {
-                                    Console.ForegroundColor = ConsoleColor.Yellow;
-                                    Console.WriteLine("\n⚠ WARNING: Target map has SubVersion=null, ParentId won't be saved!");
-                                    Console.WriteLine("   Setting SubVersion=v4 to enable ParentId support...");
-                                    Console.ResetColor();
-                                    targetTriggers.SubVersion = MapTriggersSubVersion.v4;
-                                    Console.ForegroundColor = ConsoleColor.Green;
-                                    Console.WriteLine("   ✓ SubVersion set to v4");
+                                    Console.ForegroundColor = ConsoleColor.Cyan;
+                                    Console.WriteLine("\nℹ Map is in WC3 1.27 format (SubVersion=null)");
+                                    Console.WriteLine("  • Variable IDs will not be saved (stays at 0)");
+                                    Console.WriteLine("  • ParentIds will not be saved");
+                                    Console.WriteLine("  • This maintains 1.27 compatibility");
                                     Console.ResetColor();
                                 }
 
@@ -2007,32 +2047,31 @@ namespace WTGMerger
                 triggers = ReadWTGFile(filePath);
             }
 
-            // CRITICAL FIX: If map has SubVersion=null (WC3 1.27 format),
-            // all variables default to Id=0. We need to fix this immediately.
+            // WC3 1.27 FORMAT HANDLING
+            // If map has SubVersion=null, it's WC3 1.27 format
+            // In this format, variable IDs are NOT saved/loaded from file
+            // All variables default to Id=0 when read
+            // We assign sequential IDs in memory for internal use only
+            // These IDs won't be saved back (maintains 1.27 compatibility)
             if (triggers.SubVersion == null)
             {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"  ⚠ Map has SubVersion=null (WC3 1.27 format)");
-                Console.WriteLine($"  → Converting to SubVersion=v4 to enable variable ID support");
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine($"  ℹ Map is WC3 1.27 format (SubVersion=null)");
                 Console.ResetColor();
 
-                // Assign sequential IDs to all variables (0, 1, 2, 3...)
+                // Assign sequential IDs in memory for internal tracking
+                // (These won't be saved - 1.27 format doesn't support variable IDs)
                 for (int i = 0; i < triggers.Variables.Count; i++)
                 {
                     triggers.Variables[i].Id = i;
                 }
 
-                // Set SubVersion to v4 to enable ID serialization
-                triggers.SubVersion = MapTriggersSubVersion.v4;
-
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"  ✓ Assigned sequential IDs to {triggers.Variables.Count} variable(s)");
-                Console.WriteLine($"  ✓ SubVersion set to v4");
-                Console.ResetColor();
+                Console.WriteLine($"  ✓ Assigned in-memory IDs to {triggers.Variables.Count} variable(s) for tracking");
+                Console.WriteLine($"  ✓ Maintaining 1.27 compatibility (SubVersion=null)");
 
                 if (DEBUG_MODE)
                 {
-                    Console.WriteLine("[DEBUG] Variable IDs after fix:");
+                    Console.WriteLine("[DEBUG] In-memory variable IDs (not saved to file):");
                     foreach (var v in triggers.Variables.Take(5))
                     {
                         Console.WriteLine($"[DEBUG]   ID={v.Id}, Name={v.Name}");
