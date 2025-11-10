@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using War3Net.Build.Extensions;
 using War3Net.Build.Script;
 using War3Net.IO.Mpq;
 
