@@ -789,8 +789,30 @@ namespace WTGMerger
                     IsComment = false,
                     IsExpanded = true
                 };
-                target.TriggerItems.Add(destCategory);
-                Console.WriteLine($"\n  ✓ Created new category '{destCategoryName}' (ID={destCategory.Id}, ParentId={destCategory.ParentId})");
+
+                // CRITICAL: Insert category BEFORE first trigger to maintain correct file order for 1.27 format
+                // Find the first trigger in TriggerItems
+                int firstTriggerIndex = -1;
+                for (int i = 0; i < target.TriggerItems.Count; i++)
+                {
+                    if (target.TriggerItems[i] is TriggerDefinition)
+                    {
+                        firstTriggerIndex = i;
+                        break;
+                    }
+                }
+
+                // Insert category before first trigger, or at end if no triggers exist
+                if (firstTriggerIndex >= 0)
+                {
+                    target.TriggerItems.Insert(firstTriggerIndex, destCategory);
+                    Console.WriteLine($"\n  ✓ Created new category '{destCategoryName}' at position {firstTriggerIndex} (ID={destCategory.Id}, ParentId={destCategory.ParentId})");
+                }
+                else
+                {
+                    target.TriggerItems.Add(destCategory);
+                    Console.WriteLine($"\n  ✓ Created new category '{destCategoryName}' (ID={destCategory.Id}, ParentId={destCategory.ParentId})");
+                }
             }
 
             // Find insertion point (after the category)
