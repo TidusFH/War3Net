@@ -1116,6 +1116,44 @@ namespace WTGMerger
                 }
             }
 
+            // CRITICAL FIX: Build ID remapping before reordering
+            // When War3Net reads 1.27 format, it assigns category IDs sequentially based on file order
+            // After reordering, we must reassign IDs and update all trigger ParentIds
+            var categoryList = categories.Cast<TriggerCategoryDefinition>().ToList();
+            var oldIdToNewId = new Dictionary<int, int>();
+
+            for (int i = 0; i < categoryList.Count; i++)
+            {
+                int oldId = categoryList[i].Id;
+                int newId = i;  // Sequential IDs: 0, 1, 2, 3...
+                oldIdToNewId[oldId] = newId;
+
+                if (DEBUG_MODE && oldId != newId)
+                {
+                    Console.WriteLine($"[DEBUG] Remapping category '{categoryList[i].Name}': ID {oldId} -> {newId}");
+                }
+
+                categoryList[i].Id = newId;
+            }
+
+            // Update trigger ParentIds to match new category IDs
+            var triggerList = triggerDefs.Cast<TriggerDefinition>().ToList();
+            foreach (var trigger in triggerList)
+            {
+                if (trigger.ParentId >= 0 && oldIdToNewId.ContainsKey(trigger.ParentId))
+                {
+                    int oldParentId = trigger.ParentId;
+                    int newParentId = oldIdToNewId[oldParentId];
+
+                    if (DEBUG_MODE && oldParentId != newParentId)
+                    {
+                        Console.WriteLine($"[DEBUG] Remapping trigger '{trigger.Name}': ParentId {oldParentId} -> {newParentId}");
+                    }
+
+                    trigger.ParentId = newParentId;
+                }
+            }
+
             // Rebuild TriggerItems with correct order: categories first, then triggers, then other items
             triggers.TriggerItems.Clear();
             foreach (var item in categories)
@@ -1134,6 +1172,7 @@ namespace WTGMerger
             if (DEBUG_MODE)
             {
                 Console.WriteLine($"[DEBUG] Reordered: {categories.Count} categories, {triggerDefs.Count} triggers, {otherItems.Count} other items");
+                Console.WriteLine($"[DEBUG] Remapped {oldIdToNewId.Count(kvp => kvp.Key != kvp.Value)} category IDs");
             }
         }
 
