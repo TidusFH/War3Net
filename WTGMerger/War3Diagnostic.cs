@@ -550,19 +550,23 @@ namespace WTGMerger
 
             sb.AppendLine($"{indentStr}📁 {category.Name} (ID={category.Id}, ParentId={category.ParentId}) - {triggerCount} trigger(s)");
 
-            // Check for circular reference
-            var visited = new HashSet<int> { category.Id };
-            var current = category;
-            while (current.ParentId >= 0)
+            // Check for circular reference (only if ParentId points to actual category)
+            // Skip check if ParentId=0 or -1 (root level) to avoid false positives in 1.27 format
+            if (category.ParentId > 0)
             {
-                if (visited.Contains(current.ParentId))
+                var visited = new HashSet<int> { category.Id };
+                var current = category;
+                while (current.ParentId > 0)
                 {
-                    sb.AppendLine($"{indentStr}[ERROR] Circular reference detected for category '{category.Name}' (ID={category.Id})!");
-                    break;
+                    if (visited.Contains(current.ParentId))
+                    {
+                        sb.AppendLine($"{indentStr}[ERROR] Circular reference detected for category '{category.Name}' (ID={category.Id})!");
+                        break;
+                    }
+                    visited.Add(current.ParentId);
+                    current = allCategories.FirstOrDefault(c => c.Id == current.ParentId);
+                    if (current == null) break;
                 }
-                visited.Add(current.ParentId);
-                current = allCategories.FirstOrDefault(c => c.Id == current.ParentId);
-                if (current == null) break;
             }
 
             // Print child categories
