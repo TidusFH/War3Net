@@ -886,14 +886,34 @@ namespace WTGMerger
                 IsExpanded = sourceCategory.IsExpanded
             };
 
-            // Add category at the end
-            target.TriggerItems.Add(newCategory);
-            Console.WriteLine($"  Added category '{categoryName}' to target (ID={newCategory.Id}, ParentId={newCategory.ParentId})");
+            // CRITICAL: Insert category BEFORE first trigger to maintain correct file order for 1.27 format
+            // Find the first trigger in TriggerItems
+            int firstTriggerIndex = -1;
+            for (int i = 0; i < target.TriggerItems.Count; i++)
+            {
+                if (target.TriggerItems[i] is TriggerDefinition)
+                {
+                    firstTriggerIndex = i;
+                    break;
+                }
+            }
+
+            // Insert category before first trigger, or at end if no triggers exist
+            if (firstTriggerIndex >= 0)
+            {
+                target.TriggerItems.Insert(firstTriggerIndex, newCategory);
+                Console.WriteLine($"  Inserted category '{categoryName}' at position {firstTriggerIndex} (ID={newCategory.Id}, ParentId={newCategory.ParentId})");
+            }
+            else
+            {
+                target.TriggerItems.Add(newCategory);
+                Console.WriteLine($"  Added category '{categoryName}' to target (ID={newCategory.Id}, ParentId={newCategory.ParentId})");
+            }
 
             // Copy missing variables from source to target before copying triggers
             CopyMissingVariables(source, target, sourceCategoryTriggers);
 
-            // Copy all triggers
+            // Copy all triggers - add them at the end (after all existing triggers)
             foreach (var sourceTrigger in sourceCategoryTriggers)
             {
                 var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), newCategory.Id);
