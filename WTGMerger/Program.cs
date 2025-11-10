@@ -127,6 +127,7 @@ namespace WTGMerger
                     Console.WriteLine("7. Repair orphaned triggers (fix invalid ParentIds)");
                     Console.WriteLine("8. Diagnose orphans (show orphaned triggers/categories)");
                     Console.WriteLine("9. DEBUG: Show comprehensive debug information");
+                    Console.WriteLine("10. Run War3Diagnostic (comprehensive WTG file analysis)");
                     Console.WriteLine($"d. DEBUG: Toggle debug mode (currently: {(DEBUG_MODE ? "ON" : "OFF")})");
                     Console.WriteLine("s. Save and exit");
                     Console.WriteLine("0. Exit without saving");
@@ -260,6 +261,52 @@ namespace WTGMerger
 
                         case "9":
                             ShowComprehensiveDebugInfo(sourceTriggers, targetTriggers);
+                            break;
+
+                        case "10":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║        WAR3DIAGNOSTIC - COMPREHENSIVE ANALYSIS           ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nThis will generate a detailed diagnostic report comparing:");
+                            Console.WriteLine("  - SOURCE file");
+                            Console.WriteLine("  - TARGET file");
+                            Console.WriteLine("  - Current in-memory state (as if saved)");
+                            Console.WriteLine("\nThe report includes:");
+                            Console.WriteLine("  • Binary hex dumps and comparisons");
+                            Console.WriteLine("  • Complete hierarchy trees");
+                            Console.WriteLine("  • File order analysis (WC3 1.27 visual nesting)");
+                            Console.WriteLine("  • ParentId distribution statistics");
+                            Console.WriteLine("  • Corruption pattern detection");
+                            Console.WriteLine("\nReport will be saved to: WTG_Diagnostic_[timestamp].txt");
+                            Console.Write("\nProceed? (y/n): ");
+                            string? confirmDiag = Console.ReadLine();
+                            if (confirmDiag?.ToLower() == "y")
+                            {
+                                // Save current state to temp file for comparison
+                                string tempMergedPath = Path.Combine(Path.GetTempPath(), "WTGMerger_temp_merged.wtg");
+                                try
+                                {
+                                    WriteWTGFile(tempMergedPath, targetTriggers);
+                                    Console.WriteLine("\nRunning diagnostic...");
+                                    War3Diagnostic.CompareFiles(sourcePath, targetPath, tempMergedPath);
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine("\n✓ Diagnostic complete! Check the output file.");
+                                    Console.ResetColor();
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine($"\n❌ Diagnostic failed: {ex.Message}");
+                                    Console.ResetColor();
+                                }
+                                finally
+                                {
+                                    if (File.Exists(tempMergedPath))
+                                    {
+                                        try { File.Delete(tempMergedPath); } catch { }
+                                    }
+                                }
+                            }
                             break;
 
                         case "d":
@@ -595,7 +642,7 @@ namespace WTGMerger
 
         /// <summary>
         /// Writes MapTriggers object to a WTG file
-        /// Uses reflection to access internal WriteTo method
+        /// Uses War3Writer custom implementation (BUGFIX: replaced War3Net reflection)
         /// </summary>
         static void WriteWTGFile(string filePath, MapTriggers triggers)
         {
@@ -606,27 +653,14 @@ namespace WTGMerger
                 Console.WriteLine($"[DEBUG]   Trigger items to write: {triggers.TriggerItems.Count}");
             }
 
-            using var fileStream = File.Create(filePath);
-            using var writer = new BinaryWriter(fileStream);
-
-            // Use reflection to call internal WriteTo method with specific parameter type
-            var writeToMethod = typeof(MapTriggers).GetMethod(
-                "WriteTo",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-                null,
-                new[] { typeof(BinaryWriter) },  // Specify the exact parameter type
-                null);
-
-            if (writeToMethod == null)
-            {
-                throw new InvalidOperationException("Could not find internal WriteTo(BinaryWriter) method");
-            }
-
-            writeToMethod.Invoke(triggers, new object[] { writer });
+            // INTEGRATION: Use War3Writer instead of War3Net's internal WriteTo
+            War3Writer.SetDebugMode(DEBUG_MODE);
+            War3Writer.WriteMapTriggers(filePath, triggers);
 
             if (DEBUG_MODE)
             {
-                Console.WriteLine($"[DEBUG] WriteWTGFile: Completed. File size: {fileStream.Length} bytes");
+                var fileInfo = new FileInfo(filePath);
+                Console.WriteLine($"[DEBUG] WriteWTGFile: Completed. File size: {fileInfo.Length} bytes");
             }
         }
 
