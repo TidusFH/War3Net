@@ -1992,17 +1992,55 @@ namespace WTGMerger
 
         /// <summary>
         /// Reads MapTriggers from either a raw .wtg file or a map archive (.w3x/.w3m)
+        /// AUTOMATICALLY fixes SubVersion and variable IDs for old format maps
         /// </summary>
         static MapTriggers ReadMapTriggersAuto(string filePath)
         {
+            MapTriggers triggers;
+
             if (IsMapArchive(filePath))
             {
-                return ReadMapArchiveFile(filePath);
+                triggers = ReadMapArchiveFile(filePath);
             }
             else
             {
-                return ReadWTGFile(filePath);
+                triggers = ReadWTGFile(filePath);
             }
+
+            // CRITICAL FIX: If map has SubVersion=null (WC3 1.27 format),
+            // all variables default to Id=0. We need to fix this immediately.
+            if (triggers.SubVersion == null)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"  ⚠ Map has SubVersion=null (WC3 1.27 format)");
+                Console.WriteLine($"  → Converting to SubVersion=v4 to enable variable ID support");
+                Console.ResetColor();
+
+                // Assign sequential IDs to all variables (0, 1, 2, 3...)
+                for (int i = 0; i < triggers.Variables.Count; i++)
+                {
+                    triggers.Variables[i].Id = i;
+                }
+
+                // Set SubVersion to v4 to enable ID serialization
+                triggers.SubVersion = MapTriggersSubVersion.v4;
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"  ✓ Assigned sequential IDs to {triggers.Variables.Count} variable(s)");
+                Console.WriteLine($"  ✓ SubVersion set to v4");
+                Console.ResetColor();
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine("[DEBUG] Variable IDs after fix:");
+                    foreach (var v in triggers.Variables.Take(5))
+                    {
+                        Console.WriteLine($"[DEBUG]   ID={v.Id}, Name={v.Name}");
+                    }
+                }
+            }
+
+            return triggers;
         }
 
         /// <summary>
