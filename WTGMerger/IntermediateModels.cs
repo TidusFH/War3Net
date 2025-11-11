@@ -104,10 +104,16 @@ namespace WTGMerger
         /// </summary>
         public bool IsExpanded { get; set; }
 
+        /// <summary>
+        /// Original ParentId from the source file
+        /// </summary>
+        public int OriginalParentId { get; set; }
+
         public CategoryNode(TriggerCategoryDefinition category)
         {
             Name = category.Name;
             OriginalId = category.Id;
+            OriginalParentId = category.ParentId;
             IsComment = category.IsComment;
             IsExpanded = category.IsExpanded;
         }
@@ -126,6 +132,11 @@ namespace WTGMerger
         public bool IsComment { get; set; }
 
         /// <summary>
+        /// Original ParentId from the source file
+        /// </summary>
+        public int OriginalParentId { get; set; }
+
+        /// <summary>
         /// The actual trigger definition (for rebuilding)
         /// </summary>
         public TriggerDefinition OriginalTrigger { get; set; }
@@ -134,6 +145,7 @@ namespace WTGMerger
         {
             Name = trigger.Name;
             OriginalId = trigger.Id;
+            OriginalParentId = trigger.ParentId;
             Description = trigger.Description;
             IsEnabled = trigger.IsEnabled;
             IsCustomTextTrigger = trigger.IsCustomTextTrigger;

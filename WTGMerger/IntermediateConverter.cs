@@ -42,20 +42,6 @@ namespace WTGMerger
                 SubVersion = mapTriggers.SubVersion
             };
 
-            // Build lookup for trigger items by ID
-            var itemsById = new Dictionary<int, TriggerItem>();
-            foreach (var item in mapTriggers.TriggerItems)
-            {
-                if (item is TriggerCategoryDefinition category)
-                {
-                    itemsById[category.Id] = item;
-                }
-                else if (item is TriggerDefinition trigger)
-                {
-                    itemsById[trigger.Id] = item;
-                }
-            }
-
             // Process categories first, building hierarchy
             var categoryNodes = new Dictionary<int, CategoryNode>();
 
@@ -76,18 +62,12 @@ namespace WTGMerger
                 }
             }
 
-            // Build category hierarchy
+            // Build category hierarchy using stored ParentId
             foreach (var kvp in categoryNodes)
             {
-                if (!itemsById.TryGetValue(kvp.Key, out var item) || !(item is TriggerCategoryDefinition category))
-                {
-                    Console.WriteLine($"⚠ Warning: Category node with ID {kvp.Key} not found in itemsById");
-                    continue;
-                }
-
                 var node = kvp.Value;
 
-                if (category.ParentId == -1)
+                if (node.OriginalParentId == -1)
                 {
                     // Top-level category
                     intermediate.Root.AddChild(node);
@@ -96,19 +76,19 @@ namespace WTGMerger
                         Console.WriteLine($"[DEBUG]   Added '{node.Name}' to Root");
                     }
                 }
-                else if (categoryNodes.ContainsKey(category.ParentId))
+                else if (categoryNodes.ContainsKey(node.OriginalParentId))
                 {
                     // Nested category
-                    categoryNodes[category.ParentId].AddChild(node);
+                    categoryNodes[node.OriginalParentId].AddChild(node);
                     if (debugMode)
                     {
-                        Console.WriteLine($"[DEBUG]   Added '{node.Name}' to '{categoryNodes[category.ParentId].Name}'");
+                        Console.WriteLine($"[DEBUG]   Added '{node.Name}' to '{categoryNodes[node.OriginalParentId].Name}'");
                     }
                 }
                 else
                 {
                     // Parent not found, add to root
-                    Console.WriteLine($"⚠ Warning: Category '{node.Name}' has invalid ParentId {category.ParentId}, adding to root");
+                    Console.WriteLine($"⚠ Warning: Category '{node.Name}' has invalid ParentId {node.OriginalParentId}, adding to root");
                     intermediate.Root.AddChild(node);
                 }
             }

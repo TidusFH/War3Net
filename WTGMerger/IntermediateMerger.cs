@@ -226,6 +226,7 @@ namespace WTGMerger
                 {
                     Name = selectedCategory.Name,
                     Id = selectedCategory.OriginalId,
+                    ParentId = selectedCategory.OriginalParentId,
                     IsComment = selectedCategory.IsComment,
                     IsExpanded = selectedCategory.IsExpanded
                 })
@@ -343,6 +344,7 @@ namespace WTGMerger
                     {
                         Name = category.Name,
                         Id = category.OriginalId,
+                        ParentId = category.OriginalParentId,
                         IsComment = category.IsComment,
                         IsExpanded = category.IsExpanded
                     })
@@ -422,6 +424,7 @@ namespace WTGMerger
                     {
                         Name = sourceCategory.Name,
                         Id = sourceCategory.OriginalId,
+                        ParentId = sourceCategory.OriginalParentId,
                         IsComment = sourceCategory.IsComment,
                         IsExpanded = sourceCategory.IsExpanded
                     })
