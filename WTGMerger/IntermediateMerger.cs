@@ -153,7 +153,7 @@ namespace WTGMerger
 
                 if (child is CategoryNode category)
                 {
-                    newNode = new CategoryNode(new War3Net.Build.Script.TriggerCategoryDefinition
+                    newNode = new CategoryNode(new War3Net.Build.Script.TriggerCategoryDefinition(TriggerItemType.Category)
                     {
                         Name = category.Name,
                         Id = category.OriginalId,
@@ -232,7 +232,7 @@ namespace WTGMerger
                     }
 
                     // Add new category
-                    var newCategory = new CategoryNode(new War3Net.Build.Script.TriggerCategoryDefinition
+                    var newCategory = new CategoryNode(new War3Net.Build.Script.TriggerCategoryDefinition(TriggerItemType.Category)
                     {
                         Name = sourceCategory.Name,
                         Id = sourceCategory.OriginalId,

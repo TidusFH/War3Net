@@ -121,7 +121,7 @@ namespace WTGMerger
         public override NodeType Type => NodeType.Trigger;
         public string Description { get; set; }
         public bool IsEnabled { get; set; }
-        public bool IsCustomScript { get; set; }
+        public bool IsCustomTextTrigger { get; set; }
         public bool RunOnMapInit { get; set; }
         public bool IsComment { get; set; }
 
@@ -136,7 +136,7 @@ namespace WTGMerger
             OriginalId = trigger.Id;
             Description = trigger.Description;
             IsEnabled = trigger.IsEnabled;
-            IsCustomScript = trigger.IsCustomScript;
+            IsCustomTextTrigger = trigger.IsCustomTextTrigger;
             RunOnMapInit = trigger.RunOnMapInit;
             IsComment = trigger.IsComment;
             OriginalTrigger = trigger;

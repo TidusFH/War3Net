@@ -223,14 +223,13 @@ namespace WTGMerger
             // Rebuild categories with new IDs
             foreach (var categoryNode in allCategories)
             {
-                var newCategory = new TriggerCategoryDefinition
+                var newCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
                 {
                     Id = categoryIdMap[categoryNode],
                     ParentId = GetNewParentId(categoryNode),
                     Name = categoryNode.Name,
                     IsComment = categoryNode.IsComment,
-                    IsExpanded = categoryNode.IsExpanded,
-                    Type = TriggerItemType.Category
+                    IsExpanded = categoryNode.IsExpanded
                 };
 
                 mapTriggers.TriggerItems.Add(newCategory);
@@ -246,17 +245,16 @@ namespace WTGMerger
             {
                 // Clone the original trigger
                 var original = triggerNode.OriginalTrigger;
-                var newTrigger = new TriggerDefinition
+                var newTrigger = new TriggerDefinition(original.Type)
                 {
                     Id = triggerIdMap[triggerNode],
                     ParentId = GetNewParentId(triggerNode),
                     Name = original.Name,
                     Description = original.Description,
                     IsEnabled = original.IsEnabled,
-                    IsCustomScript = original.IsCustomScript,
+                    IsCustomTextTrigger = original.IsCustomTextTrigger,
                     RunOnMapInit = original.RunOnMapInit,
-                    IsComment = original.IsComment,
-                    Type = TriggerItemType.Gui
+                    IsComment = original.IsComment
                 };
 
                 // Copy functions (events, conditions, actions)
