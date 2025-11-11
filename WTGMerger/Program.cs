@@ -657,6 +657,10 @@ namespace WTGMerger
                 Console.WriteLine($"[DEBUG]   Trigger items to write: {triggers.TriggerItems.Count}");
             }
 
+            // CRITICAL: Renumber all categories sequentially before writing
+            // This ensures category IDs match what War3Net will assign when reading back
+            RenumberCategoriesSequentially(triggers);
+
             // INTEGRATION: Use War3Writer instead of War3Net's internal WriteTo
             War3Writer.SetDebugMode(DEBUG_MODE);
             War3Writer.WriteMapTriggers(filePath, triggers);
@@ -1215,6 +1219,69 @@ namespace WTGMerger
             {
                 Console.WriteLine($"[DEBUG] Reordered: {categories.Count} categories, {triggerDefs.Count} triggers, {otherItems.Count} other items");
                 Console.WriteLine($"[DEBUG] Remapped {oldIdToNewId.Count(kvp => kvp.Key != kvp.Value)} category IDs");
+            }
+        }
+
+        /// <summary>
+        /// Renumbers all categories sequentially (0, 1, 2, ...) and updates trigger ParentIds
+        /// CRITICAL: Must be called before writing to ensure IDs match what War3Net assigns when reading
+        /// </summary>
+        static void RenumberCategoriesSequentially(MapTriggers triggers)
+        {
+            // Get all non-root categories
+            var categories = triggers.TriggerItems
+                .OfType<TriggerCategoryDefinition>()
+                .Where(c => c.Type != TriggerItemType.RootCategory)
+                .ToList();
+
+            // Build mapping of old ID to new ID
+            var oldIdToNewId = new Dictionary<int, int>();
+
+            for (int i = 0; i < categories.Count; i++)
+            {
+                int oldId = categories[i].Id;
+                int newId = i; // Sequential: 0, 1, 2, 3...
+
+                if (oldId != newId)
+                {
+                    oldIdToNewId[oldId] = newId;
+
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[DEBUG] Renumbering category '{categories[i].Name}': ID {oldId} -> {newId}");
+                    }
+
+                    categories[i].Id = newId;
+                }
+            }
+
+            // Update all trigger ParentIds to match new category IDs
+            if (oldIdToNewId.Count > 0)
+            {
+                var triggers_list = triggers.TriggerItems
+                    .OfType<TriggerDefinition>()
+                    .ToList();
+
+                foreach (var trigger in triggers_list)
+                {
+                    if (trigger.ParentId >= 0 && oldIdToNewId.ContainsKey(trigger.ParentId))
+                    {
+                        int oldParentId = trigger.ParentId;
+                        int newParentId = oldIdToNewId[oldParentId];
+
+                        if (DEBUG_MODE)
+                        {
+                            Console.WriteLine($"[DEBUG] Updating trigger '{trigger.Name}': ParentId {oldParentId} -> {newParentId}");
+                        }
+
+                        trigger.ParentId = newParentId;
+                    }
+                }
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[DEBUG] Renumbered {oldIdToNewId.Count} categories and updated trigger ParentIds");
+                }
             }
         }
 
@@ -2350,6 +2417,10 @@ namespace WTGMerger
 
             Console.WriteLine($"  Creating archive builder...");
             var builder = new MpqArchiveBuilder(originalArchive);
+
+            // CRITICAL: Renumber all categories sequentially before writing
+            // This ensures category IDs match what War3Net will assign when reading back
+            RenumberCategoriesSequentially(triggers);
 
             // Serialize triggers to memory
             using var triggerStream = new MemoryStream();
