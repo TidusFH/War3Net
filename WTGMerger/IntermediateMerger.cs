@@ -42,7 +42,8 @@ namespace WTGMerger
             var merged = new IntermediateWTG
             {
                 SourceFile = $"Merged({source.SourceFile} + {target.SourceFile})",
-                FormatVersion = target.FormatVersion  // Use target's format version
+                FormatVersion = target.FormatVersion,  // Use target's format version
+                SubVersion = target.SubVersion
             };
 
             // Copy all target content first

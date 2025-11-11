@@ -169,7 +169,8 @@ namespace WTGMerger
         public RootNode Root { get; set; } = new RootNode();
         public List<VariableNode> Variables { get; set; } = new List<VariableNode>();
         public string SourceFile { get; set; }
-        public War3Net.Build.Info.GamePatch FormatVersion { get; set; }
+        public MapTriggersFormatVersion FormatVersion { get; set; }
+        public MapTriggersSubVersion? SubVersion { get; set; }
 
         /// <summary>
         /// Get all categories in the tree

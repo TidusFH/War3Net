@@ -38,7 +38,8 @@ namespace WTGMerger
             var intermediate = new IntermediateWTG
             {
                 SourceFile = sourceFile,
-                FormatVersion = mapTriggers.FormatVersion
+                FormatVersion = mapTriggers.FormatVersion,
+                SubVersion = mapTriggers.SubVersion
             };
 
             // Build lookup for trigger items by ID
@@ -175,7 +176,7 @@ namespace WTGMerger
                 Console.WriteLine($"[DEBUG] Rebuilding MapTriggers from intermediate...");
             }
 
-            var mapTriggers = new MapTriggers(intermediate.FormatVersion);
+            var mapTriggers = new MapTriggers(intermediate.FormatVersion, intermediate.SubVersion);
 
             // Assign predictable IDs to categories
             var allCategories = intermediate.GetAllCategories().ToList();
