@@ -127,6 +127,7 @@ namespace WTGMerger
                     Console.WriteLine("7. Diagnose orphans (show orphaned triggers/categories)");
                     Console.WriteLine("8. DEBUG: Show comprehensive debug information");
                     Console.WriteLine("9. Run War3Diagnostic (comprehensive WTG file analysis)");
+                    Console.WriteLine("10. Perform FULL MERGE using intermediate approach (new!)");
                     Console.WriteLine($"d. DEBUG: Toggle debug mode (currently: {(DEBUG_MODE ? "ON" : "OFF")})");
                     Console.WriteLine("s. Save and exit");
                     Console.WriteLine("0. Exit without saving");
@@ -272,6 +273,63 @@ namespace WTGMerger
                                     {
                                         try { File.Delete(tempMergedPath); } catch { }
                                     }
+                                }
+                            }
+                            break;
+
+                        case "10":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║      FULL MERGE USING INTERMEDIATE APPROACH              ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nThis will:");
+                            Console.WriteLine("  1. Disassemble both SOURCE and TARGET into intermediate format");
+                            Console.WriteLine("  2. Merge source into target with conflict detection");
+                            Console.WriteLine("  3. Rebuild with predictable IDs (like BetterTriggers)");
+                            Console.WriteLine("\nThis replaces the current TARGET with the merged result.");
+                            Console.Write("\nProceed? (y/n): ");
+                            string? confirmMerge = Console.ReadLine();
+                            if (confirmMerge?.ToLower() == "y")
+                            {
+                                try
+                                {
+                                    // Enable debug mode for converters if global debug is on
+                                    IntermediateConverter.SetDebugMode(DEBUG_MODE);
+                                    IntermediateMerger.SetDebugMode(DEBUG_MODE);
+
+                                    Console.WriteLine("\n[1/3] Disassembling SOURCE...");
+                                    var sourceIntermediate = IntermediateConverter.Disassemble(sourceTriggers, sourcePath);
+
+                                    Console.WriteLine("[2/3] Disassembling TARGET...");
+                                    var targetIntermediate = IntermediateConverter.Disassemble(targetTriggers, targetPath);
+
+                                    Console.WriteLine("[3/3] Merging...");
+                                    var (mergedIntermediate, conflicts) = IntermediateMerger.Merge(sourceIntermediate, targetIntermediate);
+
+                                    Console.WriteLine("\n[4/4] Rebuilding War3Net MapTriggers...");
+                                    targetTriggers = IntermediateConverter.Rebuild(mergedIntermediate);
+
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine("\n✓ Full merge complete!");
+                                    Console.ResetColor();
+
+                                    if (conflicts.Count > 0)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Yellow;
+                                        Console.WriteLine($"\n⚠ Note: {conflicts.Count} conflicts were detected (duplicates skipped)");
+                                        Console.ResetColor();
+                                    }
+
+                                    modified = true;
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine($"\n❌ Merge failed: {ex.Message}");
+                                    if (DEBUG_MODE)
+                                    {
+                                        Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
+                                    }
+                                    Console.ResetColor();
                                 }
                             }
                             break;
