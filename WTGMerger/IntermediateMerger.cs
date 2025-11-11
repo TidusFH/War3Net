@@ -144,6 +144,191 @@ namespace WTGMerger
         }
 
         /// <summary>
+        /// Merge only selected categories from source into target
+        /// </summary>
+        public static (IntermediateWTG merged, List<MergeConflict> conflicts) MergeSelective(
+            IntermediateWTG source,
+            IntermediateWTG target,
+            List<CategoryNode> selectedCategories)
+        {
+            if (debugMode)
+            {
+                Console.WriteLine($"[DEBUG] Selective Merging:");
+                Console.WriteLine($"[DEBUG]   Source: {source.SourceFile}");
+                Console.WriteLine($"[DEBUG]   Target: {target.SourceFile}");
+                Console.WriteLine($"[DEBUG]   Selected categories: {selectedCategories.Count}");
+            }
+
+            var conflicts = new List<MergeConflict>();
+
+            // Start with target as base
+            var merged = new IntermediateWTG
+            {
+                SourceFile = $"Merged({source.SourceFile} + {target.SourceFile})",
+                FormatVersion = target.FormatVersion,
+                SubVersion = target.SubVersion
+            };
+
+            // Copy all target content first
+            CopyHierarchy(target.Root, merged.Root, conflicts);
+
+            // Copy target variables
+            foreach (var variable in target.Variables)
+            {
+                merged.Variables.Add(variable);
+            }
+
+            // Track what we've added from target
+            var categoryNames = new HashSet<string>(merged.GetAllCategories().Select(c => c.Name));
+            var triggerNames = new HashSet<string>(merged.GetAllTriggers().Select(t => t.Name));
+            var variableNames = new HashSet<string>(merged.Variables.Select(v => v.Name));
+
+            if (debugMode)
+            {
+                Console.WriteLine($"[DEBUG] Target content copied. Now merging selected categories...");
+            }
+
+            // Merge only selected categories
+            int categoriesAdded = 0;
+            int triggersAdded = 0;
+            int categoriesSkipped = 0;
+            int triggersSkipped = 0;
+
+            foreach (var selectedCategory in selectedCategories)
+            {
+                if (debugMode)
+                {
+                    Console.WriteLine($"[DEBUG] Processing selected category: '{selectedCategory.Name}'");
+                }
+
+                // Check if category already exists
+                if (categoryNames.Contains(selectedCategory.Name))
+                {
+                    categoriesSkipped++;
+                    conflicts.Add(new MergeConflict
+                    {
+                        Type = MergeConflict.ConflictType.DuplicateCategoryName,
+                        Name = selectedCategory.Name,
+                        SourcePath = source.SourceFile,
+                        TargetPath = target.SourceFile,
+                        Message = $"Category '{selectedCategory.Name}' already exists in target"
+                    });
+
+                    if (debugMode)
+                    {
+                        Console.WriteLine($"[DEBUG]   Category '{selectedCategory.Name}' already exists, skipping");
+                    }
+                    continue;
+                }
+
+                // Add the category and all its content
+                var newCategory = new CategoryNode(new TriggerCategoryDefinition(TriggerItemType.Category)
+                {
+                    Name = selectedCategory.Name,
+                    Id = selectedCategory.OriginalId,
+                    IsComment = selectedCategory.IsComment,
+                    IsExpanded = selectedCategory.IsExpanded
+                })
+                {
+                    SourceFile = selectedCategory.SourceFile
+                };
+
+                merged.Root.AddChild(newCategory);
+                categoryNames.Add(newCategory.Name);
+                categoriesAdded++;
+
+                if (debugMode)
+                {
+                    Console.WriteLine($"[DEBUG]   Added category '{newCategory.Name}' from source");
+                }
+
+                // Recursively copy all children (subcategories and triggers)
+                CopyHierarchy(selectedCategory, newCategory, conflicts);
+
+                // Count triggers that were added
+                var addedTriggers = newCategory.GetDescendants<TriggerItemNode>().ToList();
+                foreach (var trigger in addedTriggers)
+                {
+                    if (!triggerNames.Contains(trigger.Name))
+                    {
+                        triggerNames.Add(trigger.Name);
+                        triggersAdded++;
+                    }
+                    else
+                    {
+                        triggersSkipped++;
+                    }
+                }
+            }
+
+            // Variables from source (all of them)
+            int variablesAdded = 0;
+            int variablesSkipped = 0;
+
+            foreach (var sourceVar in source.Variables)
+            {
+                if (!variableNames.Contains(sourceVar.Name))
+                {
+                    merged.Variables.Add(sourceVar);
+                    variableNames.Add(sourceVar.Name);
+                    variablesAdded++;
+
+                    if (debugMode)
+                    {
+                        Console.WriteLine($"[DEBUG]   Added variable '{sourceVar.Name}' from source");
+                    }
+                }
+                else
+                {
+                    variablesSkipped++;
+                    conflicts.Add(new MergeConflict
+                    {
+                        Type = MergeConflict.ConflictType.DuplicateVariableName,
+                        Name = sourceVar.Name,
+                        SourcePath = source.SourceFile,
+                        TargetPath = target.SourceFile,
+                        Message = $"Variable '{sourceVar.Name}' already exists in target"
+                    });
+
+                    if (debugMode)
+                    {
+                        Console.WriteLine($"[DEBUG]   Skipped variable '{sourceVar.Name}' (already exists)");
+                    }
+                }
+            }
+
+            // Summary
+            Console.WriteLine($"\n=== Selective Merge Summary ===");
+            Console.WriteLine($"Categories added: {categoriesAdded}");
+            Console.WriteLine($"Triggers added: {triggersAdded}");
+            Console.WriteLine($"Variables added: {variablesAdded}");
+
+            if (categoriesSkipped > 0 || triggersSkipped > 0 || variablesSkipped > 0)
+            {
+                Console.WriteLine($"\nSkipped (already exist):");
+                if (categoriesSkipped > 0) Console.WriteLine($"  Categories: {categoriesSkipped}");
+                if (triggersSkipped > 0) Console.WriteLine($"  Triggers: {triggersSkipped}");
+                if (variablesSkipped > 0) Console.WriteLine($"  Variables: {variablesSkipped}");
+            }
+
+            if (conflicts.Count > 0)
+            {
+                Console.WriteLine($"\n⚠ {conflicts.Count} conflict(s) detected:");
+                foreach (var conflict in conflicts)
+                {
+                    Console.WriteLine($"  - {conflict.Type}: {conflict.Message}");
+                }
+            }
+
+            Console.WriteLine($"\n=== Merged Result ===");
+            Console.WriteLine($"Total categories: {merged.GetAllCategories().Count()}");
+            Console.WriteLine($"Total triggers: {merged.GetAllTriggers().Count()}");
+            Console.WriteLine($"Total variables: {merged.Variables.Count}");
+
+            return (merged, conflicts);
+        }
+
+        /// <summary>
         /// Recursively copy hierarchy from source to destination
         /// </summary>
         private static void CopyHierarchy(HierarchyNode source, HierarchyNode dest, List<MergeConflict> conflicts)

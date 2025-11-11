@@ -79,7 +79,12 @@ namespace WTGMerger
             // Build category hierarchy
             foreach (var kvp in categoryNodes)
             {
-                var category = itemsById[kvp.Key] as TriggerCategoryDefinition;
+                if (!itemsById.TryGetValue(kvp.Key, out var item) || !(item is TriggerCategoryDefinition category))
+                {
+                    Console.WriteLine($"⚠ Warning: Category node with ID {kvp.Key} not found in itemsById");
+                    continue;
+                }
+
                 var node = kvp.Value;
 
                 if (category.ParentId == -1)

@@ -127,7 +127,8 @@ namespace WTGMerger
                     Console.WriteLine("7. Diagnose orphans (show orphaned triggers/categories)");
                     Console.WriteLine("8. DEBUG: Show comprehensive debug information");
                     Console.WriteLine("9. Run War3Diagnostic (comprehensive WTG file analysis)");
-                    Console.WriteLine("10. Perform FULL MERGE using intermediate approach (new!)");
+                    Console.WriteLine("10. Perform FULL MERGE using intermediate approach");
+                    Console.WriteLine("11. Perform SELECTIVE MERGE using intermediate approach (choose categories)");
                     Console.WriteLine($"d. DEBUG: Toggle debug mode (currently: {(DEBUG_MODE ? "ON" : "OFF")})");
                     Console.WriteLine("s. Save and exit");
                     Console.WriteLine("0. Exit without saving");
@@ -310,6 +311,116 @@ namespace WTGMerger
 
                                     Console.ForegroundColor = ConsoleColor.Green;
                                     Console.WriteLine("\n✓ Full merge complete!");
+                                    Console.ResetColor();
+
+                                    if (conflicts.Count > 0)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Yellow;
+                                        Console.WriteLine($"\n⚠ Note: {conflicts.Count} conflicts were detected (duplicates skipped)");
+                                        Console.ResetColor();
+                                    }
+
+                                    modified = true;
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine($"\n❌ Merge failed: {ex.Message}");
+                                    if (DEBUG_MODE)
+                                    {
+                                        Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
+                                    }
+                                    Console.ResetColor();
+                                }
+                            }
+                            break;
+
+                        case "11":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    SELECTIVE MERGE USING INTERMEDIATE APPROACH           ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nThis will:");
+                            Console.WriteLine("  1. Disassemble both SOURCE and TARGET into intermediate format");
+                            Console.WriteLine("  2. Let you choose which categories to merge");
+                            Console.WriteLine("  3. Merge only selected categories with conflict detection");
+                            Console.WriteLine("  4. Rebuild with predictable IDs (like BetterTriggers)");
+                            Console.WriteLine("\nThis replaces the current TARGET with the merged result.");
+                            Console.Write("\nProceed? (y/n): ");
+                            string? confirmSelectiveMerge = Console.ReadLine();
+                            if (confirmSelectiveMerge?.ToLower() == "y")
+                            {
+                                try
+                                {
+                                    // Enable debug mode for converters if global debug is on
+                                    IntermediateConverter.SetDebugMode(DEBUG_MODE);
+                                    IntermediateMerger.SetDebugMode(DEBUG_MODE);
+
+                                    Console.WriteLine("\n[1/4] Disassembling SOURCE...");
+                                    var sourceIntermediate = IntermediateConverter.Disassemble(sourceTriggers, sourcePath);
+
+                                    Console.WriteLine("[2/4] Disassembling TARGET...");
+                                    var targetIntermediate = IntermediateConverter.Disassemble(targetTriggers, targetPath);
+
+                                    // Show available categories from source
+                                    Console.WriteLine("\n[3/4] Available categories in SOURCE:");
+                                    var sourceCategories = sourceIntermediate.GetAllCategories().ToList();
+                                    for (int i = 0; i < sourceCategories.Count; i++)
+                                    {
+                                        var cat = sourceCategories[i];
+                                        var triggerCount = cat.GetChildren<TriggerItemNode>().Count();
+                                        var subCatCount = cat.GetChildren<CategoryNode>().Count();
+                                        Console.WriteLine($"  {i + 1}. {cat.Name} ({triggerCount} triggers, {subCatCount} subcategories)");
+                                    }
+
+                                    Console.WriteLine("\nEnter category numbers to merge (comma-separated, or 'all' for all categories):");
+                                    Console.Write("Categories to merge: ");
+                                    string? categoryInput = Console.ReadLine();
+
+                                    if (string.IsNullOrWhiteSpace(categoryInput))
+                                    {
+                                        Console.WriteLine("No categories selected. Aborting.");
+                                        break;
+                                    }
+
+                                    List<CategoryNode> selectedCategories;
+                                    if (categoryInput.Trim().ToLower() == "all")
+                                    {
+                                        selectedCategories = sourceCategories;
+                                    }
+                                    else
+                                    {
+                                        selectedCategories = new List<CategoryNode>();
+                                        var indices = categoryInput.Split(',').Select(s => s.Trim());
+                                        foreach (var indexStr in indices)
+                                        {
+                                            if (int.TryParse(indexStr, out int index) && index >= 1 && index <= sourceCategories.Count)
+                                            {
+                                                selectedCategories.Add(sourceCategories[index - 1]);
+                                            }
+                                            else
+                                            {
+                                                Console.WriteLine($"⚠ Warning: Invalid index '{indexStr}' ignored");
+                                            }
+                                        }
+                                    }
+
+                                    if (selectedCategories.Count == 0)
+                                    {
+                                        Console.WriteLine("No valid categories selected. Aborting.");
+                                        break;
+                                    }
+
+                                    Console.WriteLine($"\n[4/4] Merging {selectedCategories.Count} selected categor{(selectedCategories.Count == 1 ? "y" : "ies")}...");
+
+                                    // Merge selected categories
+                                    var (mergedIntermediate, conflicts) = IntermediateMerger.MergeSelective(
+                                        sourceIntermediate, targetIntermediate, selectedCategories);
+
+                                    Console.WriteLine("\nRebuilding War3Net MapTriggers...");
+                                    targetTriggers = IntermediateConverter.Rebuild(mergedIntermediate);
+
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine("\n✓ Selective merge complete!");
                                     Console.ResetColor();
 
                                     if (conflicts.Count > 0)
