@@ -1017,6 +1017,30 @@ namespace WTGMerger
         }
 
         /// <summary>
+        /// Checks if a ParentId value represents root level (-1 or 0 in 1.27 format)
+        /// </summary>
+        static bool IsRootLevel(int parentId, MapTriggers triggers)
+        {
+            // ParentId=-1 always means root
+            if (parentId == -1) return true;
+
+            // In WC3 1.27 format (SubVersion==null), ParentId=0 means root level
+            // In newer formats, ParentId=0 can be a valid category reference
+            bool is127Format = triggers.SubVersion == null;
+            if (is127Format && parentId == 0)
+            {
+                // BUT: If there's actually a category with ID=0, then ParentId=0 refers to it
+                bool hasCategoryZero = triggers.TriggerItems
+                    .OfType<TriggerCategoryDefinition>()
+                    .Any(c => c.Id == 0);
+
+                return !hasCategoryZero;  // Root only if no category with ID=0 exists
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Gets all triggers that belong to a specific category (using ParentId)
         /// </summary>
         static List<TriggerDefinition> GetTriggersInCategory(MapTriggers triggers, string categoryName)
@@ -1031,9 +1055,10 @@ namespace WTGMerger
             }
 
             // Get all triggers that have this category as their parent (using ParentId)
+            // CRITICAL: Don't match triggers with ParentId=0 if that means "root level" in 1.27 format
             var triggersInCategory = triggers.TriggerItems
                 .OfType<TriggerDefinition>()
-                .Where(t => t.ParentId == category.Id)
+                .Where(t => t.ParentId == category.Id && !IsRootLevel(t.ParentId, triggers))
                 .ToList();
 
             return triggersInCategory;
@@ -1433,7 +1458,15 @@ namespace WTGMerger
 
                 foreach (var trigger in triggers_list)
                 {
-                    if (trigger.ParentId >= 0 && oldIdToNewId.ContainsKey(trigger.ParentId))
+                    // Skip root-level triggers using helper function
+                    if (IsRootLevel(trigger.ParentId, triggers))
+                    {
+                        // Normalize to -1
+                        trigger.ParentId = -1;
+                        continue;
+                    }
+
+                    if (oldIdToNewId.ContainsKey(trigger.ParentId))
                     {
                         int oldParentId = trigger.ParentId;
                         int newParentId = oldIdToNewId[oldParentId];
@@ -2231,9 +2264,11 @@ namespace WTGMerger
             // Update ParentIds in ALL items (both categories and triggers)
             foreach (var item in triggers.TriggerItems)
             {
-                // Skip root-level items (ParentId -1 or 0 should stay that way)
-                if (item.ParentId < 0)
+                // Skip root-level items using helper function
+                if (IsRootLevel(item.ParentId, triggers))
                 {
+                    // Normalize root level to -1
+                    item.ParentId = -1;
                     continue;
                 }
 
