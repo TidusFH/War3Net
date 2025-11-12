@@ -81,11 +81,20 @@ namespace WTGMerger
             }
 
             // Build category hierarchy using stored ParentId
+            // IMPORTANT: In WC3 1.27 format (SubVersion==null), ParentId is NOT saved for categories
+            // All categories get ParentId=0 by default, which means "root level"
+            bool is127Format = mapTriggers.SubVersion == null;
+
             foreach (var kvp in categoryNodes)
             {
                 var node = kvp.Value;
 
-                if (node.OriginalParentId == -1)
+                // In 1.27 format, ParentId=0 means root level (same as -1)
+                // In newer formats, ParentId=0 could be a valid category reference
+                bool isRootLevel = node.OriginalParentId == -1 ||
+                                  (is127Format && node.OriginalParentId == 0);
+
+                if (isRootLevel)
                 {
                     // Top-level category
                     intermediate.Root.AddChild(node);
@@ -121,7 +130,13 @@ namespace WTGMerger
                         SourceFile = sourceFile
                     };
 
-                    if (trigger.ParentId == -1)
+                    // In 1.27 format, ParentId=0 for triggers means root level too
+                    // BUT: Triggers can legitimately reference category ID=0
+                    // So we only treat ParentId=0 as root if there's NO category with ID=0
+                    bool isRootLevel = trigger.ParentId == -1 ||
+                                      (is127Format && trigger.ParentId == 0 && !categoryNodes.ContainsKey(0));
+
+                    if (isRootLevel)
                     {
                         // Top-level trigger
                         intermediate.Root.AddChild(node);
