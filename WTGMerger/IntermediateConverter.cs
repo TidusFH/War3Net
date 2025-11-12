@@ -28,6 +28,8 @@ namespace WTGMerger
         /// </summary>
         public static IntermediateWTG Disassemble(MapTriggers mapTriggers, string sourceFile)
         {
+            Console.WriteLine($"  Reading {mapTriggers.TriggerItems.Count} trigger items...");
+
             if (debugMode)
             {
                 Console.WriteLine($"[DEBUG] Disassembling {sourceFile}...");
@@ -59,6 +61,22 @@ namespace WTGMerger
                     {
                         Console.WriteLine($"[DEBUG]   Created CategoryNode: '{category.Name}' (ID={category.Id}, ParentId={category.ParentId})");
                     }
+                }
+            }
+
+            Console.WriteLine($"  Found {categoryNodes.Count} categories");
+
+            if (categoryNodes.Count == 0)
+            {
+                Console.WriteLine($"  ⚠ WARNING: No categories found in source!");
+                Console.WriteLine($"  Checking trigger item types:");
+                var typeCounts = mapTriggers.TriggerItems
+                    .GroupBy(t => t.GetType().Name)
+                    .Select(g => $"{g.Key}: {g.Count()}")
+                    .ToArray();
+                foreach (var typeCount in typeCounts)
+                {
+                    Console.WriteLine($"    - {typeCount}");
                 }
             }
 
