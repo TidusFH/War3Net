@@ -137,6 +137,7 @@ namespace WTGMerger
                     Console.WriteLine("16. DIAGNOSE: Check source trigger for corruption");
                     Console.WriteLine("17. COMPARE: Compare two triggers side-by-side");
                     Console.WriteLine("18. EXTRACT: Extract trigger + variables to standalone .wtg");
+                    Console.WriteLine("19. HEALTH CHECK: Comprehensive WTG file validation");
                     Console.WriteLine($"d. DEBUG: Toggle debug mode (currently: {(DEBUG_MODE ? "ON" : "OFF")})");
                     Console.WriteLine($"l. DIAGNOSTIC: Toggle deep diagnostic logging (currently: {(DiagnosticLogger.IsEnabled ? "ON - logging to file" : "OFF")})");
                     Console.WriteLine("s. Save and exit");
@@ -1049,6 +1050,124 @@ namespace WTGMerger
                                         Console.WriteLine($"\n✗ Trigger '{extractTrigName}' not found");
                                         Console.ResetColor();
                                     }
+                                }
+                            }
+                            break;
+
+                        case "19":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    COMPREHENSIVE WTG HEALTH CHECK                       ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nCheck (s)ource, (t)arget, or (m)erged file? ");
+                            Console.Write("Choice: ");
+                            string? healthCheckChoice = Console.ReadLine();
+
+                            MapTriggers? mapToCheck = null;
+                            string checkPath = "";
+
+                            if (healthCheckChoice?.ToLower() == "s")
+                            {
+                                mapToCheck = sourceTriggers;
+                                checkPath = sourcePath;
+                            }
+                            else if (healthCheckChoice?.ToLower() == "t")
+                            {
+                                mapToCheck = targetTriggers;
+                                checkPath = targetPath;
+                            }
+                            else if (healthCheckChoice?.ToLower() == "m")
+                            {
+                                Console.Write("\nEnter path to merged .wtg file: ");
+                                string? mergedPath = Console.ReadLine();
+                                if (!string.IsNullOrWhiteSpace(mergedPath))
+                                {
+                                    try
+                                    {
+                                        mapToCheck = ReadMapTriggersAuto(mergedPath);
+                                        checkPath = mergedPath;
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"\n✗ Failed to load file: {ex.Message}");
+                                        Console.ResetColor();
+                                    }
+                                }
+                            }
+
+                            if (mapToCheck != null)
+                            {
+                                var healthResult = WTGHealthCheck.PerformHealthCheck(mapToCheck, checkPath);
+
+                                Console.Write("\n\nSave detailed report to file? (y/n): ");
+                                if (Console.ReadLine()?.ToLower() == "y")
+                                {
+                                    string reportFileName = $"HEALTH_CHECK_{Path.GetFileNameWithoutExtension(checkPath)}_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+                                    string reportPath = Path.Combine(Path.GetDirectoryName(outputPath) ?? ".", reportFileName);
+
+                                    var reportBuilder = new StringBuilder();
+                                    reportBuilder.AppendLine("╔══════════════════════════════════════════════════════════╗");
+                                    reportBuilder.AppendLine("║       COMPREHENSIVE WTG HEALTH CHECK REPORT             ║");
+                                    reportBuilder.AppendLine("╚══════════════════════════════════════════════════════════╝");
+                                    reportBuilder.AppendLine($"Generated: {DateTime.Now}");
+                                    reportBuilder.AppendLine($"File: {checkPath}");
+                                    reportBuilder.AppendLine($"Format: {mapToCheck.FormatVersion}, SubVersion: {mapToCheck.SubVersion?.ToString() ?? "null (1.27)"}");
+                                    reportBuilder.AppendLine();
+
+                                    reportBuilder.AppendLine("=== STATISTICS ===");
+                                    foreach (var stat in healthResult.Statistics)
+                                    {
+                                        reportBuilder.AppendLine($"{stat.Key}: {stat.Value}");
+                                    }
+                                    reportBuilder.AppendLine();
+
+                                    if (healthResult.Errors.Count > 0)
+                                    {
+                                        reportBuilder.AppendLine($"=== ERRORS ({healthResult.Errors.Count}) ===");
+                                        foreach (var error in healthResult.Errors)
+                                        {
+                                            reportBuilder.AppendLine($"• {error}");
+                                        }
+                                        reportBuilder.AppendLine();
+                                    }
+
+                                    if (healthResult.Warnings.Count > 0)
+                                    {
+                                        reportBuilder.AppendLine($"=== WARNINGS ({healthResult.Warnings.Count}) ===");
+                                        foreach (var warning in healthResult.Warnings)
+                                        {
+                                            reportBuilder.AppendLine($"• {warning}");
+                                        }
+                                        reportBuilder.AppendLine();
+                                    }
+
+                                    if (healthResult.Info.Count > 0)
+                                    {
+                                        reportBuilder.AppendLine($"=== INFO ({healthResult.Info.Count}) ===");
+                                        foreach (var info in healthResult.Info)
+                                        {
+                                            reportBuilder.AppendLine($"• {info}");
+                                        }
+                                        reportBuilder.AppendLine();
+                                    }
+
+                                    reportBuilder.AppendLine("=== HEALTH STATUS ===");
+                                    if (healthResult.IsHealthy)
+                                    {
+                                        reportBuilder.AppendLine("✓ FILE IS HEALTHY");
+                                    }
+                                    else
+                                    {
+                                        reportBuilder.AppendLine("✗ FILE HAS ISSUES");
+                                        reportBuilder.AppendLine($"  Errors: {healthResult.Errors.Count}");
+                                        reportBuilder.AppendLine($"  Warnings: {healthResult.Warnings.Count}");
+                                    }
+
+                                    File.WriteAllText(reportPath, reportBuilder.ToString());
+
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine($"✓ Report saved to: {reportPath}");
+                                    Console.ResetColor();
                                 }
                             }
                             break;
