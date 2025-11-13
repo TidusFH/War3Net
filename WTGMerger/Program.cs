@@ -132,6 +132,10 @@ namespace WTGMerger
                     Console.WriteLine("12. VALIDATE: Deep validation of specific trigger");
                     Console.WriteLine("13. VALIDATE: Validate all triggers in target");
                     Console.WriteLine("14. TEST: Copy trigger to empty map (isolation test)");
+                    Console.WriteLine("15. EXPORT: Export trigger to detailed text file");
+                    Console.WriteLine("16. DIAGNOSE: Check source trigger for corruption");
+                    Console.WriteLine("17. COMPARE: Compare two triggers side-by-side");
+                    Console.WriteLine("18. EXTRACT: Extract trigger + variables to standalone .wtg");
                     Console.WriteLine($"d. DEBUG: Toggle debug mode (currently: {(DEBUG_MODE ? "ON" : "OFF")})");
                     Console.WriteLine($"l. DIAGNOSTIC: Toggle deep diagnostic logging (currently: {(DiagnosticLogger.IsEnabled ? "ON - logging to file" : "OFF")})");
                     Console.WriteLine("s. Save and exit");
@@ -698,6 +702,350 @@ namespace WTGMerger
                                         {
                                             Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
                                         }
+                                        Console.ResetColor();
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "15":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    EXPORT TRIGGER TO DETAILED TEXT FILE                 ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.Write("\nExport from (s)ource or (t)arget? ");
+                            string? exportMapChoice = Console.ReadLine();
+                            var exportMap = exportMapChoice?.ToLower() == "s" ? sourceTriggers : targetTriggers;
+                            string exportMapName = exportMapChoice?.ToLower() == "s" ? "SOURCE" : "TARGET";
+
+                            Console.Write("\nEnter category name: ");
+                            string? exportCatName = Console.ReadLine();
+                            if (!string.IsNullOrWhiteSpace(exportCatName))
+                            {
+                                ListTriggersInCategory(exportMap, exportCatName);
+                                Console.Write("\nEnter trigger name to export: ");
+                                string? exportTrigName = Console.ReadLine();
+                                if (!string.IsNullOrWhiteSpace(exportTrigName))
+                                {
+                                    var exportTrigger = exportMap.TriggerItems
+                                        .OfType<TriggerDefinition>()
+                                        .FirstOrDefault(t => t.Name.Equals(exportTrigName, StringComparison.OrdinalIgnoreCase));
+
+                                    if (exportTrigger != null)
+                                    {
+                                        Console.Write("\nInclude hex dumps of strings? (y/n): ");
+                                        bool showHex = Console.ReadLine()?.ToLower() == "y";
+
+                                        string exportText = TriggerExporter.ExportToDetailedText(exportTrigger, exportMap, showHex);
+
+                                        string exportFileName = $"TRIGGER_EXPORT_{exportTrigger.Name.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+                                        string exportPath = Path.Combine(Path.GetDirectoryName(outputPath) ?? ".", exportFileName);
+
+                                        File.WriteAllText(exportPath, exportText);
+
+                                        Console.WriteLine($"\n{exportText}");
+
+                                        Console.ForegroundColor = ConsoleColor.Green;
+                                        Console.WriteLine($"\n✓ Export saved to: {exportPath}");
+                                        Console.ResetColor();
+
+                                        // Also show pseudo-code
+                                        Console.WriteLine("\n=== PSEUDO-CODE REPRESENTATION ===");
+                                        Console.WriteLine(TriggerExporter.ExportToPseudoCode(exportTrigger));
+                                    }
+                                    else
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"\n✗ Trigger '{exportTrigName}' not found in {exportMapName}");
+                                        Console.ResetColor();
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "16":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    CHECK SOURCE TRIGGER FOR CORRUPTION                  ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nThis checks if the SOURCE trigger is already corrupted");
+                            Console.WriteLine("(e.g., by BetterTriggers or other tools)");
+
+                            Console.Write("\nEnter category name: ");
+                            string? corruptCatName = Console.ReadLine();
+                            if (!string.IsNullOrWhiteSpace(corruptCatName))
+                            {
+                                ListTriggersInCategory(sourceTriggers, corruptCatName);
+                                Console.Write("\nEnter trigger name to check: ");
+                                string? corruptTrigName = Console.ReadLine();
+                                if (!string.IsNullOrWhiteSpace(corruptTrigName))
+                                {
+                                    var corruptTrigger = sourceTriggers.TriggerItems
+                                        .OfType<TriggerDefinition>()
+                                        .FirstOrDefault(t => t.Name.Equals(corruptTrigName, StringComparison.OrdinalIgnoreCase));
+
+                                    if (corruptTrigger != null)
+                                    {
+                                        Console.WriteLine("\nRunning corruption detection...\n");
+
+                                        var corruptionIssues = TriggerExporter.DetectCorruption(corruptTrigger, sourceTriggers);
+
+                                        if (corruptionIssues.Count == 0)
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Green;
+                                            Console.WriteLine("✓ No corruption detected in source trigger!");
+                                            Console.WriteLine("✓ Trigger structure appears valid");
+                                            Console.ResetColor();
+                                        }
+                                        else
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Red;
+                                            Console.WriteLine($"✗ FOUND {corruptionIssues.Count} ISSUE(S):\n");
+                                            Console.ResetColor();
+
+                                            foreach (var issue in corruptionIssues)
+                                            {
+                                                if (issue.StartsWith("CORRUPT"))
+                                                {
+                                                    Console.ForegroundColor = ConsoleColor.Red;
+                                                    Console.WriteLine($"  ✗ {issue}");
+                                                    Console.ResetColor();
+                                                }
+                                                else if (issue.StartsWith("SUSPICIOUS"))
+                                                {
+                                                    Console.ForegroundColor = ConsoleColor.Yellow;
+                                                    Console.WriteLine($"  ⚠ {issue}");
+                                                    Console.ResetColor();
+                                                }
+                                                else if (issue.StartsWith("MISSING"))
+                                                {
+                                                    Console.ForegroundColor = ConsoleColor.Yellow;
+                                                    Console.WriteLine($"  ⚠ {issue}");
+                                                    Console.ResetColor();
+                                                }
+                                                else
+                                                {
+                                                    Console.WriteLine($"  • {issue}");
+                                                }
+                                            }
+
+                                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                                            Console.WriteLine("║  RECOMMENDATION                                          ║");
+                                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+
+                                            var hasCorrupt = corruptionIssues.Any(i => i.StartsWith("CORRUPT"));
+                                            var hasMissing = corruptionIssues.Any(i => i.StartsWith("MISSING"));
+
+                                            if (hasCorrupt)
+                                            {
+                                                Console.ForegroundColor = ConsoleColor.Red;
+                                                Console.WriteLine("\n✗ SOURCE TRIGGER IS CORRUPTED!");
+                                                Console.WriteLine("\nThis trigger cannot be safely copied in its current state.");
+                                                Console.WriteLine("\nOptions:");
+                                                Console.WriteLine("  1. Fix the source map in World Editor");
+                                                Console.WriteLine("  2. Recreate the trigger manually");
+                                                Console.WriteLine("  3. Try restoring from backup");
+                                                Console.ResetColor();
+                                            }
+                                            else if (hasMissing)
+                                            {
+                                                Console.ForegroundColor = ConsoleColor.Yellow;
+                                                Console.WriteLine("\n⚠ MISSING VARIABLES IN SOURCE");
+                                                Console.WriteLine("\nThe trigger references variables that don't exist in source map.");
+                                                Console.WriteLine("\nOptions:");
+                                                Console.WriteLine("  1. Create the missing variables in source map");
+                                                Console.WriteLine("  2. Fix the trigger to not reference them");
+                                                Console.WriteLine("  3. This might be intentional (e.g., variables in .wct file)");
+                                                Console.ResetColor();
+                                            }
+                                        }
+
+                                        Console.Write("\n\nExport detailed report? (y/n): ");
+                                        if (Console.ReadLine()?.ToLower() == "y")
+                                        {
+                                            string reportText = TriggerExporter.ExportToDetailedText(corruptTrigger, sourceTriggers, showHex: true);
+                                            string reportFileName = $"CORRUPTION_REPORT_{corruptTrigger.Name.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+                                            string reportPath = Path.Combine(Path.GetDirectoryName(outputPath) ?? ".", reportFileName);
+
+                                            var reportBuilder = new StringBuilder();
+                                            reportBuilder.AppendLine("╔══════════════════════════════════════════════════════════╗");
+                                            reportBuilder.AppendLine("║  CORRUPTION DETECTION REPORT                            ║");
+                                            reportBuilder.AppendLine("╚══════════════════════════════════════════════════════════╝");
+                                            reportBuilder.AppendLine($"Generated: {DateTime.Now}");
+                                            reportBuilder.AppendLine($"Trigger: {corruptTrigger.Name}");
+                                            reportBuilder.AppendLine($"Source: {sourcePath}");
+                                            reportBuilder.AppendLine();
+                                            reportBuilder.AppendLine("=== ISSUES DETECTED ===");
+                                            if (corruptionIssues.Count == 0)
+                                            {
+                                                reportBuilder.AppendLine("No issues detected.");
+                                            }
+                                            else
+                                            {
+                                                foreach (var issue in corruptionIssues)
+                                                {
+                                                    reportBuilder.AppendLine($"• {issue}");
+                                                }
+                                            }
+                                            reportBuilder.AppendLine();
+                                            reportBuilder.AppendLine("=== FULL TRIGGER EXPORT ===");
+                                            reportBuilder.AppendLine(reportText);
+
+                                            File.WriteAllText(reportPath, reportBuilder.ToString());
+
+                                            Console.ForegroundColor = ConsoleColor.Green;
+                                            Console.WriteLine($"✓ Report saved to: {reportPath}");
+                                            Console.ResetColor();
+                                        }
+                                    }
+                                    else
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"\n✗ Trigger '{corruptTrigName}' not found in SOURCE");
+                                        Console.ResetColor();
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "17":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    COMPARE TWO TRIGGERS SIDE-BY-SIDE                    ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nCompare source vs target version of same trigger");
+
+                            Console.Write("\nEnter category name in SOURCE: ");
+                            string? cmp1CatName = Console.ReadLine();
+                            if (!string.IsNullOrWhiteSpace(cmp1CatName))
+                            {
+                                ListTriggersInCategory(sourceTriggers, cmp1CatName);
+                                Console.Write("\nEnter trigger name in SOURCE: ");
+                                string? cmp1TrigName = Console.ReadLine();
+                                if (!string.IsNullOrWhiteSpace(cmp1TrigName))
+                                {
+                                    Console.Write("\nEnter category name in TARGET (or press Enter for same): ");
+                                    string? cmp2CatName = Console.ReadLine();
+                                    if (string.IsNullOrWhiteSpace(cmp2CatName))
+                                    {
+                                        cmp2CatName = cmp1CatName;
+                                    }
+
+                                    ListTriggersInCategory(targetTriggers, cmp2CatName);
+                                    Console.Write("\nEnter trigger name in TARGET (or press Enter for same): ");
+                                    string? cmp2TrigName = Console.ReadLine();
+                                    if (string.IsNullOrWhiteSpace(cmp2TrigName))
+                                    {
+                                        cmp2TrigName = cmp1TrigName;
+                                    }
+
+                                    var trigger1 = sourceTriggers.TriggerItems
+                                        .OfType<TriggerDefinition>()
+                                        .FirstOrDefault(t => t.Name.Equals(cmp1TrigName, StringComparison.OrdinalIgnoreCase));
+
+                                    var trigger2 = targetTriggers.TriggerItems
+                                        .OfType<TriggerDefinition>()
+                                        .FirstOrDefault(t => t.Name.Equals(cmp2TrigName, StringComparison.OrdinalIgnoreCase));
+
+                                    if (trigger1 != null && trigger2 != null)
+                                    {
+                                        TriggerValidator.CompareTriggers(trigger1, trigger2, "SOURCE", "TARGET");
+
+                                        Console.WriteLine("\n=== CORRUPTION CHECK ===");
+                                        Console.WriteLine("\nSOURCE:");
+                                        var issues1 = TriggerExporter.DetectCorruption(trigger1, sourceTriggers);
+                                        if (issues1.Count == 0)
+                                        {
+                                            Console.WriteLine("  ✓ No issues");
+                                        }
+                                        else
+                                        {
+                                            foreach (var issue in issues1) Console.WriteLine($"  • {issue}");
+                                        }
+
+                                        Console.WriteLine("\nTARGET:");
+                                        var issues2 = TriggerExporter.DetectCorruption(trigger2, targetTriggers);
+                                        if (issues2.Count == 0)
+                                        {
+                                            Console.WriteLine("  ✓ No issues");
+                                        }
+                                        else
+                                        {
+                                            foreach (var issue in issues2) Console.WriteLine($"  • {issue}");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        if (trigger1 == null) Console.WriteLine($"\n✗ '{cmp1TrigName}' not found in SOURCE");
+                                        if (trigger2 == null) Console.WriteLine($"✗ '{cmp2TrigName}' not found in TARGET");
+                                        Console.ResetColor();
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "18":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    EXTRACT TRIGGER + VARIABLES TO STANDALONE .WTG       ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nThis creates a minimal .wtg with just the trigger and its variables");
+                            Console.WriteLine("Useful for sharing triggers or testing in isolation");
+
+                            Console.Write("\nEnter category name: ");
+                            string? extractCatName = Console.ReadLine();
+                            if (!string.IsNullOrWhiteSpace(extractCatName))
+                            {
+                                ListTriggersInCategory(sourceTriggers, extractCatName);
+                                Console.Write("\nEnter trigger name to extract: ");
+                                string? extractTrigName = Console.ReadLine();
+                                if (!string.IsNullOrWhiteSpace(extractTrigName))
+                                {
+                                    var extractTrigger = sourceTriggers.TriggerItems
+                                        .OfType<TriggerDefinition>()
+                                        .FirstOrDefault(t => t.Name.Equals(extractTrigName, StringComparison.OrdinalIgnoreCase));
+
+                                    if (extractTrigger != null)
+                                    {
+                                        try
+                                        {
+                                            // Create minimal map
+                                            var extractedMap = CreateMinimalMapTriggers(sourceTriggers);
+
+                                            // Copy trigger and variables
+                                            Console.WriteLine("\nExtracting trigger and dependencies...");
+                                            CopySpecificTriggers(sourceTriggers, extractedMap, extractCatName, new[] { extractTrigName }, extractCatName);
+
+                                            // Save
+                                            string extractFileName = $"EXTRACTED_{extractTrigger.Name.Replace(" ", "_")}.wtg";
+                                            string extractPath = Path.Combine(Path.GetDirectoryName(outputPath) ?? ".", extractFileName);
+
+                                            WriteWTGFile(extractPath, extractedMap);
+
+                                            Console.ForegroundColor = ConsoleColor.Green;
+                                            Console.WriteLine($"\n✓ Extracted trigger saved to: {extractPath}");
+                                            Console.WriteLine($"\nContents:");
+                                            Console.WriteLine($"  • 1 category: '{extractCatName}'");
+                                            Console.WriteLine($"  • 1 trigger: '{extractTrigger.Name}'");
+                                            Console.WriteLine($"  • {extractedMap.Variables.Count} variable(s)");
+                                            Console.WriteLine($"\nYou can:");
+                                            Console.WriteLine($"  1. Share this file with others");
+                                            Console.WriteLine($"  2. Open in World Editor to test");
+                                            Console.WriteLine($"  3. Use as backup of this trigger");
+                                            Console.ResetColor();
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Red;
+                                            Console.WriteLine($"\n✗ Extraction failed: {ex.Message}");
+                                            if (DEBUG_MODE)
+                                            {
+                                                Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
+                                            }
+                                            Console.ResetColor();
+                                        }
+                                    }
+                                    else
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"\n✗ Trigger '{extractTrigName}' not found");
                                         Console.ResetColor();
                                     }
                                 }
