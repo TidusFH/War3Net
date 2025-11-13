@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using War3Net.Build.Script;
 using War3Net.IO.Mpq;
 using War3Net.Build.Extensions;
@@ -3460,9 +3461,8 @@ namespace WTGMerger
         static MapTriggers CreateMinimalMapTriggers(MapTriggers sourceTemplate)
         {
             // Create new MapTriggers with same format version as source
-            var minimal = new MapTriggers(sourceTemplate.FormatVersion)
+            var minimal = new MapTriggers(sourceTemplate.FormatVersion, sourceTemplate.SubVersion)
             {
-                SubVersion = sourceTemplate.SubVersion,
                 GameVersion = sourceTemplate.GameVersion,
             };
 
