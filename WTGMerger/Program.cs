@@ -130,6 +130,7 @@ namespace WTGMerger
                     Console.WriteLine("10. Perform FULL MERGE using intermediate approach");
                     Console.WriteLine("11. Perform SELECTIVE MERGE using intermediate approach (choose categories)");
                     Console.WriteLine($"d. DEBUG: Toggle debug mode (currently: {(DEBUG_MODE ? "ON" : "OFF")})");
+                    Console.WriteLine($"l. DIAGNOSTIC: Toggle deep diagnostic logging (currently: {(DiagnosticLogger.IsEnabled ? "ON - logging to file" : "OFF")})");
                     Console.WriteLine("s. Save and exit");
                     Console.WriteLine("0. Exit without saving");
                     Console.WriteLine();
@@ -293,21 +294,37 @@ namespace WTGMerger
                             {
                                 try
                                 {
+                                    DiagnosticLogger.LogOperationStart("FULL MERGE (Option 10)");
+
                                     // Enable debug mode for converters if global debug is on
                                     IntermediateConverter.SetDebugMode(DEBUG_MODE);
                                     IntermediateMerger.SetDebugMode(DEBUG_MODE);
 
                                     Console.WriteLine("\n[1/3] Disassembling SOURCE...");
+                                    DiagnosticLogger.Log("Step 1: Disassembling SOURCE");
+                                    DiagnosticLogger.LogMapTriggersState(sourceTriggers, "SOURCE Before Disassemble");
                                     var sourceIntermediate = IntermediateConverter.Disassemble(sourceTriggers, sourcePath);
+                                    DiagnosticLogger.LogIntermediateState(sourceIntermediate, "SOURCE After Disassemble");
 
                                     Console.WriteLine("[2/3] Disassembling TARGET...");
+                                    DiagnosticLogger.Log("Step 2: Disassembling TARGET");
+                                    DiagnosticLogger.LogMapTriggersState(targetTriggers, "TARGET Before Disassemble");
                                     var targetIntermediate = IntermediateConverter.Disassemble(targetTriggers, targetPath);
+                                    DiagnosticLogger.LogIntermediateState(targetIntermediate, "TARGET After Disassemble");
 
                                     Console.WriteLine("[3/3] Merging...");
+                                    DiagnosticLogger.Log("Step 3: Merging intermediate representations");
                                     var (mergedIntermediate, conflicts) = IntermediateMerger.Merge(sourceIntermediate, targetIntermediate);
+                                    DiagnosticLogger.LogIntermediateState(mergedIntermediate, "MERGED Result");
+                                    foreach (var conflict in conflicts)
+                                    {
+                                        DiagnosticLogger.LogConflict(conflict);
+                                    }
 
                                     Console.WriteLine("\n[4/4] Rebuilding War3Net MapTriggers...");
+                                    DiagnosticLogger.Log("Step 4: Rebuilding War3Net MapTriggers");
                                     targetTriggers = IntermediateConverter.Rebuild(mergedIntermediate);
+                                    DiagnosticLogger.LogMapTriggersState(targetTriggers, "FINAL Rebuilt MapTriggers");
 
                                     Console.ForegroundColor = ConsoleColor.Green;
                                     Console.WriteLine("\n✓ Full merge complete!");
@@ -321,9 +338,14 @@ namespace WTGMerger
                                     }
 
                                     modified = true;
+                                    DiagnosticLogger.LogOperationEnd("FULL MERGE (Option 10)", true);
                                 }
                                 catch (Exception ex)
                                 {
+                                    DiagnosticLogger.Log($"ERROR: {ex.Message}");
+                                    DiagnosticLogger.Log($"Stack trace: {ex.StackTrace}");
+                                    DiagnosticLogger.LogOperationEnd("FULL MERGE (Option 10)", false);
+
                                     Console.ForegroundColor = ConsoleColor.Red;
                                     Console.WriteLine($"\n❌ Merge failed: {ex.Message}");
                                     if (DEBUG_MODE)
@@ -351,15 +373,23 @@ namespace WTGMerger
                             {
                                 try
                                 {
+                                    DiagnosticLogger.LogOperationStart("SELECTIVE MERGE (Option 11)");
+
                                     // Enable debug mode for converters if global debug is on
                                     IntermediateConverter.SetDebugMode(DEBUG_MODE);
                                     IntermediateMerger.SetDebugMode(DEBUG_MODE);
 
                                     Console.WriteLine("\n[1/4] Disassembling SOURCE...");
+                                    DiagnosticLogger.Log("Step 1: Disassembling SOURCE");
+                                    DiagnosticLogger.LogMapTriggersState(sourceTriggers, "SOURCE Before Disassemble");
                                     var sourceIntermediate = IntermediateConverter.Disassemble(sourceTriggers, sourcePath);
+                                    DiagnosticLogger.LogIntermediateState(sourceIntermediate, "SOURCE After Disassemble");
 
                                     Console.WriteLine("[2/4] Disassembling TARGET...");
+                                    DiagnosticLogger.Log("Step 2: Disassembling TARGET");
+                                    DiagnosticLogger.LogMapTriggersState(targetTriggers, "TARGET Before Disassemble");
                                     var targetIntermediate = IntermediateConverter.Disassemble(targetTriggers, targetPath);
+                                    DiagnosticLogger.LogIntermediateState(targetIntermediate, "TARGET After Disassemble");
 
                                     // Show available categories from source
                                     Console.WriteLine("\n[3/4] Available categories in SOURCE:");
@@ -407,17 +437,36 @@ namespace WTGMerger
                                     if (selectedCategories.Count == 0)
                                     {
                                         Console.WriteLine("No valid categories selected. Aborting.");
+                                        DiagnosticLogger.Log("No valid categories selected - aborting");
+                                        DiagnosticLogger.LogOperationEnd("SELECTIVE MERGE (Option 11)", false);
                                         break;
                                     }
 
+                                    DiagnosticLogger.Log($"Step 3: User selected {selectedCategories.Count} categories:");
+                                    DiagnosticLogger.Indent();
+                                    foreach (var cat in selectedCategories)
+                                    {
+                                        DiagnosticLogger.Log($"- '{cat.Name}' (OriginalId={cat.OriginalId})");
+                                    }
+                                    DiagnosticLogger.Unindent();
+
                                     Console.WriteLine($"\n[4/4] Merging {selectedCategories.Count} selected categor{(selectedCategories.Count == 1 ? "y" : "ies")}...");
+                                    DiagnosticLogger.Log("Step 4: Performing selective merge");
 
                                     // Merge selected categories
                                     var (mergedIntermediate, conflicts) = IntermediateMerger.MergeSelective(
                                         sourceIntermediate, targetIntermediate, selectedCategories);
 
+                                    DiagnosticLogger.LogIntermediateState(mergedIntermediate, "MERGED Result");
+                                    foreach (var conflict in conflicts)
+                                    {
+                                        DiagnosticLogger.LogConflict(conflict);
+                                    }
+
                                     Console.WriteLine("\nRebuilding War3Net MapTriggers...");
+                                    DiagnosticLogger.Log("Step 5: Rebuilding War3Net MapTriggers");
                                     targetTriggers = IntermediateConverter.Rebuild(mergedIntermediate);
+                                    DiagnosticLogger.LogMapTriggersState(targetTriggers, "FINAL Rebuilt MapTriggers");
 
                                     Console.ForegroundColor = ConsoleColor.Green;
                                     Console.WriteLine("\n✓ Selective merge complete!");
@@ -431,9 +480,14 @@ namespace WTGMerger
                                     }
 
                                     modified = true;
+                                    DiagnosticLogger.LogOperationEnd("SELECTIVE MERGE (Option 11)", true);
                                 }
                                 catch (Exception ex)
                                 {
+                                    DiagnosticLogger.Log($"ERROR: {ex.Message}");
+                                    DiagnosticLogger.Log($"Stack trace: {ex.StackTrace}");
+                                    DiagnosticLogger.LogOperationEnd("SELECTIVE MERGE (Option 11)", false);
+
                                     Console.ForegroundColor = ConsoleColor.Red;
                                     Console.WriteLine($"\n❌ Merge failed: {ex.Message}");
                                     if (DEBUG_MODE)
@@ -451,6 +505,26 @@ namespace WTGMerger
                             Console.ForegroundColor = DEBUG_MODE ? ConsoleColor.Yellow : ConsoleColor.Green;
                             Console.WriteLine($"\n✓ Debug mode is now {(DEBUG_MODE ? "ON" : "OFF")}");
                             Console.ResetColor();
+                            break;
+
+                        case "l":
+                        case "L":
+                            if (DiagnosticLogger.IsEnabled)
+                            {
+                                DiagnosticLogger.StopLogging();
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.WriteLine("\n✓ Deep diagnostic logging DISABLED");
+                                Console.ResetColor();
+                            }
+                            else
+                            {
+                                DiagnosticLogger.StartLogging();
+                                Console.ForegroundColor = ConsoleColor.Yellow;
+                                Console.WriteLine("\n✓ Deep diagnostic logging ENABLED");
+                                Console.WriteLine("  All operations will be logged to file with complete details");
+                                Console.WriteLine("  This includes: file operations, data transformations, IDs, ParentIds, hierarchy");
+                                Console.ResetColor();
+                            }
                             break;
 
                         case "s":
@@ -819,6 +893,9 @@ namespace WTGMerger
         /// </summary>
         static void WriteWTGFile(string filePath, MapTriggers triggers)
         {
+            DiagnosticLogger.LogFileOperation("Writing WTG", filePath);
+            DiagnosticLogger.LogMapTriggersState(triggers, "Before Writing");
+
             if (DEBUG_MODE)
             {
                 Console.WriteLine($"[DEBUG] WriteWTGFile: Writing to {filePath}");
@@ -828,10 +905,13 @@ namespace WTGMerger
 
             // CRITICAL: Renumber all categories sequentially before writing
             // This ensures category IDs match what War3Net will assign when reading back
+            DiagnosticLogger.Log("Renumbering categories sequentially before write");
             RenumberCategoriesSequentially(triggers);
+            DiagnosticLogger.LogMapTriggersState(triggers, "After Renumbering");
 
             // INTEGRATION: Use War3Writer instead of War3Net's internal WriteTo
             War3Writer.SetDebugMode(DEBUG_MODE);
+            DiagnosticLogger.Log("Writing to file using War3Writer");
             War3Writer.WriteMapTriggers(filePath, triggers);
 
             if (DEBUG_MODE)
@@ -839,6 +919,8 @@ namespace WTGMerger
                 var fileInfo = new FileInfo(filePath);
                 Console.WriteLine($"[DEBUG] WriteWTGFile: Completed. File size: {fileInfo.Length} bytes");
             }
+
+            DiagnosticLogger.Log($"Write completed. File size: {new FileInfo(filePath).Length} bytes");
         }
 
         /// <summary>
@@ -923,8 +1005,15 @@ namespace WTGMerger
         /// </summary>
         static void CopySpecificTriggers(MapTriggers source, MapTriggers target, string sourceCategoryName, string[] triggerNames, string destCategoryName)
         {
+            DiagnosticLogger.LogOperationStart($"COPY SPECIFIC TRIGGERS (Option 5)");
+            DiagnosticLogger.Log($"Source Category: '{sourceCategoryName}'");
+            DiagnosticLogger.Log($"Destination Category: '{destCategoryName}'");
+            DiagnosticLogger.Log($"Triggers to copy: {string.Join(", ", triggerNames.Select(t => $"'{t}'"))}");
+
             // Get source triggers
             var sourceTriggers = GetTriggersInCategory(source, sourceCategoryName);
+            DiagnosticLogger.Log($"Found {sourceTriggers.Count} triggers in source category '{sourceCategoryName}'");
+
             var triggersToCopy = new List<TriggerDefinition>();
 
             foreach (var triggerName in triggerNames)
@@ -933,16 +1022,20 @@ namespace WTGMerger
                 if (trigger != null)
                 {
                     triggersToCopy.Add(trigger);
+                    DiagnosticLogger.Log($"Found trigger to copy: '{triggerName}' (ID={trigger.Id})");
                 }
                 else
                 {
                     Console.WriteLine($"  ⚠ Warning: Trigger '{triggerName}' not found in category '{sourceCategoryName}'");
+                    DiagnosticLogger.Log($"WARNING: Trigger '{triggerName}' not found in category '{sourceCategoryName}'");
                 }
             }
 
             if (triggersToCopy.Count == 0)
             {
                 Console.WriteLine("\n  No triggers to copy.");
+                DiagnosticLogger.Log("No triggers to copy - aborting");
+                DiagnosticLogger.LogOperationEnd($"COPY SPECIFIC TRIGGERS (Option 5)", false);
                 return;
             }
 
@@ -953,6 +1046,8 @@ namespace WTGMerger
 
             if (destCategory == null)
             {
+                DiagnosticLogger.Log($"Destination category '{destCategoryName}' not found - creating new category");
+
                 // Create new category at root level
                 destCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
                 {
@@ -962,6 +1057,8 @@ namespace WTGMerger
                     IsComment = false,
                     IsExpanded = true
                 };
+
+                DiagnosticLogger.Log($"Created new category: ID={destCategory.Id}, ParentId={destCategory.ParentId}, Name='{destCategory.Name}'");
 
                 // CRITICAL: Insert category BEFORE first trigger to maintain correct file order for 1.27 format
                 // Find the first trigger in TriggerItems
@@ -1000,20 +1097,28 @@ namespace WTGMerger
             }
 
             // Copy missing variables from source to target before copying triggers
+            DiagnosticLogger.Log("Copying missing variables from source to target");
             CopyMissingVariables(source, target, triggersToCopy);
 
             // Copy triggers
             Console.WriteLine($"\n  Copying {triggersToCopy.Count} trigger(s) to category '{destCategoryName}':");
+            DiagnosticLogger.Log($"Copying {triggersToCopy.Count} trigger(s) to category '{destCategoryName}' at index {insertIndex}");
+            DiagnosticLogger.Indent();
             foreach (var sourceTrigger in triggersToCopy)
             {
                 var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), destCategory.Id);
                 target.TriggerItems.Insert(insertIndex, copiedTrigger);
                 insertIndex++;
                 Console.WriteLine($"    ✓ {copiedTrigger.Name}");
+                DiagnosticLogger.Log($"Copied trigger: '{copiedTrigger.Name}' (ID={copiedTrigger.Id}, ParentId={copiedTrigger.ParentId})");
             }
+            DiagnosticLogger.Unindent();
 
             // Update trigger item counts
+            DiagnosticLogger.Log("Updating trigger item counts");
             UpdateTriggerItemCounts(target);
+
+            DiagnosticLogger.LogOperationEnd($"COPY SPECIFIC TRIGGERS (Option 5)", true);
         }
 
         /// <summary>
@@ -1069,6 +1174,9 @@ namespace WTGMerger
         /// </summary>
         static void MergeCategory(MapTriggers source, MapTriggers target, string categoryName)
         {
+            DiagnosticLogger.LogOperationStart($"MERGE CATEGORY '{categoryName}' (Option 4)");
+            DiagnosticLogger.Log($"Category to merge: '{categoryName}'");
+
             // Find source category
             var sourceCategory = source.TriggerItems
                 .OfType<TriggerCategoryDefinition>()
@@ -1076,12 +1184,17 @@ namespace WTGMerger
 
             if (sourceCategory == null)
             {
+                DiagnosticLogger.Log($"ERROR: Category '{categoryName}' not found in source");
+                DiagnosticLogger.LogOperationEnd($"MERGE CATEGORY '{categoryName}' (Option 4)", false);
                 throw new InvalidOperationException($"Category '{categoryName}' not found in source");
             }
+
+            DiagnosticLogger.Log($"Found source category: ID={sourceCategory.Id}, ParentId={sourceCategory.ParentId}");
 
             // Get triggers from source category
             var sourceCategoryTriggers = GetTriggersInCategory(source, categoryName);
             Console.WriteLine($"  Found {sourceCategoryTriggers.Count} triggers in source category");
+            DiagnosticLogger.Log($"Found {sourceCategoryTriggers.Count} triggers in source category");
 
             // Check if category already exists in target
             var targetCategory = target.TriggerItems
@@ -1091,6 +1204,7 @@ namespace WTGMerger
             if (targetCategory != null)
             {
                 Console.WriteLine($"  Category '{categoryName}' already exists in target - removing it");
+                DiagnosticLogger.Log($"Category '{categoryName}' already exists in target (ID={targetCategory.Id}) - removing it");
                 RemoveCategory(target, categoryName);
             }
 
@@ -1105,6 +1219,8 @@ namespace WTGMerger
                 IsComment = sourceCategory.IsComment,
                 IsExpanded = sourceCategory.IsExpanded
             };
+
+            DiagnosticLogger.Log($"Created new category: ID={newCategory.Id}, ParentId={newCategory.ParentId}, Name='{newCategory.Name}'");
 
             // CRITICAL: Insert category BEFORE first trigger to maintain correct file order for 1.27 format
             // Find the first trigger in TriggerItems
@@ -1131,18 +1247,26 @@ namespace WTGMerger
             }
 
             // Copy missing variables from source to target before copying triggers
+            DiagnosticLogger.Log("Copying missing variables from source to target");
             CopyMissingVariables(source, target, sourceCategoryTriggers);
 
             // Copy all triggers - add them at the end (after all existing triggers)
+            DiagnosticLogger.Log($"Copying {sourceCategoryTriggers.Count} triggers to target");
+            DiagnosticLogger.Indent();
             foreach (var sourceTrigger in sourceCategoryTriggers)
             {
                 var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), newCategory.Id);
                 target.TriggerItems.Add(copiedTrigger);
                 Console.WriteLine($"    + Copied trigger: {copiedTrigger.Name}");
+                DiagnosticLogger.Log($"Copied trigger: '{copiedTrigger.Name}' (ID={copiedTrigger.Id}, ParentId={copiedTrigger.ParentId})");
             }
+            DiagnosticLogger.Unindent();
 
             // Update trigger item counts
+            DiagnosticLogger.Log("Updating trigger item counts");
             UpdateTriggerItemCounts(target);
+
+            DiagnosticLogger.LogOperationEnd($"MERGE CATEGORY '{categoryName}' (Option 4)", true);
         }
 
         /// <summary>
@@ -2500,16 +2624,22 @@ namespace WTGMerger
         /// </summary>
         static MapTriggers ReadMapTriggersAuto(string filePath)
         {
+            DiagnosticLogger.LogFileOperation("Reading", filePath);
+
             MapTriggers triggers;
 
             if (IsMapArchive(filePath))
             {
+                DiagnosticLogger.Log("Detected map archive format");
                 triggers = ReadMapArchiveFile(filePath);
             }
             else
             {
+                DiagnosticLogger.Log("Detected WTG file format");
                 triggers = ReadWTGFile(filePath);
             }
+
+            DiagnosticLogger.LogMapTriggersState(triggers, "After Reading File");
 
             // WC3 1.27 FORMAT HANDLING
             // If map has SubVersion=null, it's WC3 1.27 format
@@ -2522,6 +2652,8 @@ namespace WTGMerger
                 Console.ForegroundColor = ConsoleColor.Cyan;
                 Console.WriteLine($"  ℹ Map is WC3 1.27 format (SubVersion=null)");
                 Console.ResetColor();
+
+                DiagnosticLogger.Log("Detected WC3 1.27 format (SubVersion=null)");
 
                 // Assign sequential IDs in memory for internal tracking
                 // (These won't be saved - 1.27 format doesn't support variable IDs)
@@ -2608,6 +2740,11 @@ namespace WTGMerger
         /// </summary>
         static void WriteMapArchive(string originalArchivePath, string outputArchivePath, MapTriggers triggers, bool removeJassFile)
         {
+            DiagnosticLogger.LogFileOperation("Writing Map Archive", outputArchivePath);
+            DiagnosticLogger.Log($"Original archive: {originalArchivePath}");
+            DiagnosticLogger.Log($"Remove JASS file: {removeJassFile}");
+            DiagnosticLogger.LogMapTriggersState(triggers, "Before Writing Archive");
+
             if (DEBUG_MODE)
             {
                 Console.WriteLine($"[DEBUG] WriteMapArchive: Writing to {outputArchivePath}");
@@ -2616,15 +2753,19 @@ namespace WTGMerger
             }
 
             Console.WriteLine($"  Opening original archive...");
+            DiagnosticLogger.Log("Opening original archive");
             using var originalArchive = MpqArchive.Open(originalArchivePath, true);
             originalArchive.DiscoverFileNames();
 
             Console.WriteLine($"  Creating archive builder...");
+            DiagnosticLogger.Log("Creating archive builder");
             var builder = new MpqArchiveBuilder(originalArchive);
 
             // CRITICAL: Renumber all categories sequentially before writing
             // This ensures category IDs match what War3Net will assign when reading back
+            DiagnosticLogger.Log("Renumbering categories sequentially before write");
             RenumberCategoriesSequentially(triggers);
+            DiagnosticLogger.LogMapTriggersState(triggers, "After Renumbering");
 
             // Serialize triggers to memory
             using var triggerStream = new MemoryStream();
@@ -2666,6 +2807,7 @@ namespace WTGMerger
                 if (originalArchive.FileExists(jassFileName))
                 {
                     Console.WriteLine($"  Removing {jassFileName} for sync...");
+                    DiagnosticLogger.Log($"Removing {jassFileName} from archive");
                     builder.RemoveFile(jassFileName);
                 }
 
@@ -2674,14 +2816,18 @@ namespace WTGMerger
                 if (originalArchive.FileExists(jassFileNameAlt))
                 {
                     Console.WriteLine($"  Removing {jassFileNameAlt} for sync...");
+                    DiagnosticLogger.Log($"Removing {jassFileNameAlt} from archive");
                     builder.RemoveFile(jassFileNameAlt);
                 }
             }
 
             // Save the modified archive
             Console.WriteLine($"  Saving to {outputArchivePath}...");
+            DiagnosticLogger.Log("Saving modified archive");
             builder.SaveTo(outputArchivePath);
             Console.WriteLine($"  Archive updated successfully!");
+
+            DiagnosticLogger.Log($"Archive write completed. File size: {new FileInfo(outputArchivePath).Length} bytes");
         }
     }
 }
