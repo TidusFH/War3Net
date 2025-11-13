@@ -1289,6 +1289,26 @@ namespace WTGMerger
                                     }
                                 }
 
+                                // AUTOMATIC ID CORRUPTION REPAIR
+                                bool hasCorruptedIDs = targetTriggers.TriggerItems.OfType<TriggerCategoryDefinition>()
+                                    .Any(c => IDCorruptionRepair.IsCorruptedCategoryID(c.Id)) ||
+                                    IDCorruptionRepair.HasDuplicateTriggerIDs(targetTriggers);
+
+                                if (hasCorruptedIDs)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Yellow;
+                                    Console.WriteLine("\n⚠ ID CORRUPTION DETECTED!");
+                                    Console.WriteLine("Corrupted IDs found (likely from BetterTriggers or other tools).");
+                                    Console.WriteLine("\n✓ Automatically repairing IDs...");
+                                    Console.ResetColor();
+
+                                    IDCorruptionRepair.RepairCorruptedIDs(targetTriggers);
+
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine("✓ ID corruption repaired: All IDs now sequential and valid");
+                                    Console.ResetColor();
+                                }
+
                                 Console.WriteLine($"\nWriting file...");
 
                                 if (DEBUG_MODE)
@@ -1683,6 +1703,20 @@ namespace WTGMerger
             DiagnosticLogger.Log($"Destination Category: '{destCategoryName}'");
             DiagnosticLogger.Log($"Triggers to copy: {string.Join(", ", triggerNames.Select(t => $"'{t}'"))}");
 
+            // Check for ID corruption in source map
+            bool sourceHasCorruption = source.TriggerItems.OfType<TriggerCategoryDefinition>()
+                .Any(c => IDCorruptionRepair.IsCorruptedCategoryID(c.Id)) ||
+                IDCorruptionRepair.HasDuplicateTriggerIDs(source);
+
+            if (sourceHasCorruption)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("\n⚠ WARNING: Source map has corrupted IDs (likely from BetterTriggers)");
+                Console.WriteLine("  Using corruption-aware copying with name-based category matching...");
+                Console.ResetColor();
+                DiagnosticLogger.Log("WARNING: Source map has ID corruption - using repair-aware copy");
+            }
+
             // Get source triggers
             var sourceTriggers = GetTriggersInCategory(source, sourceCategoryName);
             DiagnosticLogger.Log($"Found {sourceTriggers.Count} triggers in source category '{sourceCategoryName}'");
@@ -1781,7 +1815,19 @@ namespace WTGMerger
             DiagnosticLogger.Indent();
             foreach (var sourceTrigger in triggersToCopy)
             {
-                var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), destCategory.Id);
+                // Use corruption-aware copy if source has corruption
+                TriggerDefinition copiedTrigger;
+                if (sourceHasCorruption)
+                {
+                    copiedTrigger = IDCorruptionRepair.CopyTriggerWithIDRepair(
+                        sourceTrigger, source, target, GetNextId(target), destCategoryName);
+                    DiagnosticLogger.Log($"Used corruption-aware copy for: '{copiedTrigger.Name}'");
+                }
+                else
+                {
+                    copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), destCategory.Id);
+                }
+
                 target.TriggerItems.Insert(insertIndex, copiedTrigger);
                 insertIndex++;
                 Console.WriteLine($"    ✓ {copiedTrigger.Name}");
@@ -1851,6 +1897,20 @@ namespace WTGMerger
         {
             DiagnosticLogger.LogOperationStart($"MERGE CATEGORY '{categoryName}' (Option 4)");
             DiagnosticLogger.Log($"Category to merge: '{categoryName}'");
+
+            // Check for ID corruption in source map
+            bool sourceHasCorruption = source.TriggerItems.OfType<TriggerCategoryDefinition>()
+                .Any(c => IDCorruptionRepair.IsCorruptedCategoryID(c.Id)) ||
+                IDCorruptionRepair.HasDuplicateTriggerIDs(source);
+
+            if (sourceHasCorruption)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("\n⚠ WARNING: Source map has corrupted IDs (likely from BetterTriggers)");
+                Console.WriteLine("  Using corruption-aware copying with name-based category matching...");
+                Console.ResetColor();
+                DiagnosticLogger.Log("WARNING: Source map has ID corruption - using repair-aware copy");
+            }
 
             // Find source category
             var sourceCategory = source.TriggerItems
@@ -1939,7 +1999,19 @@ namespace WTGMerger
             DiagnosticLogger.Indent();
             foreach (var sourceTrigger in sourceCategoryTriggers)
             {
-                var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), newCategory.Id);
+                // Use corruption-aware copy if source has corruption
+                TriggerDefinition copiedTrigger;
+                if (sourceHasCorruption)
+                {
+                    copiedTrigger = IDCorruptionRepair.CopyTriggerWithIDRepair(
+                        sourceTrigger, source, target, GetNextId(target), categoryName);
+                    DiagnosticLogger.Log($"Used corruption-aware copy for: '{copiedTrigger.Name}'");
+                }
+                else
+                {
+                    copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), newCategory.Id);
+                }
+
                 target.TriggerItems.Insert(insertIndex, copiedTrigger);
                 insertIndex++; // Move insertion point forward for next trigger
                 Console.WriteLine($"    + Copied trigger: {copiedTrigger.Name}");
