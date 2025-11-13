@@ -1090,16 +1090,13 @@ namespace WTGMerger
                 }
             }
 
-            // Find insertion point (after the category)
+            // Find insertion point (immediately after the category)
             var categoryIndex = target.TriggerItems.IndexOf(destCategory);
             int insertIndex = categoryIndex + 1;
 
-            // Skip existing triggers in this category to insert at the end
-            while (insertIndex < target.TriggerItems.Count &&
-                   target.TriggerItems[insertIndex] is not TriggerCategoryDefinition)
-            {
-                insertIndex++;
-            }
+            // CRITICAL FOR 1.27 FORMAT: Insert triggers IMMEDIATELY after category
+            // (not at the end of the file - file order determines visual nesting)
+            DiagnosticLogger.Log($"Category '{destCategoryName}' is at index {categoryIndex}, inserting triggers at index {insertIndex}");
 
             // Copy missing variables from source to target before copying triggers
             DiagnosticLogger.Log("Copying missing variables from source to target");
@@ -1260,15 +1257,20 @@ namespace WTGMerger
             DiagnosticLogger.Log("Copying missing variables from source to target");
             CopyMissingVariables(source, target, sourceCategoryTriggers);
 
-            // Copy all triggers - add them at the end (after all existing triggers)
-            DiagnosticLogger.Log($"Copying {sourceCategoryTriggers.Count} triggers to target");
+            // CRITICAL FOR 1.27 FORMAT: Insert triggers IMMEDIATELY after category
+            // (not at the end of the file - file order determines visual nesting)
+            var categoryIndex = target.TriggerItems.IndexOf(newCategory);
+            int insertIndex = categoryIndex + 1;
+            DiagnosticLogger.Log($"Category '{categoryName}' is at index {categoryIndex}, inserting {sourceCategoryTriggers.Count} triggers at index {insertIndex}");
+
             DiagnosticLogger.Indent();
             foreach (var sourceTrigger in sourceCategoryTriggers)
             {
                 var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), newCategory.Id);
-                target.TriggerItems.Add(copiedTrigger);
+                target.TriggerItems.Insert(insertIndex, copiedTrigger);
+                insertIndex++; // Move insertion point forward for next trigger
                 Console.WriteLine($"    + Copied trigger: {copiedTrigger.Name}");
-                DiagnosticLogger.Log($"Copied trigger: '{copiedTrigger.Name}' (ID={copiedTrigger.Id}, ParentId={copiedTrigger.ParentId})");
+                DiagnosticLogger.Log($"Copied trigger: '{copiedTrigger.Name}' at index {insertIndex-1} (ID={copiedTrigger.Id}, ParentId={copiedTrigger.ParentId})");
             }
             DiagnosticLogger.Unindent();
 
