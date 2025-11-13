@@ -1049,16 +1049,21 @@ namespace WTGMerger
                 DiagnosticLogger.Log($"Destination category '{destCategoryName}' not found - creating new category");
 
                 // Create new category at root level
+                // For 1.27 format: use ParentId=0 (since -1 gets read back as 0 anyway)
+                // For newer formats: use ParentId=-1
+                bool is127Format = target.SubVersion == null;
+                int rootParentId = is127Format ? 0 : -1;
+
                 destCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
                 {
                     Id = GetNextId(target),
-                    ParentId = -1,  // CRITICAL: Root-level category
+                    ParentId = rootParentId,  // CRITICAL: Root-level category
                     Name = destCategoryName,
                     IsComment = false,
                     IsExpanded = true
                 };
 
-                DiagnosticLogger.Log($"Created new category: ID={destCategory.Id}, ParentId={destCategory.ParentId}, Name='{destCategory.Name}'");
+                DiagnosticLogger.Log($"Created new category (1.27={is127Format}): ID={destCategory.Id}, ParentId={destCategory.ParentId}, Name='{destCategory.Name}'");
 
                 // CRITICAL: Insert category BEFORE first trigger to maintain correct file order for 1.27 format
                 // Find the first trigger in TriggerItems
@@ -1209,18 +1214,23 @@ namespace WTGMerger
             }
 
             // Create new category in target (Type must be set via constructor)
-            // ALWAYS set ParentId = -1 for root-level when copying between files
+            // ALWAYS set ParentId for root-level when copying between files
             // (source ParentId might point to non-existent category in target)
+            // For 1.27 format: use ParentId=0 (since -1 gets read back as 0 anyway)
+            // For newer formats: use ParentId=-1
+            bool is127Format = target.SubVersion == null;
+            int rootParentId = is127Format ? 0 : -1;
+
             var newCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
             {
                 Id = GetNextId(target),
-                ParentId = -1,  // CRITICAL: Always root-level for copied categories
+                ParentId = rootParentId,  // CRITICAL: Root-level for copied categories
                 Name = sourceCategory.Name,
                 IsComment = sourceCategory.IsComment,
                 IsExpanded = sourceCategory.IsExpanded
             };
 
-            DiagnosticLogger.Log($"Created new category: ID={newCategory.Id}, ParentId={newCategory.ParentId}, Name='{newCategory.Name}'");
+            DiagnosticLogger.Log($"Created new category (1.27={is127Format}): ID={newCategory.Id}, ParentId={newCategory.ParentId}, Name='{newCategory.Name}'");
 
             // CRITICAL: Insert category BEFORE first trigger to maintain correct file order for 1.27 format
             // Find the first trigger in TriggerItems
@@ -1407,19 +1417,24 @@ namespace WTGMerger
         }
 
         /// <summary>
-        /// Fixes all categories to root-level by setting ParentId = -1
+        /// Fixes all categories to root-level by setting ParentId appropriately
+        /// For 1.27 format: ParentId=0 (all categories default to 0)
+        /// For newer formats: ParentId=-1 (explicit root level)
         /// </summary>
         static int FixAllCategoriesToRoot(MapTriggers triggers)
         {
+            bool is127Format = triggers.SubVersion == null;
+            int rootParentId = is127Format ? 0 : -1;
+
             var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
             int fixedCount = 0;
 
             foreach (var category in categories)
             {
-                if (category.ParentId != -1)
+                if (category.ParentId != rootParentId)
                 {
-                    Console.WriteLine($"  Fixing '{category.Name}' (was ParentId={category.ParentId})");
-                    category.ParentId = -1;
+                    Console.WriteLine($"  Fixing '{category.Name}' (was ParentId={category.ParentId}, setting to {rootParentId} for {(is127Format ? "1.27" : "newer")} format)");
+                    category.ParentId = rootParentId;
                     fixedCount++;
                 }
             }
@@ -1546,11 +1561,17 @@ namespace WTGMerger
         /// </summary>
         static void RenumberCategoriesSequentially(MapTriggers triggers)
         {
+            DiagnosticLogger.Log("RenumberCategoriesSequentially: Starting");
+            bool is127Format = triggers.SubVersion == null;
+            DiagnosticLogger.Log($"Format: {(is127Format ? "1.27" : "newer")}");
+
             // Get all non-root categories
             var categories = triggers.TriggerItems
                 .OfType<TriggerCategoryDefinition>()
                 .Where(c => c.Type != TriggerItemType.RootCategory)
                 .ToList();
+
+            DiagnosticLogger.Log($"Found {categories.Count} categories to renumber");
 
             // Build mapping of old ID to new ID
             var oldIdToNewId = new Dictionary<int, int>();
@@ -1568,17 +1589,44 @@ namespace WTGMerger
                     {
                         Console.WriteLine($"[DEBUG] Renumbering category '{categories[i].Name}': ID {oldId} -> {newId}");
                     }
+                    DiagnosticLogger.Log($"Renumbering category '{categories[i].Name}': ID {oldId} -> {newId}");
 
                     categories[i].Id = newId;
+                }
+
+                // CRITICAL FIX FOR 1.27 FORMAT:
+                // In WC3 1.27, category ParentIds are NOT saved to file
+                // All categories default to ParentId=0 when read back
+                // So we must normalize ALL category ParentIds to 0 before writing
+                if (is127Format)
+                {
+                    int oldParentId = categories[i].ParentId;
+
+                    // Normalize: -1 becomes 0, everything else stays the same
+                    // (In 1.27, ParentId doesn't matter - hierarchy is by file order)
+                    if (oldParentId == -1)
+                    {
+                        if (DEBUG_MODE)
+                        {
+                            Console.WriteLine($"[DEBUG] Normalizing category '{categories[i].Name}': ParentId -1 -> 0 (1.27 format)");
+                        }
+                        DiagnosticLogger.Log($"Normalizing category '{categories[i].Name}': ParentId -1 -> 0 (1.27 format)");
+                        categories[i].ParentId = 0;
+                    }
                 }
             }
 
             // Update all trigger ParentIds to match new category IDs
+            DiagnosticLogger.Log($"Updating trigger ParentIds (found {oldIdToNewId.Count} category ID changes)");
+
             if (oldIdToNewId.Count > 0)
             {
                 var triggers_list = triggers.TriggerItems
                     .OfType<TriggerDefinition>()
                     .ToList();
+
+                DiagnosticLogger.Log($"Processing {triggers_list.Count} triggers");
+                int updatedCount = 0;
 
                 foreach (var trigger in triggers_list)
                 {
@@ -1599,16 +1647,21 @@ namespace WTGMerger
                         {
                             Console.WriteLine($"[DEBUG] Updating trigger '{trigger.Name}': ParentId {oldParentId} -> {newParentId}");
                         }
+                        DiagnosticLogger.Log($"Updating trigger '{trigger.Name}': ParentId {oldParentId} -> {newParentId}");
 
                         trigger.ParentId = newParentId;
+                        updatedCount++;
                     }
                 }
 
                 if (DEBUG_MODE)
                 {
-                    Console.WriteLine($"[DEBUG] Renumbered {oldIdToNewId.Count} categories and updated trigger ParentIds");
+                    Console.WriteLine($"[DEBUG] Renumbered {oldIdToNewId.Count} categories and updated {updatedCount} trigger ParentIds");
                 }
+                DiagnosticLogger.Log($"Renumbered {oldIdToNewId.Count} categories and updated {updatedCount} trigger ParentIds");
             }
+
+            DiagnosticLogger.Log("RenumberCategoriesSequentially: Complete");
         }
 
         /// <summary>
@@ -2385,14 +2438,18 @@ namespace WTGMerger
                 oldIdToNewId[i] = i;
             }
 
+            // Determine root ParentId value for this format
+            bool is127Format = triggers.SubVersion == null;
+            int rootParentId = is127Format ? 0 : -1;
+
             // Update ParentIds in ALL items (both categories and triggers)
             foreach (var item in triggers.TriggerItems)
             {
                 // Skip root-level items using helper function
                 if (IsRootLevel(item.ParentId, triggers))
                 {
-                    // Normalize root level to -1
-                    item.ParentId = -1;
+                    // Normalize root level to appropriate value for format
+                    item.ParentId = rootParentId;
                     continue;
                 }
 
@@ -2411,7 +2468,7 @@ namespace WTGMerger
                     else
                     {
                         // No parent found, make it root-level
-                        trigger.ParentId = -1;
+                        trigger.ParentId = rootParentId;
                     }
                 }
                 else if (item is TriggerCategoryDefinition category)
@@ -2429,7 +2486,7 @@ namespace WTGMerger
                     else
                     {
                         // No parent found, make it root-level
-                        category.ParentId = -1;
+                        category.ParentId = rootParentId;
                     }
                 }
             }
