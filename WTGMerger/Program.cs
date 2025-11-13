@@ -129,6 +129,9 @@ namespace WTGMerger
                     Console.WriteLine("9. Run War3Diagnostic (comprehensive WTG file analysis)");
                     Console.WriteLine("10. Perform FULL MERGE using intermediate approach");
                     Console.WriteLine("11. Perform SELECTIVE MERGE using intermediate approach (choose categories)");
+                    Console.WriteLine("12. VALIDATE: Deep validation of specific trigger");
+                    Console.WriteLine("13. VALIDATE: Validate all triggers in target");
+                    Console.WriteLine("14. TEST: Copy trigger to empty map (isolation test)");
                     Console.WriteLine($"d. DEBUG: Toggle debug mode (currently: {(DEBUG_MODE ? "ON" : "OFF")})");
                     Console.WriteLine($"l. DIAGNOSTIC: Toggle deep diagnostic logging (currently: {(DiagnosticLogger.IsEnabled ? "ON - logging to file" : "OFF")})");
                     Console.WriteLine("s. Save and exit");
@@ -495,6 +498,208 @@ namespace WTGMerger
                                         Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
                                     }
                                     Console.ResetColor();
+                                }
+                            }
+                            break;
+
+                        case "12":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    DEEP VALIDATION OF SPECIFIC TRIGGER                  ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.Write("\nValidate from (s)ource or (t)arget? ");
+                            string? mapChoice = Console.ReadLine();
+                            var mapToValidate = mapChoice?.ToLower() == "s" ? sourceTriggers : targetTriggers;
+                            string mapName = mapChoice?.ToLower() == "s" ? "SOURCE" : "TARGET";
+
+                            Console.Write("\nEnter category name: ");
+                            string? valCatName = Console.ReadLine();
+                            if (!string.IsNullOrWhiteSpace(valCatName))
+                            {
+                                ListTriggersInCategory(mapToValidate, valCatName);
+                                Console.Write("\nEnter trigger name to validate: ");
+                                string? valTrigName = Console.ReadLine();
+                                if (!string.IsNullOrWhiteSpace(valTrigName))
+                                {
+                                    var trigger = mapToValidate.TriggerItems
+                                        .OfType<TriggerDefinition>()
+                                        .FirstOrDefault(t => t.Name.Equals(valTrigName, StringComparison.OrdinalIgnoreCase));
+
+                                    if (trigger != null)
+                                    {
+                                        TriggerValidator.ValidateTrigger(trigger, mapToValidate, verbose: true);
+                                    }
+                                    else
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"\n✗ Trigger '{valTrigName}' not found in {mapName}");
+                                        Console.ResetColor();
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "13":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    VALIDATE ALL TRIGGERS IN TARGET                      ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.Write("\nThis will validate ALL triggers. Continue? (y/n): ");
+                            string? confirmValidateAll = Console.ReadLine();
+                            if (confirmValidateAll?.ToLower() == "y")
+                            {
+                                var allTriggers = targetTriggers.TriggerItems.OfType<TriggerDefinition>().ToList();
+                                Console.WriteLine($"\nValidating {allTriggers.Count} triggers...\n");
+
+                                int validCount = 0;
+                                int invalidCount = 0;
+                                var invalidTriggers = new List<string>();
+
+                                foreach (var trigger in allTriggers)
+                                {
+                                    var issues = new List<string>();
+                                    var referencedVars = new HashSet<string>();
+
+                                    // Quick validation: check variable references
+                                    CollectVariableReferences(trigger, referencedVars, targetTriggers);
+                                    var mapVarNames = new HashSet<string>(targetTriggers.Variables.Select(v => v.Name), StringComparer.OrdinalIgnoreCase);
+
+                                    foreach (var varName in referencedVars)
+                                    {
+                                        if (!mapVarNames.Contains(varName))
+                                        {
+                                            issues.Add($"Missing variable: '{varName}'");
+                                        }
+                                    }
+
+                                    // Check ParentId
+                                    if (trigger.ParentId < 0 && trigger.ParentId != -1)
+                                    {
+                                        issues.Add($"Invalid ParentId: {trigger.ParentId}");
+                                    }
+
+                                    if (issues.Count > 0)
+                                    {
+                                        invalidCount++;
+                                        invalidTriggers.Add(trigger.Name);
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"✗ {trigger.Name}: {issues.Count} issue(s)");
+                                        foreach (var issue in issues)
+                                        {
+                                            Console.WriteLine($"    - {issue}");
+                                        }
+                                        Console.ResetColor();
+                                    }
+                                    else
+                                    {
+                                        validCount++;
+                                    }
+                                }
+
+                                Console.WriteLine($"\n═══ VALIDATION SUMMARY ═══");
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.WriteLine($"✓ Valid: {validCount}");
+                                Console.ResetColor();
+
+                                if (invalidCount > 0)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine($"✗ Invalid: {invalidCount}");
+                                    Console.ResetColor();
+
+                                    Console.WriteLine($"\nInvalid triggers:");
+                                    foreach (var name in invalidTriggers)
+                                    {
+                                        Console.WriteLine($"  • {name}");
+                                    }
+
+                                    Console.Write("\nValidate specific trigger in detail? (y/n): ");
+                                    string? detailChoice = Console.ReadLine();
+                                    if (detailChoice?.ToLower() == "y")
+                                    {
+                                        Console.Write("Enter trigger name: ");
+                                        string? detailTrigName = Console.ReadLine();
+                                        if (!string.IsNullOrWhiteSpace(detailTrigName))
+                                        {
+                                            var trigger = allTriggers.FirstOrDefault(t =>
+                                                t.Name.Equals(detailTrigName, StringComparison.OrdinalIgnoreCase));
+                                            if (trigger != null)
+                                            {
+                                                TriggerValidator.ValidateTrigger(trigger, targetTriggers, verbose: true);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "14":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    ISOLATION TEST - Copy Trigger to Empty Map           ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nThis test will:");
+                            Console.WriteLine("  1. Create a minimal empty map trigger structure");
+                            Console.WriteLine("  2. Copy ONE trigger from source");
+                            Console.WriteLine("  3. Save to test file");
+                            Console.WriteLine("  4. Validate the result");
+                            Console.WriteLine("\nThis helps isolate if the problem is with:");
+                            Console.WriteLine("  - The trigger itself (would fail even in empty map)");
+                            Console.WriteLine("  - Conflicts with existing content in target map");
+
+                            Console.Write("\nEnter category name where trigger is: ");
+                            string? testCatName = Console.ReadLine();
+                            if (!string.IsNullOrWhiteSpace(testCatName))
+                            {
+                                ListTriggersInCategory(sourceTriggers, testCatName);
+                                Console.Write("\nEnter trigger name to test: ");
+                                string? testTrigName = Console.ReadLine();
+                                if (!string.IsNullOrWhiteSpace(testTrigName))
+                                {
+                                    try
+                                    {
+                                        // Create minimal map
+                                        var emptyMap = CreateMinimalMapTriggers(sourceTriggers);
+
+                                        // Copy the trigger
+                                        Console.WriteLine("\nCopying trigger to empty map...");
+                                        CopySpecificTriggers(sourceTriggers, emptyMap, testCatName, new[] { testTrigName }, "Test Category");
+
+                                        // Save to test file
+                                        string testOutputPath = Path.Combine(Path.GetDirectoryName(outputPath) ?? ".", "ISOLATION_TEST.wtg");
+                                        Console.WriteLine($"\nSaving to: {testOutputPath}");
+                                        WriteWTGFile(testOutputPath, emptyMap);
+
+                                        // Validate
+                                        Console.WriteLine("\nReading back and validating...");
+                                        var readBack = ReadWTGFile(testOutputPath);
+                                        var copiedTrigger = readBack.TriggerItems.OfType<TriggerDefinition>()
+                                            .FirstOrDefault(t => t.Name.Equals(testTrigName, StringComparison.OrdinalIgnoreCase));
+
+                                        if (copiedTrigger != null)
+                                        {
+                                            TriggerValidator.ValidateTrigger(copiedTrigger, readBack, verbose: true);
+
+                                            Console.ForegroundColor = ConsoleColor.Cyan;
+                                            Console.WriteLine($"\n✓ Isolation test complete!");
+                                            Console.WriteLine($"\nTest file saved to: {testOutputPath}");
+                                            Console.WriteLine("Try opening this file in World Editor to see if trigger loads.");
+                                            Console.ResetColor();
+                                        }
+                                        else
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Red;
+                                            Console.WriteLine("\n✗ Trigger not found after copy!");
+                                            Console.ResetColor();
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"\n✗ Isolation test failed: {ex.Message}");
+                                        if (DEBUG_MODE)
+                                        {
+                                            Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
+                                        }
+                                        Console.ResetColor();
+                                    }
                                 }
                             }
                             break;
@@ -2887,6 +3092,45 @@ namespace WTGMerger
             Console.WriteLine($"  Archive updated successfully!");
 
             DiagnosticLogger.Log($"Archive write completed. File size: {new FileInfo(outputArchivePath).Length} bytes");
+        }
+
+        /// <summary>
+        /// Helper wrapper for GetVariablesUsedByTrigger - collects variable references from a trigger
+        /// </summary>
+        static void CollectVariableReferences(TriggerDefinition trigger, HashSet<string> variables, MapTriggers map)
+        {
+            var vars = GetVariablesUsedByTrigger(trigger, map);
+            foreach (var v in vars)
+            {
+                variables.Add(v);
+            }
+        }
+
+        /// <summary>
+        /// Creates a minimal empty MapTriggers structure for isolation testing
+        /// </summary>
+        static MapTriggers CreateMinimalMapTriggers(MapTriggers sourceTemplate)
+        {
+            // Create new MapTriggers with same format version as source
+            var minimal = new MapTriggers(sourceTemplate.FormatVersion)
+            {
+                SubVersion = sourceTemplate.SubVersion,
+                GameVersion = sourceTemplate.GameVersion,
+            };
+
+            // Initialize empty collections
+            minimal.Variables.Clear();
+            minimal.TriggerItems.Clear();
+            minimal.TriggerItemCounts.Clear();
+
+            // Add root category item if it exists in source
+            var rootCategory = sourceTemplate.TriggerItems.FirstOrDefault(item => item.Type == TriggerItemType.RootCategory);
+            if (rootCategory != null)
+            {
+                minimal.TriggerItems.Add(rootCategory);
+            }
+
+            return minimal;
         }
     }
 }
