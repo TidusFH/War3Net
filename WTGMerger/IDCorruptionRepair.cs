@@ -179,7 +179,7 @@ namespace WTGMerger
         {
             // Find the destination category by NAME
             var destCategory = targetMap.TriggerItems.OfType<TriggerCategoryDefinition>()
-                .FirstOrDefault(c => c.Name.Equals(destinationCategoryName, StringComparer.OrdinalIgnoreCase));
+                .FirstOrDefault(c => c.Name.Equals(destinationCategoryName, StringComparison.OrdinalIgnoreCase));
 
             if (destCategory == null)
             {
