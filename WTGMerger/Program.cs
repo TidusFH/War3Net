@@ -138,6 +138,7 @@ namespace WTGMerger
                     Console.WriteLine("17. COMPARE: Compare two triggers side-by-side");
                     Console.WriteLine("18. EXTRACT: Extract trigger + variables to standalone .wtg");
                     Console.WriteLine("19. HEALTH CHECK: Comprehensive WTG file validation");
+                    Console.WriteLine("20. HEX ANALYSIS: Binary hex dump and comparison");
                     Console.WriteLine($"d. DEBUG: Toggle debug mode (currently: {(DEBUG_MODE ? "ON" : "OFF")})");
                     Console.WriteLine($"l. DIAGNOSTIC: Toggle deep diagnostic logging (currently: {(DiagnosticLogger.IsEnabled ? "ON - logging to file" : "OFF")})");
                     Console.WriteLine("s. Save and exit");
@@ -1167,6 +1168,78 @@ namespace WTGMerger
 
                                     Console.ForegroundColor = ConsoleColor.Green;
                                     Console.WriteLine($"✓ Report saved to: {reportPath}");
+                                    Console.ResetColor();
+                                }
+                            }
+                            break;
+
+                        case "20":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    BINARY HEX ANALYSIS & COMPARISON                     ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nThis will show:");
+                            Console.WriteLine("  • Hex dump of file structure");
+                            Console.WriteLine("  • Binary structure parsing");
+                            Console.WriteLine("  • Byte-by-byte comparison (optional)");
+                            Console.WriteLine();
+                            Console.Write("Enter path to .wtg file to analyze: ");
+                            string? analyzePath = Console.ReadLine();
+
+                            if (!string.IsNullOrWhiteSpace(analyzePath))
+                            {
+                                // Resolve relative paths
+                                if (!Path.IsPathRooted(analyzePath))
+                                {
+                                    analyzePath = Path.Combine(Path.GetDirectoryName(outputPath) ?? ".", analyzePath);
+                                }
+
+                                if (File.Exists(analyzePath))
+                                {
+                                    Console.Write("\nCompare with another file? (y/n): ");
+                                    string? compareChoice = Console.ReadLine();
+
+                                    string? comparisonPath = null;
+                                    if (compareChoice?.ToLower() == "y")
+                                    {
+                                        Console.Write("Enter path to comparison file: ");
+                                        comparisonPath = Console.ReadLine();
+
+                                        if (!string.IsNullOrWhiteSpace(comparisonPath))
+                                        {
+                                            if (!Path.IsPathRooted(comparisonPath))
+                                            {
+                                                comparisonPath = Path.Combine(Path.GetDirectoryName(outputPath) ?? ".", comparisonPath);
+                                            }
+
+                                            if (!File.Exists(comparisonPath))
+                                            {
+                                                Console.ForegroundColor = ConsoleColor.Red;
+                                                Console.WriteLine($"✗ Comparison file not found: {comparisonPath}");
+                                                Console.ResetColor();
+                                                comparisonPath = null;
+                                            }
+                                        }
+                                    }
+
+                                    try
+                                    {
+                                        WTGBinaryAnalyzer.AnalyzeWTGFile(analyzePath, comparisonPath);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"\n✗ Analysis failed: {ex.Message}");
+                                        if (DEBUG_MODE)
+                                        {
+                                            Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
+                                        }
+                                        Console.ResetColor();
+                                    }
+                                }
+                                else
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine($"✗ File not found: {analyzePath}");
                                     Console.ResetColor();
                                 }
                             }
