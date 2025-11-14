@@ -179,12 +179,17 @@ namespace War3Net.Tools.TriggerMerger.Services
                 target.TriggerItems = new List<TriggerItem>();
             }
 
+            // Get the next available ID for the new category
+            int nextId = GetNextAvailableId(target);
+
             // Create a new category with a new ID
             var newCategory = new TriggerCategoryDefinition
             {
                 Name = sourceCategory.Name,
                 IsComment = sourceCategory.IsComment,
                 IsExpanded = sourceCategory.IsExpanded,
+                Id = nextId,
+                ParentId = 0, // Top-level category
             };
 
             // Add the category to the target
@@ -193,7 +198,10 @@ namespace War3Net.Tools.TriggerMerger.Services
             // Copy all triggers in the category
             foreach (var trigger in categoryTriggers)
             {
+                nextId++; // Increment ID for each trigger
                 var newTrigger = CopyTrigger(trigger);
+                newTrigger.Id = nextId;
+                newTrigger.ParentId = newCategory.Id; // Set parent to the new category ID
                 target.TriggerItems.Add(newTrigger);
             }
         }
@@ -275,6 +283,23 @@ namespace War3Net.Tools.TriggerMerger.Services
             }
 
             return copy;
+        }
+
+        /// <summary>
+        /// Gets the next available ID for a new trigger item.
+        /// </summary>
+        /// <param name="triggers">The target map triggers.</param>
+        /// <returns>The next available ID.</returns>
+        private int GetNextAvailableId(MapTriggers triggers)
+        {
+            if (triggers.TriggerItems == null || !triggers.TriggerItems.Any())
+            {
+                return 0;
+            }
+
+            // Find the maximum ID currently in use
+            int maxId = triggers.TriggerItems.Max(item => item.Id);
+            return maxId + 1;
         }
     }
 
