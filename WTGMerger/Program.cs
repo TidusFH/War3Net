@@ -1596,6 +1596,26 @@ namespace WTGMerger
                 Console.WriteLine($"[DEBUG]   Trigger items to write: {triggers.TriggerItems.Count}");
             }
 
+            // AUTOMATIC ID CORRUPTION REPAIR - Always run before saving
+            bool hasCorruptedIDs = triggers.TriggerItems.OfType<TriggerCategoryDefinition>()
+                .Any(c => IDCorruptionRepair.IsCorruptedCategoryID(c.Id)) ||
+                IDCorruptionRepair.HasDuplicateTriggerIDs(triggers);
+
+            if (hasCorruptedIDs)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("\n⚠ ID CORRUPTION DETECTED!");
+                Console.WriteLine("Corrupted IDs found (likely from BetterTriggers or other tools).");
+                Console.WriteLine("✓ Automatically repairing IDs...");
+                Console.ResetColor();
+
+                IDCorruptionRepair.RepairCorruptedIDs(triggers);
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("✓ ID corruption repaired: All IDs now sequential and valid");
+                Console.ResetColor();
+            }
+
             // CRITICAL: Renumber all categories sequentially before writing
             // This ensures category IDs match what War3Net will assign when reading back
             DiagnosticLogger.Log("Renumbering categories sequentially before write");
