@@ -56,7 +56,43 @@ namespace WTGMerger
 
             using var fileStream = File.Create(filePath);
             using var writer = new BinaryWriter(fileStream);
+            WriteMapTriggersToWriter(writer, triggers);
 
+            if (DebugMode)
+            {
+                Console.WriteLine($"[War3Writer] File size: {fileStream.Length} bytes");
+                Console.WriteLine($"[War3Writer] Write complete");
+            }
+        }
+
+        /// <summary>
+        /// Writes MapTriggers to a stream with full control over format
+        /// </summary>
+        public static void WriteMapTriggers(Stream stream, MapTriggers triggers)
+        {
+            if (DebugMode)
+            {
+                Console.WriteLine($"\n[War3Writer] Writing to stream");
+                Console.WriteLine($"[War3Writer] Format: {triggers.FormatVersion}, SubVersion: {triggers.SubVersion?.ToString() ?? "null"}");
+                Console.WriteLine($"[War3Writer] Variables: {triggers.Variables.Count}");
+                Console.WriteLine($"[War3Writer] Trigger Items: {triggers.TriggerItems.Count}");
+            }
+
+            using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
+            WriteMapTriggersToWriter(writer, triggers);
+
+            if (DebugMode)
+            {
+                Console.WriteLine($"[War3Writer] Stream position: {stream.Position} bytes");
+                Console.WriteLine($"[War3Writer] Write complete");
+            }
+        }
+
+        /// <summary>
+        /// Internal method to write MapTriggers to a BinaryWriter
+        /// </summary>
+        private static void WriteMapTriggersToWriter(BinaryWriter writer, MapTriggers triggers)
+        {
             // Write file signature
             writer.Write(0x21475457); // 'WTG!'
 
@@ -69,12 +105,6 @@ namespace WTGMerger
             {
                 // WC3 1.31+ format (SubVersion=v4 or v7)
                 WriteFormatNew(writer, triggers);
-            }
-
-            if (DebugMode)
-            {
-                Console.WriteLine($"[War3Writer] File size: {fileStream.Length} bytes");
-                Console.WriteLine($"[War3Writer] Write complete");
             }
         }
 
