@@ -3664,24 +3664,11 @@ namespace WTGMerger
             RenumberCategoriesSequentially(triggers);
             DiagnosticLogger.LogMapTriggersState(triggers, "After Renumbering");
 
-            // Serialize triggers to memory
+            // Serialize triggers to memory using our custom writer (fixes BinaryWriter bugs)
             using var triggerStream = new MemoryStream();
             using var writer = new BinaryWriter(triggerStream);
 
-            // Use reflection to call internal WriteTo method
-            var writeToMethod = typeof(MapTriggers).GetMethod(
-                "WriteTo",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-                null,
-                new[] { typeof(BinaryWriter) },
-                null);
-
-            if (writeToMethod == null)
-            {
-                throw new InvalidOperationException("Could not find internal WriteTo(BinaryWriter) method");
-            }
-
-            writeToMethod.Invoke(triggers, new object[] { writer });
+            War3Writer.WriteMapTriggers(writer, triggers);
             writer.Flush();
 
             if (DEBUG_MODE)

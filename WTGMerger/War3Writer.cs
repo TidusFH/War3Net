@@ -33,9 +33,12 @@ namespace WTGMerger
                 return;
             }
 
-            // Write UTF-8 bytes
+            // Write UTF-8 bytes ONE AT A TIME (fixes BinaryWriter length prefix bug)
             byte[] bytes = Encoding.UTF8.GetBytes(value);
-            writer.Write(bytes);
+            foreach (byte b in bytes)
+            {
+                writer.Write(b);
+            }
 
             // Write null terminator
             writer.Write((byte)0);
@@ -57,6 +60,28 @@ namespace WTGMerger
             using var fileStream = File.Create(filePath);
             using var writer = new BinaryWriter(fileStream);
 
+            WriteMapTriggers(writer, triggers);
+
+            if (DebugMode)
+            {
+                Console.WriteLine($"[War3Writer] File size: {fileStream.Length} bytes");
+                Console.WriteLine($"[War3Writer] Write complete");
+            }
+        }
+
+        /// <summary>
+        /// Writes MapTriggers to a BinaryWriter (stream overload)
+        /// </summary>
+        public static void WriteMapTriggers(BinaryWriter writer, MapTriggers triggers)
+        {
+            if (DebugMode)
+            {
+                Console.WriteLine($"[War3Writer] Writing to stream");
+                Console.WriteLine($"[War3Writer] Format: {triggers.FormatVersion}, SubVersion: {triggers.SubVersion?.ToString() ?? "null"}");
+                Console.WriteLine($"[War3Writer] Variables: {triggers.Variables.Count}");
+                Console.WriteLine($"[War3Writer] Trigger Items: {triggers.TriggerItems.Count}");
+            }
+
             // Write file signature
             writer.Write(0x21475457); // 'WTG!'
 
@@ -69,12 +94,6 @@ namespace WTGMerger
             {
                 // WC3 1.31+ format (SubVersion=v4 or v7)
                 WriteFormatNew(writer, triggers);
-            }
-
-            if (DebugMode)
-            {
-                Console.WriteLine($"[War3Writer] File size: {fileStream.Length} bytes");
-                Console.WriteLine($"[War3Writer] Write complete");
             }
         }
 
