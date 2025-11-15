@@ -33,9 +33,14 @@ namespace WTGMerger
                 return;
             }
 
-            // Write UTF-8 bytes
+            // Write UTF-8 bytes WITHOUT length prefix
+            // CRITICAL: writer.Write(byte[]) adds a length prefix!
+            // We must write bytes individually or use the range overload
             byte[] bytes = Encoding.UTF8.GetBytes(value);
-            writer.Write(bytes);
+            foreach (byte b in bytes)
+            {
+                writer.Write(b);
+            }
 
             // Write null terminator
             writer.Write((byte)0);
