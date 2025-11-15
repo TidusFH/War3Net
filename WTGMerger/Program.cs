@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using War3Net.Build.Script;
 using War3Net.IO.Mpq;
 using War3Net.Build.Extensions;
@@ -123,13 +124,27 @@ namespace WTGMerger
                     Console.WriteLine("3. List triggers in a specific category");
                     Console.WriteLine("4. Copy ENTIRE category");
                     Console.WriteLine("5. Copy SPECIFIC trigger(s)");
-                    Console.WriteLine("6. Fix all TARGET categories to root-level (ParentId = -1)");
-                    Console.WriteLine("7. DEBUG: Show comprehensive debug information");
-                    Console.WriteLine($"8. DEBUG: Toggle debug mode (currently: {(DEBUG_MODE ? "ON" : "OFF")})");
-                    Console.WriteLine("9. Save and exit");
+                    Console.WriteLine("6. Repair orphaned triggers (fix invalid ParentIds)");
+                    Console.WriteLine("7. Diagnose orphans (show orphaned triggers/categories)");
+                    Console.WriteLine("8. DEBUG: Show comprehensive debug information");
+                    Console.WriteLine("9. Run War3Diagnostic (comprehensive WTG file analysis)");
+                    Console.WriteLine("10. Perform FULL MERGE using intermediate approach");
+                    Console.WriteLine("11. Perform SELECTIVE MERGE using intermediate approach (choose categories)");
+                    Console.WriteLine("12. VALIDATE: Deep validation of specific trigger");
+                    Console.WriteLine("13. VALIDATE: Validate all triggers in target");
+                    Console.WriteLine("14. TEST: Copy trigger to empty map (isolation test)");
+                    Console.WriteLine("15. EXPORT: Export trigger to detailed text file");
+                    Console.WriteLine("16. DIAGNOSE: Check source trigger for corruption");
+                    Console.WriteLine("17. COMPARE: Compare two triggers side-by-side");
+                    Console.WriteLine("18. EXTRACT: Extract trigger + variables to standalone .wtg");
+                    Console.WriteLine("19. HEALTH CHECK: Comprehensive WTG file validation");
+                    Console.WriteLine("20. HEX ANALYSIS: Binary hex dump and comparison");
+                    Console.WriteLine($"d. DEBUG: Toggle debug mode (currently: {(DEBUG_MODE ? "ON" : "OFF")})");
+                    Console.WriteLine($"l. DIAGNOSTIC: Toggle deep diagnostic logging (currently: {(DiagnosticLogger.IsEnabled ? "ON - logging to file" : "OFF")})");
+                    Console.WriteLine("s. Save and exit");
                     Console.WriteLine("0. Exit without saving");
                     Console.WriteLine();
-                    Console.Write("Select option (0-9): ");
+                    Console.Write("Select option: ");
 
                     string? choice = Console.ReadLine();
 
@@ -191,48 +206,1075 @@ namespace WTGMerger
 
                         case "6":
                             Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
-                            Console.WriteLine("║          FIX CATEGORY NESTING                            ║");
+                            Console.WriteLine("║          REPAIR ORPHANED TRIGGERS                        ║");
                             Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
-                            Console.WriteLine("\nThis will set ALL categories in TARGET to root-level (ParentId = -1).");
-                            Console.WriteLine("Use this if your categories are incorrectly nested.");
-                            Console.Write("\nProceed? (y/n): ");
-                            string? confirmFix = Console.ReadLine();
-                            if (confirmFix?.ToLower() == "y")
+                            Console.WriteLine("\nThis will fix triggers with invalid ParentIds.");
+                            Console.WriteLine("Modes:");
+                            Console.WriteLine("  1. Smart - Try to match triggers to categories by name");
+                            Console.WriteLine("  2. Root - Move all orphaned triggers to root level");
+                            Console.Write("\nSelect mode (1-2): ");
+                            string? repairMode = Console.ReadLine();
+
+                            if (repairMode == "1" || repairMode == "2")
                             {
-                                int fixedCount = FixAllCategoriesToRoot(targetTriggers);
-                                Console.WriteLine($"\n✓ Fixed {fixedCount} categories to root-level");
-
-                                // Verify the fix worked
-                                Console.WriteLine("\n=== Verification ===");
-                                var categories = targetTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
-                                var rootCount = categories.Count(c => c.ParentId == -1);
-                                var nestedCount = categories.Count(c => c.ParentId >= 0);
-                                Console.WriteLine($"Categories with ParentId=-1: {rootCount}");
-                                Console.WriteLine($"Categories with ParentId>=0: {nestedCount}");
-
-                                if (nestedCount > 0)
+                                string mode = repairMode == "1" ? "smart" : "root";
+                                int repaired = OrphanRepair.RepairOrphanedTriggers(targetTriggers, mode);
+                                if (repaired > 0)
                                 {
-                                    Console.ForegroundColor = ConsoleColor.Red;
-                                    Console.WriteLine("❌ WARNING: Some categories still have ParentId >= 0!");
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine($"\n✓ Repaired {repaired} orphaned trigger(s)");
+                                    Console.ResetColor();
+                                    modified = true;
+                                }
+                                else
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine("\n✓ No orphaned triggers found");
                                     Console.ResetColor();
                                 }
-
-                                modified = true;
                             }
                             break;
 
                         case "7":
-                            ShowComprehensiveDebugInfo(sourceTriggers, targetTriggers);
+                            OrphanRepair.DiagnoseOrphans(targetTriggers);
                             break;
 
                         case "8":
+                            ShowComprehensiveDebugInfo(sourceTriggers, targetTriggers);
+                            break;
+
+                        case "9":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║        WAR3DIAGNOSTIC - COMPREHENSIVE ANALYSIS           ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nThis will generate a detailed diagnostic report comparing:");
+                            Console.WriteLine("  - SOURCE file");
+                            Console.WriteLine("  - TARGET file");
+                            Console.WriteLine("  - Current in-memory state (as if saved)");
+                            Console.WriteLine("\nThe report includes:");
+                            Console.WriteLine("  • Binary hex dumps and comparisons");
+                            Console.WriteLine("  • Complete hierarchy trees");
+                            Console.WriteLine("  • File order analysis (WC3 1.27 visual nesting)");
+                            Console.WriteLine("  • ParentId distribution statistics");
+                            Console.WriteLine("  • Corruption pattern detection");
+                            Console.WriteLine("\nReport will be saved to: WTG_Diagnostic_[timestamp].txt");
+                            Console.Write("\nProceed? (y/n): ");
+                            string? confirmDiag = Console.ReadLine();
+                            if (confirmDiag?.ToLower() == "y")
+                            {
+                                // Save current state to temp file for comparison
+                                string tempMergedPath = Path.Combine(Path.GetTempPath(), "WTGMerger_temp_merged.wtg");
+                                try
+                                {
+                                    WriteWTGFile(tempMergedPath, targetTriggers);
+                                    Console.WriteLine("\nRunning diagnostic...");
+                                    War3Diagnostic.CompareFiles(sourcePath, targetPath, tempMergedPath);
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine("\n✓ Diagnostic complete! Check the output file.");
+                                    Console.ResetColor();
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine($"\n❌ Diagnostic failed: {ex.Message}");
+                                    Console.ResetColor();
+                                }
+                                finally
+                                {
+                                    if (File.Exists(tempMergedPath))
+                                    {
+                                        try { File.Delete(tempMergedPath); } catch { }
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "10":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║      FULL MERGE USING INTERMEDIATE APPROACH              ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nThis will:");
+                            Console.WriteLine("  1. Disassemble both SOURCE and TARGET into intermediate format");
+                            Console.WriteLine("  2. Merge source into target with conflict detection");
+                            Console.WriteLine("  3. Rebuild with predictable IDs (like BetterTriggers)");
+                            Console.WriteLine("\nThis replaces the current TARGET with the merged result.");
+                            Console.Write("\nProceed? (y/n): ");
+                            string? confirmMerge = Console.ReadLine();
+                            if (confirmMerge?.ToLower() == "y")
+                            {
+                                try
+                                {
+                                    DiagnosticLogger.LogOperationStart("FULL MERGE (Option 10)");
+
+                                    // Enable debug mode for converters if global debug is on
+                                    IntermediateConverter.SetDebugMode(DEBUG_MODE);
+                                    IntermediateMerger.SetDebugMode(DEBUG_MODE);
+
+                                    Console.WriteLine("\n[1/3] Disassembling SOURCE...");
+                                    DiagnosticLogger.Log("Step 1: Disassembling SOURCE");
+                                    DiagnosticLogger.LogMapTriggersState(sourceTriggers, "SOURCE Before Disassemble");
+                                    var sourceIntermediate = IntermediateConverter.Disassemble(sourceTriggers, sourcePath);
+                                    DiagnosticLogger.LogIntermediateState(sourceIntermediate, "SOURCE After Disassemble");
+
+                                    Console.WriteLine("[2/3] Disassembling TARGET...");
+                                    DiagnosticLogger.Log("Step 2: Disassembling TARGET");
+                                    DiagnosticLogger.LogMapTriggersState(targetTriggers, "TARGET Before Disassemble");
+                                    var targetIntermediate = IntermediateConverter.Disassemble(targetTriggers, targetPath);
+                                    DiagnosticLogger.LogIntermediateState(targetIntermediate, "TARGET After Disassemble");
+
+                                    Console.WriteLine("[3/3] Merging...");
+                                    DiagnosticLogger.Log("Step 3: Merging intermediate representations");
+                                    var (mergedIntermediate, conflicts) = IntermediateMerger.Merge(sourceIntermediate, targetIntermediate);
+                                    DiagnosticLogger.LogIntermediateState(mergedIntermediate, "MERGED Result");
+                                    foreach (var conflict in conflicts)
+                                    {
+                                        DiagnosticLogger.LogConflict(conflict);
+                                    }
+
+                                    Console.WriteLine("\n[4/4] Rebuilding War3Net MapTriggers...");
+                                    DiagnosticLogger.Log("Step 4: Rebuilding War3Net MapTriggers");
+                                    targetTriggers = IntermediateConverter.Rebuild(mergedIntermediate);
+                                    DiagnosticLogger.LogMapTriggersState(targetTriggers, "FINAL Rebuilt MapTriggers");
+
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine("\n✓ Full merge complete!");
+                                    Console.ResetColor();
+
+                                    if (conflicts.Count > 0)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Yellow;
+                                        Console.WriteLine($"\n⚠ Note: {conflicts.Count} conflicts were detected (duplicates skipped)");
+                                        Console.ResetColor();
+                                    }
+
+                                    modified = true;
+                                    DiagnosticLogger.LogOperationEnd("FULL MERGE (Option 10)", true);
+                                }
+                                catch (Exception ex)
+                                {
+                                    DiagnosticLogger.Log($"ERROR: {ex.Message}");
+                                    DiagnosticLogger.Log($"Stack trace: {ex.StackTrace}");
+                                    DiagnosticLogger.LogOperationEnd("FULL MERGE (Option 10)", false);
+
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine($"\n❌ Merge failed: {ex.Message}");
+                                    if (DEBUG_MODE)
+                                    {
+                                        Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
+                                    }
+                                    Console.ResetColor();
+                                }
+                            }
+                            break;
+
+                        case "11":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    SELECTIVE MERGE USING INTERMEDIATE APPROACH           ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nThis will:");
+                            Console.WriteLine("  1. Disassemble both SOURCE and TARGET into intermediate format");
+                            Console.WriteLine("  2. Let you choose which categories to merge");
+                            Console.WriteLine("  3. Merge only selected categories with conflict detection");
+                            Console.WriteLine("  4. Rebuild with predictable IDs (like BetterTriggers)");
+                            Console.WriteLine("\nThis replaces the current TARGET with the merged result.");
+                            Console.Write("\nProceed? (y/n): ");
+                            string? confirmSelectiveMerge = Console.ReadLine();
+                            if (confirmSelectiveMerge?.ToLower() == "y")
+                            {
+                                try
+                                {
+                                    DiagnosticLogger.LogOperationStart("SELECTIVE MERGE (Option 11)");
+
+                                    // Enable debug mode for converters if global debug is on
+                                    IntermediateConverter.SetDebugMode(DEBUG_MODE);
+                                    IntermediateMerger.SetDebugMode(DEBUG_MODE);
+
+                                    Console.WriteLine("\n[1/4] Disassembling SOURCE...");
+                                    DiagnosticLogger.Log("Step 1: Disassembling SOURCE");
+                                    DiagnosticLogger.LogMapTriggersState(sourceTriggers, "SOURCE Before Disassemble");
+                                    var sourceIntermediate = IntermediateConverter.Disassemble(sourceTriggers, sourcePath);
+                                    DiagnosticLogger.LogIntermediateState(sourceIntermediate, "SOURCE After Disassemble");
+
+                                    Console.WriteLine("[2/4] Disassembling TARGET...");
+                                    DiagnosticLogger.Log("Step 2: Disassembling TARGET");
+                                    DiagnosticLogger.LogMapTriggersState(targetTriggers, "TARGET Before Disassemble");
+                                    var targetIntermediate = IntermediateConverter.Disassemble(targetTriggers, targetPath);
+                                    DiagnosticLogger.LogIntermediateState(targetIntermediate, "TARGET After Disassemble");
+
+                                    // Show available categories from source
+                                    Console.WriteLine("\n[3/4] Available categories in SOURCE:");
+                                    var sourceCategories = sourceIntermediate.GetAllCategories().ToList();
+                                    for (int i = 0; i < sourceCategories.Count; i++)
+                                    {
+                                        var cat = sourceCategories[i];
+                                        var triggerCount = cat.GetChildren<TriggerItemNode>().Count();
+                                        var subCatCount = cat.GetChildren<CategoryNode>().Count();
+                                        Console.WriteLine($"  {i + 1}. {cat.Name} ({triggerCount} triggers, {subCatCount} subcategories)");
+                                    }
+
+                                    Console.WriteLine("\nEnter category numbers to merge (comma-separated, or 'all' for all categories):");
+                                    Console.Write("Categories to merge: ");
+                                    string? categoryInput = Console.ReadLine();
+
+                                    if (string.IsNullOrWhiteSpace(categoryInput))
+                                    {
+                                        Console.WriteLine("No categories selected. Aborting.");
+                                        break;
+                                    }
+
+                                    List<CategoryNode> selectedCategories;
+                                    if (categoryInput.Trim().ToLower() == "all")
+                                    {
+                                        selectedCategories = sourceCategories;
+                                    }
+                                    else
+                                    {
+                                        selectedCategories = new List<CategoryNode>();
+                                        var indices = categoryInput.Split(',').Select(s => s.Trim());
+                                        foreach (var indexStr in indices)
+                                        {
+                                            if (int.TryParse(indexStr, out int index) && index >= 1 && index <= sourceCategories.Count)
+                                            {
+                                                selectedCategories.Add(sourceCategories[index - 1]);
+                                            }
+                                            else
+                                            {
+                                                Console.WriteLine($"⚠ Warning: Invalid index '{indexStr}' ignored");
+                                            }
+                                        }
+                                    }
+
+                                    if (selectedCategories.Count == 0)
+                                    {
+                                        Console.WriteLine("No valid categories selected. Aborting.");
+                                        DiagnosticLogger.Log("No valid categories selected - aborting");
+                                        DiagnosticLogger.LogOperationEnd("SELECTIVE MERGE (Option 11)", false);
+                                        break;
+                                    }
+
+                                    DiagnosticLogger.Log($"Step 3: User selected {selectedCategories.Count} categories:");
+                                    DiagnosticLogger.Indent();
+                                    foreach (var cat in selectedCategories)
+                                    {
+                                        DiagnosticLogger.Log($"- '{cat.Name}' (OriginalId={cat.OriginalId})");
+                                    }
+                                    DiagnosticLogger.Unindent();
+
+                                    Console.WriteLine($"\n[4/4] Merging {selectedCategories.Count} selected categor{(selectedCategories.Count == 1 ? "y" : "ies")}...");
+                                    DiagnosticLogger.Log("Step 4: Performing selective merge");
+
+                                    // Merge selected categories
+                                    var (mergedIntermediate, conflicts) = IntermediateMerger.MergeSelective(
+                                        sourceIntermediate, targetIntermediate, selectedCategories);
+
+                                    DiagnosticLogger.LogIntermediateState(mergedIntermediate, "MERGED Result");
+                                    foreach (var conflict in conflicts)
+                                    {
+                                        DiagnosticLogger.LogConflict(conflict);
+                                    }
+
+                                    Console.WriteLine("\nRebuilding War3Net MapTriggers...");
+                                    DiagnosticLogger.Log("Step 5: Rebuilding War3Net MapTriggers");
+                                    targetTriggers = IntermediateConverter.Rebuild(mergedIntermediate);
+                                    DiagnosticLogger.LogMapTriggersState(targetTriggers, "FINAL Rebuilt MapTriggers");
+
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine("\n✓ Selective merge complete!");
+                                    Console.ResetColor();
+
+                                    if (conflicts.Count > 0)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Yellow;
+                                        Console.WriteLine($"\n⚠ Note: {conflicts.Count} conflicts were detected (duplicates skipped)");
+                                        Console.ResetColor();
+                                    }
+
+                                    modified = true;
+                                    DiagnosticLogger.LogOperationEnd("SELECTIVE MERGE (Option 11)", true);
+                                }
+                                catch (Exception ex)
+                                {
+                                    DiagnosticLogger.Log($"ERROR: {ex.Message}");
+                                    DiagnosticLogger.Log($"Stack trace: {ex.StackTrace}");
+                                    DiagnosticLogger.LogOperationEnd("SELECTIVE MERGE (Option 11)", false);
+
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine($"\n❌ Merge failed: {ex.Message}");
+                                    if (DEBUG_MODE)
+                                    {
+                                        Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
+                                    }
+                                    Console.ResetColor();
+                                }
+                            }
+                            break;
+
+                        case "12":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    DEEP VALIDATION OF SPECIFIC TRIGGER                  ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.Write("\nValidate from (s)ource or (t)arget? ");
+                            string? mapChoice = Console.ReadLine();
+                            var mapToValidate = mapChoice?.ToLower() == "s" ? sourceTriggers : targetTriggers;
+                            string mapName = mapChoice?.ToLower() == "s" ? "SOURCE" : "TARGET";
+
+                            Console.Write("\nEnter category name: ");
+                            string? valCatName = Console.ReadLine();
+                            if (!string.IsNullOrWhiteSpace(valCatName))
+                            {
+                                ListTriggersInCategory(mapToValidate, valCatName);
+                                Console.Write("\nEnter trigger name to validate: ");
+                                string? valTrigName = Console.ReadLine();
+                                if (!string.IsNullOrWhiteSpace(valTrigName))
+                                {
+                                    var trigger = mapToValidate.TriggerItems
+                                        .OfType<TriggerDefinition>()
+                                        .FirstOrDefault(t => t.Name.Equals(valTrigName, StringComparison.OrdinalIgnoreCase));
+
+                                    if (trigger != null)
+                                    {
+                                        TriggerValidator.ValidateTrigger(trigger, mapToValidate, verbose: true);
+                                    }
+                                    else
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"\n✗ Trigger '{valTrigName}' not found in {mapName}");
+                                        Console.ResetColor();
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "13":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    VALIDATE ALL TRIGGERS IN TARGET                      ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.Write("\nThis will validate ALL triggers. Continue? (y/n): ");
+                            string? confirmValidateAll = Console.ReadLine();
+                            if (confirmValidateAll?.ToLower() == "y")
+                            {
+                                var allTriggers = targetTriggers.TriggerItems.OfType<TriggerDefinition>().ToList();
+                                Console.WriteLine($"\nValidating {allTriggers.Count} triggers...\n");
+
+                                int validCount = 0;
+                                int invalidCount = 0;
+                                var invalidTriggers = new List<string>();
+
+                                foreach (var trigger in allTriggers)
+                                {
+                                    var issues = new List<string>();
+                                    var referencedVars = new HashSet<string>();
+
+                                    // Quick validation: check variable references
+                                    CollectVariableReferences(trigger, referencedVars, targetTriggers);
+                                    var mapVarNames = new HashSet<string>(targetTriggers.Variables.Select(v => v.Name), StringComparer.OrdinalIgnoreCase);
+
+                                    foreach (var varName in referencedVars)
+                                    {
+                                        if (!mapVarNames.Contains(varName))
+                                        {
+                                            issues.Add($"Missing variable: '{varName}'");
+                                        }
+                                    }
+
+                                    // Check ParentId
+                                    if (trigger.ParentId < 0 && trigger.ParentId != -1)
+                                    {
+                                        issues.Add($"Invalid ParentId: {trigger.ParentId}");
+                                    }
+
+                                    if (issues.Count > 0)
+                                    {
+                                        invalidCount++;
+                                        invalidTriggers.Add(trigger.Name);
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"✗ {trigger.Name}: {issues.Count} issue(s)");
+                                        foreach (var issue in issues)
+                                        {
+                                            Console.WriteLine($"    - {issue}");
+                                        }
+                                        Console.ResetColor();
+                                    }
+                                    else
+                                    {
+                                        validCount++;
+                                    }
+                                }
+
+                                Console.WriteLine($"\n═══ VALIDATION SUMMARY ═══");
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.WriteLine($"✓ Valid: {validCount}");
+                                Console.ResetColor();
+
+                                if (invalidCount > 0)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine($"✗ Invalid: {invalidCount}");
+                                    Console.ResetColor();
+
+                                    Console.WriteLine($"\nInvalid triggers:");
+                                    foreach (var name in invalidTriggers)
+                                    {
+                                        Console.WriteLine($"  • {name}");
+                                    }
+
+                                    Console.Write("\nValidate specific trigger in detail? (y/n): ");
+                                    string? detailChoice = Console.ReadLine();
+                                    if (detailChoice?.ToLower() == "y")
+                                    {
+                                        Console.Write("Enter trigger name: ");
+                                        string? detailTrigName = Console.ReadLine();
+                                        if (!string.IsNullOrWhiteSpace(detailTrigName))
+                                        {
+                                            var trigger = allTriggers.FirstOrDefault(t =>
+                                                t.Name.Equals(detailTrigName, StringComparison.OrdinalIgnoreCase));
+                                            if (trigger != null)
+                                            {
+                                                TriggerValidator.ValidateTrigger(trigger, targetTriggers, verbose: true);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "14":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    ISOLATION TEST - Copy Trigger to Empty Map           ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nThis test will:");
+                            Console.WriteLine("  1. Create a minimal empty map trigger structure");
+                            Console.WriteLine("  2. Copy ONE trigger from source");
+                            Console.WriteLine("  3. Save to test file");
+                            Console.WriteLine("  4. Validate the result");
+                            Console.WriteLine("\nThis helps isolate if the problem is with:");
+                            Console.WriteLine("  - The trigger itself (would fail even in empty map)");
+                            Console.WriteLine("  - Conflicts with existing content in target map");
+
+                            Console.Write("\nEnter category name where trigger is: ");
+                            string? testCatName = Console.ReadLine();
+                            if (!string.IsNullOrWhiteSpace(testCatName))
+                            {
+                                ListTriggersInCategory(sourceTriggers, testCatName);
+                                Console.Write("\nEnter trigger name to test: ");
+                                string? testTrigName = Console.ReadLine();
+                                if (!string.IsNullOrWhiteSpace(testTrigName))
+                                {
+                                    try
+                                    {
+                                        // Create minimal map
+                                        var emptyMap = CreateMinimalMapTriggers(sourceTriggers);
+
+                                        // Copy the trigger
+                                        Console.WriteLine("\nCopying trigger to empty map...");
+                                        CopySpecificTriggers(sourceTriggers, emptyMap, testCatName, new[] { testTrigName }, "Test Category");
+
+                                        // Save to test file
+                                        string testOutputPath = Path.Combine(Path.GetDirectoryName(outputPath) ?? ".", "ISOLATION_TEST.wtg");
+                                        Console.WriteLine($"\nSaving to: {testOutputPath}");
+                                        WriteWTGFile(testOutputPath, emptyMap);
+
+                                        // Validate
+                                        Console.WriteLine("\nReading back and validating...");
+                                        var readBack = ReadWTGFile(testOutputPath);
+                                        var copiedTrigger = readBack.TriggerItems.OfType<TriggerDefinition>()
+                                            .FirstOrDefault(t => t.Name.Equals(testTrigName, StringComparison.OrdinalIgnoreCase));
+
+                                        if (copiedTrigger != null)
+                                        {
+                                            TriggerValidator.ValidateTrigger(copiedTrigger, readBack, verbose: true);
+
+                                            Console.ForegroundColor = ConsoleColor.Cyan;
+                                            Console.WriteLine($"\n✓ Isolation test complete!");
+                                            Console.WriteLine($"\nTest file saved to: {testOutputPath}");
+                                            Console.WriteLine("Try opening this file in World Editor to see if trigger loads.");
+                                            Console.ResetColor();
+                                        }
+                                        else
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Red;
+                                            Console.WriteLine("\n✗ Trigger not found after copy!");
+                                            Console.ResetColor();
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"\n✗ Isolation test failed: {ex.Message}");
+                                        if (DEBUG_MODE)
+                                        {
+                                            Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
+                                        }
+                                        Console.ResetColor();
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "15":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    EXPORT TRIGGER TO DETAILED TEXT FILE                 ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.Write("\nExport from (s)ource or (t)arget? ");
+                            string? exportMapChoice = Console.ReadLine();
+                            var exportMap = exportMapChoice?.ToLower() == "s" ? sourceTriggers : targetTriggers;
+                            string exportMapName = exportMapChoice?.ToLower() == "s" ? "SOURCE" : "TARGET";
+
+                            Console.Write("\nEnter category name: ");
+                            string? exportCatName = Console.ReadLine();
+                            if (!string.IsNullOrWhiteSpace(exportCatName))
+                            {
+                                ListTriggersInCategory(exportMap, exportCatName);
+                                Console.Write("\nEnter trigger name to export: ");
+                                string? exportTrigName = Console.ReadLine();
+                                if (!string.IsNullOrWhiteSpace(exportTrigName))
+                                {
+                                    var exportTrigger = exportMap.TriggerItems
+                                        .OfType<TriggerDefinition>()
+                                        .FirstOrDefault(t => t.Name.Equals(exportTrigName, StringComparison.OrdinalIgnoreCase));
+
+                                    if (exportTrigger != null)
+                                    {
+                                        Console.Write("\nInclude hex dumps of strings? (y/n): ");
+                                        bool showHex = Console.ReadLine()?.ToLower() == "y";
+
+                                        string exportText = TriggerExporter.ExportToDetailedText(exportTrigger, exportMap, showHex);
+
+                                        string exportFileName = $"TRIGGER_EXPORT_{exportTrigger.Name.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+                                        string exportPath = Path.Combine(Path.GetDirectoryName(outputPath) ?? ".", exportFileName);
+
+                                        File.WriteAllText(exportPath, exportText);
+
+                                        Console.WriteLine($"\n{exportText}");
+
+                                        Console.ForegroundColor = ConsoleColor.Green;
+                                        Console.WriteLine($"\n✓ Export saved to: {exportPath}");
+                                        Console.ResetColor();
+
+                                        // Also show pseudo-code
+                                        Console.WriteLine("\n=== PSEUDO-CODE REPRESENTATION ===");
+                                        Console.WriteLine(TriggerExporter.ExportToPseudoCode(exportTrigger));
+                                    }
+                                    else
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"\n✗ Trigger '{exportTrigName}' not found in {exportMapName}");
+                                        Console.ResetColor();
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "16":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    CHECK SOURCE TRIGGER FOR CORRUPTION                  ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nThis checks if the SOURCE trigger is already corrupted");
+                            Console.WriteLine("(e.g., by BetterTriggers or other tools)");
+
+                            Console.Write("\nEnter category name: ");
+                            string? corruptCatName = Console.ReadLine();
+                            if (!string.IsNullOrWhiteSpace(corruptCatName))
+                            {
+                                ListTriggersInCategory(sourceTriggers, corruptCatName);
+                                Console.Write("\nEnter trigger name to check: ");
+                                string? corruptTrigName = Console.ReadLine();
+                                if (!string.IsNullOrWhiteSpace(corruptTrigName))
+                                {
+                                    var corruptTrigger = sourceTriggers.TriggerItems
+                                        .OfType<TriggerDefinition>()
+                                        .FirstOrDefault(t => t.Name.Equals(corruptTrigName, StringComparison.OrdinalIgnoreCase));
+
+                                    if (corruptTrigger != null)
+                                    {
+                                        Console.WriteLine("\nRunning corruption detection...\n");
+
+                                        var corruptionIssues = TriggerExporter.DetectCorruption(corruptTrigger, sourceTriggers);
+
+                                        if (corruptionIssues.Count == 0)
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Green;
+                                            Console.WriteLine("✓ No corruption detected in source trigger!");
+                                            Console.WriteLine("✓ Trigger structure appears valid");
+                                            Console.ResetColor();
+                                        }
+                                        else
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Red;
+                                            Console.WriteLine($"✗ FOUND {corruptionIssues.Count} ISSUE(S):\n");
+                                            Console.ResetColor();
+
+                                            foreach (var issue in corruptionIssues)
+                                            {
+                                                if (issue.StartsWith("CORRUPT"))
+                                                {
+                                                    Console.ForegroundColor = ConsoleColor.Red;
+                                                    Console.WriteLine($"  ✗ {issue}");
+                                                    Console.ResetColor();
+                                                }
+                                                else if (issue.StartsWith("SUSPICIOUS"))
+                                                {
+                                                    Console.ForegroundColor = ConsoleColor.Yellow;
+                                                    Console.WriteLine($"  ⚠ {issue}");
+                                                    Console.ResetColor();
+                                                }
+                                                else if (issue.StartsWith("MISSING"))
+                                                {
+                                                    Console.ForegroundColor = ConsoleColor.Yellow;
+                                                    Console.WriteLine($"  ⚠ {issue}");
+                                                    Console.ResetColor();
+                                                }
+                                                else
+                                                {
+                                                    Console.WriteLine($"  • {issue}");
+                                                }
+                                            }
+
+                                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                                            Console.WriteLine("║  RECOMMENDATION                                          ║");
+                                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+
+                                            var hasCorrupt = corruptionIssues.Any(i => i.StartsWith("CORRUPT"));
+                                            var hasMissing = corruptionIssues.Any(i => i.StartsWith("MISSING"));
+
+                                            if (hasCorrupt)
+                                            {
+                                                Console.ForegroundColor = ConsoleColor.Red;
+                                                Console.WriteLine("\n✗ SOURCE TRIGGER IS CORRUPTED!");
+                                                Console.WriteLine("\nThis trigger cannot be safely copied in its current state.");
+                                                Console.WriteLine("\nOptions:");
+                                                Console.WriteLine("  1. Fix the source map in World Editor");
+                                                Console.WriteLine("  2. Recreate the trigger manually");
+                                                Console.WriteLine("  3. Try restoring from backup");
+                                                Console.ResetColor();
+                                            }
+                                            else if (hasMissing)
+                                            {
+                                                Console.ForegroundColor = ConsoleColor.Yellow;
+                                                Console.WriteLine("\n⚠ MISSING VARIABLES IN SOURCE");
+                                                Console.WriteLine("\nThe trigger references variables that don't exist in source map.");
+                                                Console.WriteLine("\nOptions:");
+                                                Console.WriteLine("  1. Create the missing variables in source map");
+                                                Console.WriteLine("  2. Fix the trigger to not reference them");
+                                                Console.WriteLine("  3. This might be intentional (e.g., variables in .wct file)");
+                                                Console.ResetColor();
+                                            }
+                                        }
+
+                                        Console.Write("\n\nExport detailed report? (y/n): ");
+                                        if (Console.ReadLine()?.ToLower() == "y")
+                                        {
+                                            string reportText = TriggerExporter.ExportToDetailedText(corruptTrigger, sourceTriggers, showHex: true);
+                                            string reportFileName = $"CORRUPTION_REPORT_{corruptTrigger.Name.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+                                            string reportPath = Path.Combine(Path.GetDirectoryName(outputPath) ?? ".", reportFileName);
+
+                                            var reportBuilder = new StringBuilder();
+                                            reportBuilder.AppendLine("╔══════════════════════════════════════════════════════════╗");
+                                            reportBuilder.AppendLine("║  CORRUPTION DETECTION REPORT                            ║");
+                                            reportBuilder.AppendLine("╚══════════════════════════════════════════════════════════╝");
+                                            reportBuilder.AppendLine($"Generated: {DateTime.Now}");
+                                            reportBuilder.AppendLine($"Trigger: {corruptTrigger.Name}");
+                                            reportBuilder.AppendLine($"Source: {sourcePath}");
+                                            reportBuilder.AppendLine();
+                                            reportBuilder.AppendLine("=== ISSUES DETECTED ===");
+                                            if (corruptionIssues.Count == 0)
+                                            {
+                                                reportBuilder.AppendLine("No issues detected.");
+                                            }
+                                            else
+                                            {
+                                                foreach (var issue in corruptionIssues)
+                                                {
+                                                    reportBuilder.AppendLine($"• {issue}");
+                                                }
+                                            }
+                                            reportBuilder.AppendLine();
+                                            reportBuilder.AppendLine("=== FULL TRIGGER EXPORT ===");
+                                            reportBuilder.AppendLine(reportText);
+
+                                            File.WriteAllText(reportPath, reportBuilder.ToString());
+
+                                            Console.ForegroundColor = ConsoleColor.Green;
+                                            Console.WriteLine($"✓ Report saved to: {reportPath}");
+                                            Console.ResetColor();
+                                        }
+                                    }
+                                    else
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"\n✗ Trigger '{corruptTrigName}' not found in SOURCE");
+                                        Console.ResetColor();
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "17":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    COMPARE TWO TRIGGERS SIDE-BY-SIDE                    ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nCompare source vs target version of same trigger");
+
+                            Console.Write("\nEnter category name in SOURCE: ");
+                            string? cmp1CatName = Console.ReadLine();
+                            if (!string.IsNullOrWhiteSpace(cmp1CatName))
+                            {
+                                ListTriggersInCategory(sourceTriggers, cmp1CatName);
+                                Console.Write("\nEnter trigger name in SOURCE: ");
+                                string? cmp1TrigName = Console.ReadLine();
+                                if (!string.IsNullOrWhiteSpace(cmp1TrigName))
+                                {
+                                    Console.Write("\nEnter category name in TARGET (or press Enter for same): ");
+                                    string? cmp2CatName = Console.ReadLine();
+                                    if (string.IsNullOrWhiteSpace(cmp2CatName))
+                                    {
+                                        cmp2CatName = cmp1CatName;
+                                    }
+
+                                    ListTriggersInCategory(targetTriggers, cmp2CatName);
+                                    Console.Write("\nEnter trigger name in TARGET (or press Enter for same): ");
+                                    string? cmp2TrigName = Console.ReadLine();
+                                    if (string.IsNullOrWhiteSpace(cmp2TrigName))
+                                    {
+                                        cmp2TrigName = cmp1TrigName;
+                                    }
+
+                                    var trigger1 = sourceTriggers.TriggerItems
+                                        .OfType<TriggerDefinition>()
+                                        .FirstOrDefault(t => t.Name.Equals(cmp1TrigName, StringComparison.OrdinalIgnoreCase));
+
+                                    var trigger2 = targetTriggers.TriggerItems
+                                        .OfType<TriggerDefinition>()
+                                        .FirstOrDefault(t => t.Name.Equals(cmp2TrigName, StringComparison.OrdinalIgnoreCase));
+
+                                    if (trigger1 != null && trigger2 != null)
+                                    {
+                                        TriggerValidator.CompareTriggers(trigger1, trigger2, "SOURCE", "TARGET");
+
+                                        Console.WriteLine("\n=== CORRUPTION CHECK ===");
+                                        Console.WriteLine("\nSOURCE:");
+                                        var issues1 = TriggerExporter.DetectCorruption(trigger1, sourceTriggers);
+                                        if (issues1.Count == 0)
+                                        {
+                                            Console.WriteLine("  ✓ No issues");
+                                        }
+                                        else
+                                        {
+                                            foreach (var issue in issues1) Console.WriteLine($"  • {issue}");
+                                        }
+
+                                        Console.WriteLine("\nTARGET:");
+                                        var issues2 = TriggerExporter.DetectCorruption(trigger2, targetTriggers);
+                                        if (issues2.Count == 0)
+                                        {
+                                            Console.WriteLine("  ✓ No issues");
+                                        }
+                                        else
+                                        {
+                                            foreach (var issue in issues2) Console.WriteLine($"  • {issue}");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        if (trigger1 == null) Console.WriteLine($"\n✗ '{cmp1TrigName}' not found in SOURCE");
+                                        if (trigger2 == null) Console.WriteLine($"✗ '{cmp2TrigName}' not found in TARGET");
+                                        Console.ResetColor();
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "18":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    EXTRACT TRIGGER + VARIABLES TO STANDALONE .WTG       ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nThis creates a minimal .wtg with just the trigger and its variables");
+                            Console.WriteLine("Useful for sharing triggers or testing in isolation");
+
+                            Console.Write("\nEnter category name: ");
+                            string? extractCatName = Console.ReadLine();
+                            if (!string.IsNullOrWhiteSpace(extractCatName))
+                            {
+                                ListTriggersInCategory(sourceTriggers, extractCatName);
+                                Console.Write("\nEnter trigger name to extract: ");
+                                string? extractTrigName = Console.ReadLine();
+                                if (!string.IsNullOrWhiteSpace(extractTrigName))
+                                {
+                                    var extractTrigger = sourceTriggers.TriggerItems
+                                        .OfType<TriggerDefinition>()
+                                        .FirstOrDefault(t => t.Name.Equals(extractTrigName, StringComparison.OrdinalIgnoreCase));
+
+                                    if (extractTrigger != null)
+                                    {
+                                        try
+                                        {
+                                            // Create minimal map
+                                            var extractedMap = CreateMinimalMapTriggers(sourceTriggers);
+
+                                            // Copy trigger and variables
+                                            Console.WriteLine("\nExtracting trigger and dependencies...");
+                                            CopySpecificTriggers(sourceTriggers, extractedMap, extractCatName, new[] { extractTrigName }, extractCatName);
+
+                                            // Save
+                                            string extractFileName = $"EXTRACTED_{extractTrigger.Name.Replace(" ", "_")}.wtg";
+                                            string extractPath = Path.Combine(Path.GetDirectoryName(outputPath) ?? ".", extractFileName);
+
+                                            WriteWTGFile(extractPath, extractedMap);
+
+                                            Console.ForegroundColor = ConsoleColor.Green;
+                                            Console.WriteLine($"\n✓ Extracted trigger saved to: {extractPath}");
+                                            Console.WriteLine($"\nContents:");
+                                            Console.WriteLine($"  • 1 category: '{extractCatName}'");
+                                            Console.WriteLine($"  • 1 trigger: '{extractTrigger.Name}'");
+                                            Console.WriteLine($"  • {extractedMap.Variables.Count} variable(s)");
+                                            Console.WriteLine($"\nYou can:");
+                                            Console.WriteLine($"  1. Share this file with others");
+                                            Console.WriteLine($"  2. Open in World Editor to test");
+                                            Console.WriteLine($"  3. Use as backup of this trigger");
+                                            Console.ResetColor();
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Red;
+                                            Console.WriteLine($"\n✗ Extraction failed: {ex.Message}");
+                                            if (DEBUG_MODE)
+                                            {
+                                                Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
+                                            }
+                                            Console.ResetColor();
+                                        }
+                                    }
+                                    else
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"\n✗ Trigger '{extractTrigName}' not found");
+                                        Console.ResetColor();
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "19":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    COMPREHENSIVE WTG HEALTH CHECK                       ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nCheck (s)ource, (t)arget, or (m)erged file? ");
+                            Console.Write("Choice: ");
+                            string? healthCheckChoice = Console.ReadLine();
+
+                            MapTriggers? mapToCheck = null;
+                            string checkPath = "";
+
+                            if (healthCheckChoice?.ToLower() == "s")
+                            {
+                                mapToCheck = sourceTriggers;
+                                checkPath = sourcePath;
+                            }
+                            else if (healthCheckChoice?.ToLower() == "t")
+                            {
+                                mapToCheck = targetTriggers;
+                                checkPath = targetPath;
+                            }
+                            else if (healthCheckChoice?.ToLower() == "m")
+                            {
+                                Console.Write("\nEnter path to merged .wtg file: ");
+                                string? mergedPath = Console.ReadLine();
+                                if (!string.IsNullOrWhiteSpace(mergedPath))
+                                {
+                                    try
+                                    {
+                                        mapToCheck = ReadMapTriggersAuto(mergedPath);
+                                        checkPath = mergedPath;
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"\n✗ Failed to load file: {ex.Message}");
+                                        Console.ResetColor();
+                                    }
+                                }
+                            }
+
+                            if (mapToCheck != null)
+                            {
+                                var healthResult = WTGHealthCheck.PerformHealthCheck(mapToCheck, checkPath);
+
+                                Console.Write("\n\nSave detailed report to file? (y/n): ");
+                                if (Console.ReadLine()?.ToLower() == "y")
+                                {
+                                    string reportFileName = $"HEALTH_CHECK_{Path.GetFileNameWithoutExtension(checkPath)}_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+                                    string reportPath = Path.Combine(Path.GetDirectoryName(outputPath) ?? ".", reportFileName);
+
+                                    var reportBuilder = new StringBuilder();
+                                    reportBuilder.AppendLine("╔══════════════════════════════════════════════════════════╗");
+                                    reportBuilder.AppendLine("║       COMPREHENSIVE WTG HEALTH CHECK REPORT             ║");
+                                    reportBuilder.AppendLine("╚══════════════════════════════════════════════════════════╝");
+                                    reportBuilder.AppendLine($"Generated: {DateTime.Now}");
+                                    reportBuilder.AppendLine($"File: {checkPath}");
+                                    reportBuilder.AppendLine($"Format: {mapToCheck.FormatVersion}, SubVersion: {mapToCheck.SubVersion?.ToString() ?? "null (1.27)"}");
+                                    reportBuilder.AppendLine();
+
+                                    reportBuilder.AppendLine("=== STATISTICS ===");
+                                    foreach (var stat in healthResult.Statistics)
+                                    {
+                                        reportBuilder.AppendLine($"{stat.Key}: {stat.Value}");
+                                    }
+                                    reportBuilder.AppendLine();
+
+                                    if (healthResult.Errors.Count > 0)
+                                    {
+                                        reportBuilder.AppendLine($"=== ERRORS ({healthResult.Errors.Count}) ===");
+                                        foreach (var error in healthResult.Errors)
+                                        {
+                                            reportBuilder.AppendLine($"• {error}");
+                                        }
+                                        reportBuilder.AppendLine();
+                                    }
+
+                                    if (healthResult.Warnings.Count > 0)
+                                    {
+                                        reportBuilder.AppendLine($"=== WARNINGS ({healthResult.Warnings.Count}) ===");
+                                        foreach (var warning in healthResult.Warnings)
+                                        {
+                                            reportBuilder.AppendLine($"• {warning}");
+                                        }
+                                        reportBuilder.AppendLine();
+                                    }
+
+                                    if (healthResult.Info.Count > 0)
+                                    {
+                                        reportBuilder.AppendLine($"=== INFO ({healthResult.Info.Count}) ===");
+                                        foreach (var info in healthResult.Info)
+                                        {
+                                            reportBuilder.AppendLine($"• {info}");
+                                        }
+                                        reportBuilder.AppendLine();
+                                    }
+
+                                    reportBuilder.AppendLine("=== HEALTH STATUS ===");
+                                    if (healthResult.IsHealthy)
+                                    {
+                                        reportBuilder.AppendLine("✓ FILE IS HEALTHY");
+                                    }
+                                    else
+                                    {
+                                        reportBuilder.AppendLine("✗ FILE HAS ISSUES");
+                                        reportBuilder.AppendLine($"  Errors: {healthResult.Errors.Count}");
+                                        reportBuilder.AppendLine($"  Warnings: {healthResult.Warnings.Count}");
+                                    }
+
+                                    File.WriteAllText(reportPath, reportBuilder.ToString());
+
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine($"✓ Report saved to: {reportPath}");
+                                    Console.ResetColor();
+                                }
+                            }
+                            break;
+
+                        case "20":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    BINARY HEX ANALYSIS & COMPARISON                     ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nThis will show:");
+                            Console.WriteLine("  • Hex dump of file structure");
+                            Console.WriteLine("  • Binary structure parsing");
+                            Console.WriteLine("  • Byte-by-byte comparison (optional)");
+                            Console.WriteLine();
+                            Console.Write("Enter path to .wtg file to analyze: ");
+                            string? analyzePath = Console.ReadLine();
+
+                            if (!string.IsNullOrWhiteSpace(analyzePath))
+                            {
+                                // Resolve relative paths
+                                if (!Path.IsPathRooted(analyzePath))
+                                {
+                                    analyzePath = Path.Combine(Path.GetDirectoryName(outputPath) ?? ".", analyzePath);
+                                }
+
+                                if (File.Exists(analyzePath))
+                                {
+                                    Console.Write("\nCompare with another file? (y/n): ");
+                                    string? compareChoice = Console.ReadLine();
+
+                                    string? comparisonPath = null;
+                                    if (compareChoice?.ToLower() == "y")
+                                    {
+                                        Console.Write("Enter path to comparison file: ");
+                                        comparisonPath = Console.ReadLine();
+
+                                        if (!string.IsNullOrWhiteSpace(comparisonPath))
+                                        {
+                                            if (!Path.IsPathRooted(comparisonPath))
+                                            {
+                                                comparisonPath = Path.Combine(Path.GetDirectoryName(outputPath) ?? ".", comparisonPath);
+                                            }
+
+                                            if (!File.Exists(comparisonPath))
+                                            {
+                                                Console.ForegroundColor = ConsoleColor.Red;
+                                                Console.WriteLine($"✗ Comparison file not found: {comparisonPath}");
+                                                Console.ResetColor();
+                                                comparisonPath = null;
+                                            }
+                                        }
+                                    }
+
+                                    try
+                                    {
+                                        WTGBinaryAnalyzer.AnalyzeWTGFile(analyzePath, comparisonPath);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine($"\n✗ Analysis failed: {ex.Message}");
+                                        if (DEBUG_MODE)
+                                        {
+                                            Console.WriteLine($"\nStack trace:\n{ex.StackTrace}");
+                                        }
+                                        Console.ResetColor();
+                                    }
+                                }
+                                else
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine($"✗ File not found: {analyzePath}");
+                                    Console.ResetColor();
+                                }
+                            }
+                            break;
+
+                        case "d":
+                        case "D":
                             DEBUG_MODE = !DEBUG_MODE;
                             Console.ForegroundColor = DEBUG_MODE ? ConsoleColor.Yellow : ConsoleColor.Green;
                             Console.WriteLine($"\n✓ Debug mode is now {(DEBUG_MODE ? "ON" : "OFF")}");
                             Console.ResetColor();
                             break;
 
-                        case "9":
+                        case "l":
+                        case "L":
+                            if (DiagnosticLogger.IsEnabled)
+                            {
+                                DiagnosticLogger.StopLogging();
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.WriteLine("\n✓ Deep diagnostic logging DISABLED");
+                                Console.ResetColor();
+                            }
+                            else
+                            {
+                                DiagnosticLogger.StartLogging();
+                                Console.ForegroundColor = ConsoleColor.Yellow;
+                                Console.WriteLine("\n✓ Deep diagnostic logging ENABLED");
+                                Console.WriteLine("  All operations will be logged to file with complete details");
+                                Console.WriteLine("  This includes: file operations, data transformations, IDs, ParentIds, hierarchy");
+                                Console.ResetColor();
+                            }
+                            break;
+
+                        case "s":
+                        case "S":
                             if (modified)
                             {
                                 Console.WriteLine($"\nPreparing to save merged WTG to: {outputPath}");
@@ -267,16 +1309,17 @@ namespace WTGMerger
                                     }
                                 }
 
-                                // CRITICAL: Set SubVersion if null to enable ParentId writing
+                                // NOTE: SubVersion handling
+                                // If SubVersion=null (WC3 1.27 format), ParentIds won't be saved
+                                // This is expected behavior for 1.27 compatibility
+                                // Variable IDs also won't be saved (they stay at 0)
                                 if (targetTriggers.SubVersion == null)
                                 {
-                                    Console.ForegroundColor = ConsoleColor.Yellow;
-                                    Console.WriteLine("\n⚠ WARNING: Target map has SubVersion=null, ParentId won't be saved!");
-                                    Console.WriteLine("   Setting SubVersion=v4 to enable ParentId support...");
-                                    Console.ResetColor();
-                                    targetTriggers.SubVersion = MapTriggersSubVersion.v4;
-                                    Console.ForegroundColor = ConsoleColor.Green;
-                                    Console.WriteLine("   ✓ SubVersion set to v4");
+                                    Console.ForegroundColor = ConsoleColor.Cyan;
+                                    Console.WriteLine("\nℹ Map is in WC3 1.27 format (SubVersion=null)");
+                                    Console.WriteLine("  • Variable IDs will not be saved (stays at 0)");
+                                    Console.WriteLine("  • ParentIds will not be saved");
+                                    Console.WriteLine("  • This maintains 1.27 compatibility");
                                     Console.ResetColor();
                                 }
 
@@ -296,6 +1339,47 @@ namespace WTGMerger
                                 if (targetTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().Count() > 5)
                                 {
                                     Console.WriteLine($"  ... and {targetTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().Count() - 5} more");
+                                }
+
+                                // AUTOMATIC NESTING FIX for WC3 1.27 format
+                                if (targetTriggers.SubVersion == null)
+                                {
+                                    bool hasNestingIssue = CheckForNestingIssue(targetTriggers);
+                                    if (hasNestingIssue)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Yellow;
+                                        Console.WriteLine("\n⚠ NESTING ISSUE DETECTED!");
+                                        Console.WriteLine("Categories appear after triggers in file order.");
+                                        Console.WriteLine("This causes incorrect visual nesting in World Editor.");
+                                        Console.WriteLine("\n✓ Automatically fixing file order...");
+                                        Console.ResetColor();
+
+                                        FixFileOrder(targetTriggers);
+
+                                        Console.ForegroundColor = ConsoleColor.Green;
+                                        Console.WriteLine("✓ File order fixed: All categories now appear before triggers");
+                                        Console.ResetColor();
+                                    }
+                                }
+
+                                // AUTOMATIC ID CORRUPTION REPAIR
+                                bool hasCorruptedIDs = targetTriggers.TriggerItems.OfType<TriggerCategoryDefinition>()
+                                    .Any(c => IDCorruptionRepair.IsCorruptedCategoryID(c.Id)) ||
+                                    IDCorruptionRepair.HasDuplicateTriggerIDs(targetTriggers);
+
+                                if (hasCorruptedIDs)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Yellow;
+                                    Console.WriteLine("\n⚠ ID CORRUPTION DETECTED!");
+                                    Console.WriteLine("Corrupted IDs found (likely from BetterTriggers or other tools).");
+                                    Console.WriteLine("\n✓ Automatically repairing IDs...");
+                                    Console.ResetColor();
+
+                                    IDCorruptionRepair.RepairCorruptedIDs(targetTriggers);
+
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine("✓ ID corruption repaired: All IDs now sequential and valid");
+                                    Console.ResetColor();
                                 }
 
                                 Console.WriteLine($"\nWriting file...");
@@ -384,32 +1468,48 @@ namespace WTGMerger
                                         Console.ResetColor();
                                     }
 
-                                    // Check categories
-                                    var verifyCats = verifyTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
-                                    var verifyRoot = verifyCats.Count(c => c.ParentId == -1);
-                                    var verifyNested = verifyCats.Count(c => c.ParentId >= 0);
+                                    // Check file order (critical for 1.27 format)
+                                    Console.WriteLine($"\nFile Order Verification:");
 
-                                    Console.WriteLine($"\nCategories:");
-                                    Console.WriteLine($"  Root-level (ParentId=-1): {verifyRoot}");
-                                    Console.WriteLine($"  Nested (ParentId>=0): {verifyNested}");
-
-                                    if (verifyNested > 0)
+                                    if (verifyTriggers.SubVersion == null)
                                     {
-                                        Console.ForegroundColor = ConsoleColor.Red;
-                                        Console.WriteLine("\n❌ ERROR: ParentIds were NOT saved correctly!");
-                                        Console.WriteLine("The saved file still has nested categories:");
-                                        foreach (var cat in verifyCats.Where(c => c.ParentId >= 0).Take(5))
+                                        // WC3 1.27 format - check file order
+                                        bool hasOrderIssue = CheckForNestingIssue(verifyTriggers);
+
+                                        if (hasOrderIssue)
                                         {
-                                            Console.WriteLine($"  '{cat.Name}': ParentId={cat.ParentId}");
+                                            Console.ForegroundColor = ConsoleColor.Red;
+                                            Console.WriteLine("❌ ERROR: File order is incorrect!");
+                                            Console.WriteLine("  Categories appear after triggers in saved file.");
+                                            Console.WriteLine("  This will cause visual nesting issues in World Editor.");
+                                            Console.ResetColor();
                                         }
-                                        Console.WriteLine("\n⚠ This means the ParentId field is NOT being written to disk.");
-                                        Console.WriteLine("⚠ The issue is in the WriteTo method or file format.");
-                                        Console.ResetColor();
+                                        else
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Green;
+                                            Console.WriteLine("✓ File order is correct: categories before triggers");
+                                            Console.ResetColor();
+                                        }
+
+                                        // Note about ParentIds
+                                        var verifyCats = verifyTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
+                                        var allZero = verifyCats.All(c => c.ParentId == 0 || c.ParentId == -1);
+                                        if (allZero)
+                                        {
+                                            Console.ForegroundColor = ConsoleColor.Cyan;
+                                            Console.WriteLine("\nℹ Note: All category ParentIds are 0 or -1");
+                                            Console.WriteLine("  This is NORMAL for WC3 1.27 format (ParentIds not saved)");
+                                            Console.WriteLine("  World Editor uses file order for visual nesting, not ParentIds");
+                                            Console.ResetColor();
+                                        }
                                     }
                                     else
                                     {
+                                        // WC3 1.31+ format - check ParentIds
+                                        var verifyCats = verifyTriggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
+                                        Console.WriteLine($"  Categories: {verifyCats.Count} total");
                                         Console.ForegroundColor = ConsoleColor.Green;
-                                        Console.WriteLine("✓ ParentIds were saved correctly!");
+                                        Console.WriteLine("✓ WC3 1.31+ format - ParentIds preserved");
                                         Console.ResetColor();
                                     }
                                 }
@@ -555,10 +1655,13 @@ namespace WTGMerger
 
         /// <summary>
         /// Writes MapTriggers object to a WTG file
-        /// Uses reflection to access internal WriteTo method
+        /// Uses War3Writer custom implementation (BUGFIX: replaced War3Net reflection)
         /// </summary>
         static void WriteWTGFile(string filePath, MapTriggers triggers)
         {
+            DiagnosticLogger.LogFileOperation("Writing WTG", filePath);
+            DiagnosticLogger.LogMapTriggersState(triggers, "Before Writing");
+
             if (DEBUG_MODE)
             {
                 Console.WriteLine($"[DEBUG] WriteWTGFile: Writing to {filePath}");
@@ -566,28 +1669,44 @@ namespace WTGMerger
                 Console.WriteLine($"[DEBUG]   Trigger items to write: {triggers.TriggerItems.Count}");
             }
 
-            using var fileStream = File.Create(filePath);
-            using var writer = new BinaryWriter(fileStream);
+            // AUTOMATIC ID CORRUPTION REPAIR - Always run before saving
+            bool hasCorruptedIDs = triggers.TriggerItems.OfType<TriggerCategoryDefinition>()
+                .Any(c => IDCorruptionRepair.IsCorruptedCategoryID(c.Id)) ||
+                IDCorruptionRepair.HasDuplicateTriggerIDs(triggers);
 
-            // Use reflection to call internal WriteTo method with specific parameter type
-            var writeToMethod = typeof(MapTriggers).GetMethod(
-                "WriteTo",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-                null,
-                new[] { typeof(BinaryWriter) },  // Specify the exact parameter type
-                null);
-
-            if (writeToMethod == null)
+            if (hasCorruptedIDs)
             {
-                throw new InvalidOperationException("Could not find internal WriteTo(BinaryWriter) method");
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("\n⚠ ID CORRUPTION DETECTED!");
+                Console.WriteLine("Corrupted IDs found (likely from BetterTriggers or other tools).");
+                Console.WriteLine("✓ Automatically repairing IDs...");
+                Console.ResetColor();
+
+                IDCorruptionRepair.RepairCorruptedIDs(triggers);
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("✓ ID corruption repaired: All IDs now sequential and valid");
+                Console.ResetColor();
             }
 
-            writeToMethod.Invoke(triggers, new object[] { writer });
+            // CRITICAL: Renumber all categories sequentially before writing
+            // This ensures category IDs match what War3Net will assign when reading back
+            DiagnosticLogger.Log("Renumbering categories sequentially before write");
+            RenumberCategoriesSequentially(triggers);
+            DiagnosticLogger.LogMapTriggersState(triggers, "After Renumbering");
+
+            // INTEGRATION: Use War3Writer instead of War3Net's internal WriteTo
+            War3Writer.SetDebugMode(DEBUG_MODE);
+            DiagnosticLogger.Log("Writing to file using War3Writer");
+            War3Writer.WriteMapTriggers(filePath, triggers);
 
             if (DEBUG_MODE)
             {
-                Console.WriteLine($"[DEBUG] WriteWTGFile: Completed. File size: {fileStream.Length} bytes");
+                var fileInfo = new FileInfo(filePath);
+                Console.WriteLine($"[DEBUG] WriteWTGFile: Completed. File size: {fileInfo.Length} bytes");
             }
+
+            DiagnosticLogger.Log($"Write completed. File size: {new FileInfo(filePath).Length} bytes");
         }
 
         /// <summary>
@@ -672,8 +1791,29 @@ namespace WTGMerger
         /// </summary>
         static void CopySpecificTriggers(MapTriggers source, MapTriggers target, string sourceCategoryName, string[] triggerNames, string destCategoryName)
         {
+            DiagnosticLogger.LogOperationStart($"COPY SPECIFIC TRIGGERS (Option 5)");
+            DiagnosticLogger.Log($"Source Category: '{sourceCategoryName}'");
+            DiagnosticLogger.Log($"Destination Category: '{destCategoryName}'");
+            DiagnosticLogger.Log($"Triggers to copy: {string.Join(", ", triggerNames.Select(t => $"'{t}'"))}");
+
+            // Check for ID corruption in source map
+            bool sourceHasCorruption = source.TriggerItems.OfType<TriggerCategoryDefinition>()
+                .Any(c => IDCorruptionRepair.IsCorruptedCategoryID(c.Id)) ||
+                IDCorruptionRepair.HasDuplicateTriggerIDs(source);
+
+            if (sourceHasCorruption)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("\n⚠ WARNING: Source map has corrupted IDs (likely from BetterTriggers)");
+                Console.WriteLine("  Using corruption-aware copying with name-based category matching...");
+                Console.ResetColor();
+                DiagnosticLogger.Log("WARNING: Source map has ID corruption - using repair-aware copy");
+            }
+
             // Get source triggers
             var sourceTriggers = GetTriggersInCategory(source, sourceCategoryName);
+            DiagnosticLogger.Log($"Found {sourceTriggers.Count} triggers in source category '{sourceCategoryName}'");
+
             var triggersToCopy = new List<TriggerDefinition>();
 
             foreach (var triggerName in triggerNames)
@@ -682,16 +1822,20 @@ namespace WTGMerger
                 if (trigger != null)
                 {
                     triggersToCopy.Add(trigger);
+                    DiagnosticLogger.Log($"Found trigger to copy: '{triggerName}' (ID={trigger.Id})");
                 }
                 else
                 {
                     Console.WriteLine($"  ⚠ Warning: Trigger '{triggerName}' not found in category '{sourceCategoryName}'");
+                    DiagnosticLogger.Log($"WARNING: Trigger '{triggerName}' not found in category '{sourceCategoryName}'");
                 }
             }
 
             if (triggersToCopy.Count == 0)
             {
                 Console.WriteLine("\n  No triggers to copy.");
+                DiagnosticLogger.Log("No triggers to copy - aborting");
+                DiagnosticLogger.LogOperationEnd($"COPY SPECIFIC TRIGGERS (Option 5)", false);
                 return;
             }
 
@@ -702,45 +1846,117 @@ namespace WTGMerger
 
             if (destCategory == null)
             {
+                DiagnosticLogger.Log($"Destination category '{destCategoryName}' not found - creating new category");
+
                 // Create new category at root level
+                // For 1.27 format: use ParentId=0 (since -1 gets read back as 0 anyway)
+                // For newer formats: use ParentId=-1
+                bool is127Format = target.SubVersion == null;
+                int rootParentId = is127Format ? 0 : -1;
+
                 destCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
                 {
                     Id = GetNextId(target),
-                    ParentId = -1,  // CRITICAL: Root-level category
+                    ParentId = rootParentId,  // CRITICAL: Root-level category
                     Name = destCategoryName,
                     IsComment = false,
                     IsExpanded = true
                 };
-                target.TriggerItems.Add(destCategory);
-                Console.WriteLine($"\n  ✓ Created new category '{destCategoryName}' (ID={destCategory.Id}, ParentId={destCategory.ParentId})");
+
+                DiagnosticLogger.Log($"Created new category (1.27={is127Format}): ID={destCategory.Id}, ParentId={destCategory.ParentId}, Name='{destCategory.Name}'");
+
+                // CRITICAL: Insert category BEFORE first trigger to maintain correct file order for 1.27 format
+                // Find the first trigger in TriggerItems
+                int firstTriggerIndex = -1;
+                for (int i = 0; i < target.TriggerItems.Count; i++)
+                {
+                    if (target.TriggerItems[i] is TriggerDefinition)
+                    {
+                        firstTriggerIndex = i;
+                        break;
+                    }
+                }
+
+                // Insert category before first trigger, or at end if no triggers exist
+                if (firstTriggerIndex >= 0)
+                {
+                    target.TriggerItems.Insert(firstTriggerIndex, destCategory);
+                    Console.WriteLine($"\n  ✓ Created new category '{destCategoryName}' at position {firstTriggerIndex} (ID={destCategory.Id}, ParentId={destCategory.ParentId})");
+                }
+                else
+                {
+                    target.TriggerItems.Add(destCategory);
+                    Console.WriteLine($"\n  ✓ Created new category '{destCategoryName}' (ID={destCategory.Id}, ParentId={destCategory.ParentId})");
+                }
             }
 
-            // Find insertion point (after the category)
+            // Find insertion point (immediately after the category)
             var categoryIndex = target.TriggerItems.IndexOf(destCategory);
             int insertIndex = categoryIndex + 1;
 
-            // Skip existing triggers in this category to insert at the end
-            while (insertIndex < target.TriggerItems.Count &&
-                   target.TriggerItems[insertIndex] is not TriggerCategoryDefinition)
-            {
-                insertIndex++;
-            }
+            // CRITICAL FOR 1.27 FORMAT: Insert triggers IMMEDIATELY after category
+            // (not at the end of the file - file order determines visual nesting)
+            DiagnosticLogger.Log($"Category '{destCategoryName}' is at index {categoryIndex}, inserting triggers at index {insertIndex}");
 
             // Copy missing variables from source to target before copying triggers
+            DiagnosticLogger.Log("Copying missing variables from source to target");
             CopyMissingVariables(source, target, triggersToCopy);
 
             // Copy triggers
             Console.WriteLine($"\n  Copying {triggersToCopy.Count} trigger(s) to category '{destCategoryName}':");
+            DiagnosticLogger.Log($"Copying {triggersToCopy.Count} trigger(s) to category '{destCategoryName}' at index {insertIndex}");
+            DiagnosticLogger.Indent();
             foreach (var sourceTrigger in triggersToCopy)
             {
-                var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), destCategory.Id);
+                // Use corruption-aware copy if source has corruption
+                TriggerDefinition copiedTrigger;
+                if (sourceHasCorruption)
+                {
+                    copiedTrigger = IDCorruptionRepair.CopyTriggerWithIDRepair(
+                        sourceTrigger, source, target, GetNextId(target), destCategoryName);
+                    DiagnosticLogger.Log($"Used corruption-aware copy for: '{copiedTrigger.Name}'");
+                }
+                else
+                {
+                    copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), destCategory.Id);
+                }
+
                 target.TriggerItems.Insert(insertIndex, copiedTrigger);
                 insertIndex++;
                 Console.WriteLine($"    ✓ {copiedTrigger.Name}");
+                DiagnosticLogger.Log($"Copied trigger: '{copiedTrigger.Name}' (ID={copiedTrigger.Id}, ParentId={copiedTrigger.ParentId})");
             }
+            DiagnosticLogger.Unindent();
 
             // Update trigger item counts
+            DiagnosticLogger.Log("Updating trigger item counts");
             UpdateTriggerItemCounts(target);
+
+            DiagnosticLogger.LogOperationEnd($"COPY SPECIFIC TRIGGERS (Option 5)", true);
+        }
+
+        /// <summary>
+        /// Checks if a ParentId value represents root level (-1 or 0 in 1.27 format)
+        /// </summary>
+        static bool IsRootLevel(int parentId, MapTriggers triggers)
+        {
+            // ParentId=-1 always means root
+            if (parentId == -1) return true;
+
+            // In WC3 1.27 format (SubVersion==null), ParentId=0 means root level
+            // In newer formats, ParentId=0 can be a valid category reference
+            bool is127Format = triggers.SubVersion == null;
+            if (is127Format && parentId == 0)
+            {
+                // BUT: If there's actually a category with ID=0, then ParentId=0 refers to it
+                bool hasCategoryZero = triggers.TriggerItems
+                    .OfType<TriggerCategoryDefinition>()
+                    .Any(c => c.Id == 0);
+
+                return !hasCategoryZero;  // Root only if no category with ID=0 exists
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -758,9 +1974,10 @@ namespace WTGMerger
             }
 
             // Get all triggers that have this category as their parent (using ParentId)
+            // CRITICAL: Don't match triggers with ParentId=0 if that means "root level" in 1.27 format
             var triggersInCategory = triggers.TriggerItems
                 .OfType<TriggerDefinition>()
-                .Where(t => t.ParentId == category.Id)
+                .Where(t => t.ParentId == category.Id && !IsRootLevel(t.ParentId, triggers))
                 .ToList();
 
             return triggersInCategory;
@@ -771,6 +1988,23 @@ namespace WTGMerger
         /// </summary>
         static void MergeCategory(MapTriggers source, MapTriggers target, string categoryName)
         {
+            DiagnosticLogger.LogOperationStart($"MERGE CATEGORY '{categoryName}' (Option 4)");
+            DiagnosticLogger.Log($"Category to merge: '{categoryName}'");
+
+            // Check for ID corruption in source map
+            bool sourceHasCorruption = source.TriggerItems.OfType<TriggerCategoryDefinition>()
+                .Any(c => IDCorruptionRepair.IsCorruptedCategoryID(c.Id)) ||
+                IDCorruptionRepair.HasDuplicateTriggerIDs(source);
+
+            if (sourceHasCorruption)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("\n⚠ WARNING: Source map has corrupted IDs (likely from BetterTriggers)");
+                Console.WriteLine("  Using corruption-aware copying with name-based category matching...");
+                Console.ResetColor();
+                DiagnosticLogger.Log("WARNING: Source map has ID corruption - using repair-aware copy");
+            }
+
             // Find source category
             var sourceCategory = source.TriggerItems
                 .OfType<TriggerCategoryDefinition>()
@@ -778,12 +2012,17 @@ namespace WTGMerger
 
             if (sourceCategory == null)
             {
+                DiagnosticLogger.Log($"ERROR: Category '{categoryName}' not found in source");
+                DiagnosticLogger.LogOperationEnd($"MERGE CATEGORY '{categoryName}' (Option 4)", false);
                 throw new InvalidOperationException($"Category '{categoryName}' not found in source");
             }
+
+            DiagnosticLogger.Log($"Found source category: ID={sourceCategory.Id}, ParentId={sourceCategory.ParentId}");
 
             // Get triggers from source category
             var sourceCategoryTriggers = GetTriggersInCategory(source, categoryName);
             Console.WriteLine($"  Found {sourceCategoryTriggers.Count} triggers in source category");
+            DiagnosticLogger.Log($"Found {sourceCategoryTriggers.Count} triggers in source category");
 
             // Check if category already exists in target
             var targetCategory = target.TriggerItems
@@ -793,38 +2032,91 @@ namespace WTGMerger
             if (targetCategory != null)
             {
                 Console.WriteLine($"  Category '{categoryName}' already exists in target - removing it");
+                DiagnosticLogger.Log($"Category '{categoryName}' already exists in target (ID={targetCategory.Id}) - removing it");
                 RemoveCategory(target, categoryName);
             }
 
             // Create new category in target (Type must be set via constructor)
-            // ALWAYS set ParentId = -1 for root-level when copying between files
+            // ALWAYS set ParentId for root-level when copying between files
             // (source ParentId might point to non-existent category in target)
+            // For 1.27 format: use ParentId=0 (since -1 gets read back as 0 anyway)
+            // For newer formats: use ParentId=-1
+            bool is127Format = target.SubVersion == null;
+            int rootParentId = is127Format ? 0 : -1;
+
             var newCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
             {
                 Id = GetNextId(target),
-                ParentId = -1,  // CRITICAL: Always root-level for copied categories
+                ParentId = rootParentId,  // CRITICAL: Root-level for copied categories
                 Name = sourceCategory.Name,
                 IsComment = sourceCategory.IsComment,
                 IsExpanded = sourceCategory.IsExpanded
             };
 
-            // Add category at the end
-            target.TriggerItems.Add(newCategory);
-            Console.WriteLine($"  Added category '{categoryName}' to target (ID={newCategory.Id}, ParentId={newCategory.ParentId})");
+            DiagnosticLogger.Log($"Created new category (1.27={is127Format}): ID={newCategory.Id}, ParentId={newCategory.ParentId}, Name='{newCategory.Name}'");
 
-            // Copy missing variables from source to target before copying triggers
-            CopyMissingVariables(source, target, sourceCategoryTriggers);
-
-            // Copy all triggers
-            foreach (var sourceTrigger in sourceCategoryTriggers)
+            // CRITICAL: Insert category BEFORE first trigger to maintain correct file order for 1.27 format
+            // Find the first trigger in TriggerItems
+            int firstTriggerIndex = -1;
+            for (int i = 0; i < target.TriggerItems.Count; i++)
             {
-                var copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), newCategory.Id);
-                target.TriggerItems.Add(copiedTrigger);
-                Console.WriteLine($"    + Copied trigger: {copiedTrigger.Name}");
+                if (target.TriggerItems[i] is TriggerDefinition)
+                {
+                    firstTriggerIndex = i;
+                    break;
+                }
             }
 
+            // Insert category before first trigger, or at end if no triggers exist
+            if (firstTriggerIndex >= 0)
+            {
+                target.TriggerItems.Insert(firstTriggerIndex, newCategory);
+                Console.WriteLine($"  Inserted category '{categoryName}' at position {firstTriggerIndex} (ID={newCategory.Id}, ParentId={newCategory.ParentId})");
+            }
+            else
+            {
+                target.TriggerItems.Add(newCategory);
+                Console.WriteLine($"  Added category '{categoryName}' to target (ID={newCategory.Id}, ParentId={newCategory.ParentId})");
+            }
+
+            // Copy missing variables from source to target before copying triggers
+            DiagnosticLogger.Log("Copying missing variables from source to target");
+            CopyMissingVariables(source, target, sourceCategoryTriggers);
+
+            // CRITICAL FOR 1.27 FORMAT: Insert triggers IMMEDIATELY after category
+            // (not at the end of the file - file order determines visual nesting)
+            var categoryIndex = target.TriggerItems.IndexOf(newCategory);
+            int insertIndex = categoryIndex + 1;
+            DiagnosticLogger.Log($"Category '{categoryName}' is at index {categoryIndex}, inserting {sourceCategoryTriggers.Count} triggers at index {insertIndex}");
+
+            DiagnosticLogger.Indent();
+            foreach (var sourceTrigger in sourceCategoryTriggers)
+            {
+                // Use corruption-aware copy if source has corruption
+                TriggerDefinition copiedTrigger;
+                if (sourceHasCorruption)
+                {
+                    copiedTrigger = IDCorruptionRepair.CopyTriggerWithIDRepair(
+                        sourceTrigger, source, target, GetNextId(target), categoryName);
+                    DiagnosticLogger.Log($"Used corruption-aware copy for: '{copiedTrigger.Name}'");
+                }
+                else
+                {
+                    copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), newCategory.Id);
+                }
+
+                target.TriggerItems.Insert(insertIndex, copiedTrigger);
+                insertIndex++; // Move insertion point forward for next trigger
+                Console.WriteLine($"    + Copied trigger: {copiedTrigger.Name}");
+                DiagnosticLogger.Log($"Copied trigger: '{copiedTrigger.Name}' at index {insertIndex-1} (ID={copiedTrigger.Id}, ParentId={copiedTrigger.ParentId})");
+            }
+            DiagnosticLogger.Unindent();
+
             // Update trigger item counts
+            DiagnosticLogger.Log("Updating trigger item counts");
             UpdateTriggerItemCounts(target);
+
+            DiagnosticLogger.LogOperationEnd($"MERGE CATEGORY '{categoryName}' (Option 4)", true);
         }
 
         /// <summary>
@@ -965,24 +2257,251 @@ namespace WTGMerger
         }
 
         /// <summary>
-        /// Fixes all categories to root-level by setting ParentId = -1
+        /// Fixes all categories to root-level by setting ParentId appropriately
+        /// For 1.27 format: ParentId=0 (all categories default to 0)
+        /// For newer formats: ParentId=-1 (explicit root level)
         /// </summary>
         static int FixAllCategoriesToRoot(MapTriggers triggers)
         {
+            bool is127Format = triggers.SubVersion == null;
+            int rootParentId = is127Format ? 0 : -1;
+
             var categories = triggers.TriggerItems.OfType<TriggerCategoryDefinition>().ToList();
             int fixedCount = 0;
 
             foreach (var category in categories)
             {
-                if (category.ParentId != -1)
+                if (category.ParentId != rootParentId)
                 {
-                    Console.WriteLine($"  Fixing '{category.Name}' (was ParentId={category.ParentId})");
-                    category.ParentId = -1;
+                    Console.WriteLine($"  Fixing '{category.Name}' (was ParentId={category.ParentId}, setting to {rootParentId} for {(is127Format ? "1.27" : "newer")} format)");
+                    category.ParentId = rootParentId;
                     fixedCount++;
                 }
             }
 
             return fixedCount;
+        }
+
+        /// <summary>
+        /// Checks if there's a nesting issue (categories appearing after triggers in file order)
+        /// This is critical for WC3 1.27 format where visual nesting is based on file order
+        /// </summary>
+        static bool CheckForNestingIssue(MapTriggers triggers)
+        {
+            int firstTriggerIndex = -1;
+            int lastCategoryIndex = -1;
+
+            for (int i = 0; i < triggers.TriggerItems.Count; i++)
+            {
+                var item = triggers.TriggerItems[i];
+                if (item is TriggerDefinition && firstTriggerIndex == -1)
+                {
+                    firstTriggerIndex = i;
+                }
+                if (item is TriggerCategoryDefinition && item.Type != TriggerItemType.RootCategory)
+                {
+                    lastCategoryIndex = i;
+                }
+            }
+
+            // Issue exists if any category appears after the first trigger
+            return firstTriggerIndex != -1 && lastCategoryIndex > firstTriggerIndex;
+        }
+
+        /// <summary>
+        /// Fixes file order by moving all categories before triggers
+        /// This ensures correct visual nesting in World Editor for WC3 1.27 format
+        /// </summary>
+        static void FixFileOrder(MapTriggers triggers)
+        {
+            // Separate items by type
+            var categories = new List<TriggerItem>();
+            var triggerDefs = new List<TriggerItem>();
+            var otherItems = new List<TriggerItem>();
+
+            foreach (var item in triggers.TriggerItems)
+            {
+                if (item is TriggerCategoryDefinition && item.Type != TriggerItemType.RootCategory)
+                {
+                    categories.Add(item);
+                }
+                else if (item is TriggerDefinition)
+                {
+                    triggerDefs.Add(item);
+                }
+                else
+                {
+                    otherItems.Add(item);
+                }
+            }
+
+            // CRITICAL FIX: Build ID remapping before reordering
+            // When War3Net reads 1.27 format, it assigns category IDs sequentially based on file order
+            // After reordering, we must reassign IDs and update all trigger ParentIds
+            var categoryList = categories.Cast<TriggerCategoryDefinition>().ToList();
+            var oldIdToNewId = new Dictionary<int, int>();
+
+            for (int i = 0; i < categoryList.Count; i++)
+            {
+                int oldId = categoryList[i].Id;
+                int newId = i;  // Sequential IDs: 0, 1, 2, 3...
+                oldIdToNewId[oldId] = newId;
+
+                if (DEBUG_MODE && oldId != newId)
+                {
+                    Console.WriteLine($"[DEBUG] Remapping category '{categoryList[i].Name}': ID {oldId} -> {newId}");
+                }
+
+                categoryList[i].Id = newId;
+            }
+
+            // Update trigger ParentIds to match new category IDs
+            var triggerList = triggerDefs.Cast<TriggerDefinition>().ToList();
+            foreach (var trigger in triggerList)
+            {
+                if (trigger.ParentId >= 0 && oldIdToNewId.ContainsKey(trigger.ParentId))
+                {
+                    int oldParentId = trigger.ParentId;
+                    int newParentId = oldIdToNewId[oldParentId];
+
+                    if (DEBUG_MODE && oldParentId != newParentId)
+                    {
+                        Console.WriteLine($"[DEBUG] Remapping trigger '{trigger.Name}': ParentId {oldParentId} -> {newParentId}");
+                    }
+
+                    trigger.ParentId = newParentId;
+                }
+            }
+
+            // Rebuild TriggerItems with correct order: categories first, then triggers, then other items
+            triggers.TriggerItems.Clear();
+            foreach (var item in categories)
+            {
+                triggers.TriggerItems.Add(item);
+            }
+            foreach (var item in triggerDefs)
+            {
+                triggers.TriggerItems.Add(item);
+            }
+            foreach (var item in otherItems)
+            {
+                triggers.TriggerItems.Add(item);
+            }
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[DEBUG] Reordered: {categories.Count} categories, {triggerDefs.Count} triggers, {otherItems.Count} other items");
+                Console.WriteLine($"[DEBUG] Remapped {oldIdToNewId.Count(kvp => kvp.Key != kvp.Value)} category IDs");
+            }
+        }
+
+        /// <summary>
+        /// Renumbers all categories sequentially (0, 1, 2, ...) and updates trigger ParentIds
+        /// CRITICAL: Must be called before writing to ensure IDs match what War3Net assigns when reading
+        /// </summary>
+        static void RenumberCategoriesSequentially(MapTriggers triggers)
+        {
+            DiagnosticLogger.Log("RenumberCategoriesSequentially: Starting");
+            bool is127Format = triggers.SubVersion == null;
+            DiagnosticLogger.Log($"Format: {(is127Format ? "1.27" : "newer")}");
+
+            // Get all non-root categories
+            var categories = triggers.TriggerItems
+                .OfType<TriggerCategoryDefinition>()
+                .Where(c => c.Type != TriggerItemType.RootCategory)
+                .ToList();
+
+            DiagnosticLogger.Log($"Found {categories.Count} categories to renumber");
+
+            // Build mapping of old ID to new ID
+            var oldIdToNewId = new Dictionary<int, int>();
+
+            for (int i = 0; i < categories.Count; i++)
+            {
+                int oldId = categories[i].Id;
+                int newId = i; // Sequential: 0, 1, 2, 3...
+
+                if (oldId != newId)
+                {
+                    oldIdToNewId[oldId] = newId;
+
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[DEBUG] Renumbering category '{categories[i].Name}': ID {oldId} -> {newId}");
+                    }
+                    DiagnosticLogger.Log($"Renumbering category '{categories[i].Name}': ID {oldId} -> {newId}");
+
+                    categories[i].Id = newId;
+                }
+
+                // CRITICAL FIX FOR 1.27 FORMAT:
+                // In WC3 1.27, category ParentIds are NOT saved to file
+                // All categories default to ParentId=0 when read back
+                // So we must normalize ALL category ParentIds to 0 before writing
+                if (is127Format)
+                {
+                    int oldParentId = categories[i].ParentId;
+
+                    // Normalize: -1 becomes 0, everything else stays the same
+                    // (In 1.27, ParentId doesn't matter - hierarchy is by file order)
+                    if (oldParentId == -1)
+                    {
+                        if (DEBUG_MODE)
+                        {
+                            Console.WriteLine($"[DEBUG] Normalizing category '{categories[i].Name}': ParentId -1 -> 0 (1.27 format)");
+                        }
+                        DiagnosticLogger.Log($"Normalizing category '{categories[i].Name}': ParentId -1 -> 0 (1.27 format)");
+                        categories[i].ParentId = 0;
+                    }
+                }
+            }
+
+            // Update all trigger ParentIds to match new category IDs
+            DiagnosticLogger.Log($"Updating trigger ParentIds (found {oldIdToNewId.Count} category ID changes)");
+
+            if (oldIdToNewId.Count > 0)
+            {
+                var triggers_list = triggers.TriggerItems
+                    .OfType<TriggerDefinition>()
+                    .ToList();
+
+                DiagnosticLogger.Log($"Processing {triggers_list.Count} triggers");
+                int updatedCount = 0;
+
+                foreach (var trigger in triggers_list)
+                {
+                    // Skip root-level triggers using helper function
+                    if (IsRootLevel(trigger.ParentId, triggers))
+                    {
+                        // Normalize to -1
+                        trigger.ParentId = -1;
+                        continue;
+                    }
+
+                    if (oldIdToNewId.ContainsKey(trigger.ParentId))
+                    {
+                        int oldParentId = trigger.ParentId;
+                        int newParentId = oldIdToNewId[oldParentId];
+
+                        if (DEBUG_MODE)
+                        {
+                            Console.WriteLine($"[DEBUG] Updating trigger '{trigger.Name}': ParentId {oldParentId} -> {newParentId}");
+                        }
+                        DiagnosticLogger.Log($"Updating trigger '{trigger.Name}': ParentId {oldParentId} -> {newParentId}");
+
+                        trigger.ParentId = newParentId;
+                        updatedCount++;
+                    }
+                }
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[DEBUG] Renumbered {oldIdToNewId.Count} categories and updated {updatedCount} trigger ParentIds");
+                }
+                DiagnosticLogger.Log($"Renumbered {oldIdToNewId.Count} categories and updated {updatedCount} trigger ParentIds");
+            }
+
+            DiagnosticLogger.Log("RenumberCategoriesSequentially: Complete");
         }
 
         /// <summary>
@@ -1759,12 +3278,18 @@ namespace WTGMerger
                 oldIdToNewId[i] = i;
             }
 
+            // Determine root ParentId value for this format
+            bool is127Format = triggers.SubVersion == null;
+            int rootParentId = is127Format ? 0 : -1;
+
             // Update ParentIds in ALL items (both categories and triggers)
             foreach (var item in triggers.TriggerItems)
             {
-                // Skip root-level items (ParentId -1 or 0 should stay that way)
-                if (item.ParentId < 0)
+                // Skip root-level items using helper function
+                if (IsRootLevel(item.ParentId, triggers))
                 {
+                    // Normalize root level to appropriate value for format
+                    item.ParentId = rootParentId;
                     continue;
                 }
 
@@ -1783,7 +3308,7 @@ namespace WTGMerger
                     else
                     {
                         // No parent found, make it root-level
-                        trigger.ParentId = -1;
+                        trigger.ParentId = rootParentId;
                     }
                 }
                 else if (item is TriggerCategoryDefinition category)
@@ -1801,7 +3326,7 @@ namespace WTGMerger
                     else
                     {
                         // No parent found, make it root-level
-                        category.ParentId = -1;
+                        category.ParentId = rootParentId;
                     }
                 }
             }
@@ -1992,17 +3517,62 @@ namespace WTGMerger
 
         /// <summary>
         /// Reads MapTriggers from either a raw .wtg file or a map archive (.w3x/.w3m)
+        /// AUTOMATICALLY fixes SubVersion and variable IDs for old format maps
         /// </summary>
         static MapTriggers ReadMapTriggersAuto(string filePath)
         {
+            DiagnosticLogger.LogFileOperation("Reading", filePath);
+
+            MapTriggers triggers;
+
             if (IsMapArchive(filePath))
             {
-                return ReadMapArchiveFile(filePath);
+                DiagnosticLogger.Log("Detected map archive format");
+                triggers = ReadMapArchiveFile(filePath);
             }
             else
             {
-                return ReadWTGFile(filePath);
+                DiagnosticLogger.Log("Detected WTG file format");
+                triggers = ReadWTGFile(filePath);
             }
+
+            DiagnosticLogger.LogMapTriggersState(triggers, "After Reading File");
+
+            // WC3 1.27 FORMAT HANDLING
+            // If map has SubVersion=null, it's WC3 1.27 format
+            // In this format, variable IDs are NOT saved/loaded from file
+            // All variables default to Id=0 when read
+            // We assign sequential IDs in memory for internal use only
+            // These IDs won't be saved back (maintains 1.27 compatibility)
+            if (triggers.SubVersion == null)
+            {
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine($"  ℹ Map is WC3 1.27 format (SubVersion=null)");
+                Console.ResetColor();
+
+                DiagnosticLogger.Log("Detected WC3 1.27 format (SubVersion=null)");
+
+                // Assign sequential IDs in memory for internal tracking
+                // (These won't be saved - 1.27 format doesn't support variable IDs)
+                for (int i = 0; i < triggers.Variables.Count; i++)
+                {
+                    triggers.Variables[i].Id = i;
+                }
+
+                Console.WriteLine($"  ✓ Assigned in-memory IDs to {triggers.Variables.Count} variable(s) for tracking");
+                Console.WriteLine($"  ✓ Maintaining 1.27 compatibility (SubVersion=null)");
+
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine("[DEBUG] In-memory variable IDs (not saved to file):");
+                    foreach (var v in triggers.Variables.Take(5))
+                    {
+                        Console.WriteLine($"[DEBUG]   ID={v.Id}, Name={v.Name}");
+                    }
+                }
+            }
+
+            return triggers;
         }
 
         /// <summary>
@@ -2067,6 +3637,11 @@ namespace WTGMerger
         /// </summary>
         static void WriteMapArchive(string originalArchivePath, string outputArchivePath, MapTriggers triggers, bool removeJassFile)
         {
+            DiagnosticLogger.LogFileOperation("Writing Map Archive", outputArchivePath);
+            DiagnosticLogger.Log($"Original archive: {originalArchivePath}");
+            DiagnosticLogger.Log($"Remove JASS file: {removeJassFile}");
+            DiagnosticLogger.LogMapTriggersState(triggers, "Before Writing Archive");
+
             if (DEBUG_MODE)
             {
                 Console.WriteLine($"[DEBUG] WriteMapArchive: Writing to {outputArchivePath}");
@@ -2075,11 +3650,19 @@ namespace WTGMerger
             }
 
             Console.WriteLine($"  Opening original archive...");
+            DiagnosticLogger.Log("Opening original archive");
             using var originalArchive = MpqArchive.Open(originalArchivePath, true);
             originalArchive.DiscoverFileNames();
 
             Console.WriteLine($"  Creating archive builder...");
+            DiagnosticLogger.Log("Creating archive builder");
             var builder = new MpqArchiveBuilder(originalArchive);
+
+            // CRITICAL: Renumber all categories sequentially before writing
+            // This ensures category IDs match what War3Net will assign when reading back
+            DiagnosticLogger.Log("Renumbering categories sequentially before write");
+            RenumberCategoriesSequentially(triggers);
+            DiagnosticLogger.LogMapTriggersState(triggers, "After Renumbering");
 
             // Serialize triggers to memory
             using var triggerStream = new MemoryStream();
@@ -2121,6 +3704,7 @@ namespace WTGMerger
                 if (originalArchive.FileExists(jassFileName))
                 {
                     Console.WriteLine($"  Removing {jassFileName} for sync...");
+                    DiagnosticLogger.Log($"Removing {jassFileName} from archive");
                     builder.RemoveFile(jassFileName);
                 }
 
@@ -2129,14 +3713,56 @@ namespace WTGMerger
                 if (originalArchive.FileExists(jassFileNameAlt))
                 {
                     Console.WriteLine($"  Removing {jassFileNameAlt} for sync...");
+                    DiagnosticLogger.Log($"Removing {jassFileNameAlt} from archive");
                     builder.RemoveFile(jassFileNameAlt);
                 }
             }
 
             // Save the modified archive
             Console.WriteLine($"  Saving to {outputArchivePath}...");
+            DiagnosticLogger.Log("Saving modified archive");
             builder.SaveTo(outputArchivePath);
             Console.WriteLine($"  Archive updated successfully!");
+
+            DiagnosticLogger.Log($"Archive write completed. File size: {new FileInfo(outputArchivePath).Length} bytes");
+        }
+
+        /// <summary>
+        /// Helper wrapper for GetVariablesUsedByTrigger - collects variable references from a trigger
+        /// </summary>
+        static void CollectVariableReferences(TriggerDefinition trigger, HashSet<string> variables, MapTriggers map)
+        {
+            var vars = GetVariablesUsedByTrigger(trigger, map);
+            foreach (var v in vars)
+            {
+                variables.Add(v);
+            }
+        }
+
+        /// <summary>
+        /// Creates a minimal empty MapTriggers structure for isolation testing
+        /// </summary>
+        static MapTriggers CreateMinimalMapTriggers(MapTriggers sourceTemplate)
+        {
+            // Create new MapTriggers with same format version as source
+            var minimal = new MapTriggers(sourceTemplate.FormatVersion, sourceTemplate.SubVersion)
+            {
+                GameVersion = sourceTemplate.GameVersion,
+            };
+
+            // Initialize empty collections
+            minimal.Variables.Clear();
+            minimal.TriggerItems.Clear();
+            minimal.TriggerItemCounts.Clear();
+
+            // Add root category item if it exists in source
+            var rootCategory = sourceTemplate.TriggerItems.FirstOrDefault(item => item.Type == TriggerItemType.RootCategory);
+            if (rootCategory != null)
+            {
+                minimal.TriggerItems.Add(rootCategory);
+            }
+
+            return minimal;
         }
     }
 }
