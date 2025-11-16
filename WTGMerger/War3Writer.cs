@@ -45,6 +45,15 @@ namespace WTGMerger
         }
 
         /// <summary>
+        /// Writes a single-byte boolean (WTG format)
+        /// CRITICAL: War3Net's WriteBool writes 4 bytes - use our own!
+        /// </summary>
+        private static void WriteWTGBool(BinaryWriter writer, bool value)
+        {
+            writer.Write((byte)(value ? 1 : 0));
+        }
+
+        /// <summary>
         /// Writes MapTriggers to a WTG file with full control over format
         /// </summary>
         public static void WriteMapTriggers(string filePath, MapTriggers triggers)
@@ -173,7 +182,7 @@ namespace WTGMerger
 
             if (formatVersion >= MapTriggersFormatVersion.v7)
             {
-                writer.WriteBool(category.IsComment);
+                WriteWTGBool(writer,category.IsComment);
             }
 
             // NOTE: ParentId is NOT written in 1.27 format
@@ -191,14 +200,14 @@ namespace WTGMerger
             WriteWTGString(writer, variable.Name);
             WriteWTGString(writer, variable.Type);
             writer.Write(variable.Unk);
-            writer.WriteBool(variable.IsArray);
+            WriteWTGBool(writer,variable.IsArray);
 
             if (formatVersion >= MapTriggersFormatVersion.v7)
             {
                 writer.Write(variable.ArraySize);
             }
 
-            writer.WriteBool(variable.IsInitialized);
+            WriteWTGBool(writer,variable.IsInitialized);
             WriteWTGString(writer, variable.InitialValue);
 
             // NOTE: Id and ParentId are NOT written in 1.27 format
@@ -218,15 +227,15 @@ namespace WTGMerger
 
             if (formatVersion >= MapTriggersFormatVersion.v7)
             {
-                writer.WriteBool(trigger.IsComment);
+                WriteWTGBool(writer,trigger.IsComment);
             }
 
             // NOTE: Trigger Id is NOT written in 1.27 format
 
-            writer.WriteBool(trigger.IsEnabled);
-            writer.WriteBool(trigger.IsCustomTextTrigger);
-            writer.WriteBool(!trigger.IsInitiallyOn);
-            writer.WriteBool(trigger.RunOnMapInit);
+            WriteWTGBool(writer,trigger.IsEnabled);
+            WriteWTGBool(writer,trigger.IsCustomTextTrigger);
+            WriteWTGBool(writer,!trigger.IsInitiallyOn);
+            WriteWTGBool(writer,trigger.RunOnMapInit);
 
             // CRITICAL: ParentId IS written in 1.27 format for triggers!
             writer.Write(trigger.ParentId);
@@ -310,10 +319,10 @@ namespace WTGMerger
 
             if (formatVersion >= MapTriggersFormatVersion.v7)
             {
-                writer.WriteBool(category.IsComment);
+                WriteWTGBool(writer,category.IsComment);
             }
 
-            writer.WriteBool(category.IsExpanded);
+            WriteWTGBool(writer,category.IsExpanded);
             writer.Write(category.ParentId); // Written in new format
 
             if (DebugMode)
@@ -330,14 +339,14 @@ namespace WTGMerger
             WriteWTGString(writer, variable.Name);
             WriteWTGString(writer, variable.Type);
             writer.Write(variable.Unk);
-            writer.WriteBool(variable.IsArray);
+            WriteWTGBool(writer,variable.IsArray);
 
             if (formatVersion >= MapTriggersFormatVersion.v7)
             {
                 writer.Write(variable.ArraySize);
             }
 
-            writer.WriteBool(variable.IsInitialized);
+            WriteWTGBool(writer,variable.IsInitialized);
             WriteWTGString(writer, variable.InitialValue);
 
             writer.Write(variable.Id);
@@ -359,15 +368,15 @@ namespace WTGMerger
 
             if (formatVersion >= MapTriggersFormatVersion.v7)
             {
-                writer.WriteBool(trigger.IsComment);
+                WriteWTGBool(writer,trigger.IsComment);
             }
 
             writer.Write(trigger.Id); // Written in new format
 
-            writer.WriteBool(trigger.IsEnabled);
-            writer.WriteBool(trigger.IsCustomTextTrigger);
-            writer.WriteBool(!trigger.IsInitiallyOn);
-            writer.WriteBool(trigger.RunOnMapInit);
+            WriteWTGBool(writer,trigger.IsEnabled);
+            WriteWTGBool(writer,trigger.IsCustomTextTrigger);
+            WriteWTGBool(writer,!trigger.IsInitiallyOn);
+            WriteWTGBool(writer,trigger.RunOnMapInit);
             writer.Write(trigger.ParentId);
 
             if (DebugMode)
@@ -399,7 +408,7 @@ namespace WTGMerger
             // BUGFIX #3: Name should ALWAYS be written (not conditional on format version)
             WriteWTGString(writer, function.Name ?? string.Empty);
 
-            writer.WriteBool(function.IsEnabled);
+            WriteWTGBool(writer,function.IsEnabled);
 
             // BUGFIX #4: Do NOT write parameter count - War3Net uses TriggerData to determine count
             foreach (var param in function.Parameters)
@@ -431,14 +440,14 @@ namespace WTGMerger
             // These are NOT mutually exclusive - both flags must be written separately
 
             // Write Function flag and data
-            writer.WriteBool(param.Function is not null);
+            WriteWTGBool(writer,param.Function is not null);
             if (param.Function is not null)
             {
                 WriteTriggerFunction(writer, param.Function, formatVersion, subVersion, isChildFunction: false);
             }
 
             // Write ArrayIndexer flag and data
-            writer.WriteBool(param.ArrayIndexer is not null);
+            WriteWTGBool(writer,param.ArrayIndexer is not null);
             if (param.ArrayIndexer is not null)
             {
                 WriteTriggerFunctionParameter(writer, param.ArrayIndexer, formatVersion, subVersion);
