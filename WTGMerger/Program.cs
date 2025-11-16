@@ -1900,12 +1900,19 @@ namespace WTGMerger
 
             // Copy missing variables from source to target before copying triggers
             DiagnosticLogger.Log("Copying missing variables from source to target");
-            CopyMissingVariables(source, target, triggersToCopy);
+            var variableIndexMapping = CopyMissingVariables(source, target, triggersToCopy);
 
             // Copy triggers
             Console.WriteLine($"\n  Copying {triggersToCopy.Count} trigger(s) to category '{destCategoryName}':");
             DiagnosticLogger.Log($"Copying {triggersToCopy.Count} trigger(s) to category '{destCategoryName}' at index {insertIndex}");
             DiagnosticLogger.Indent();
+
+            if (variableIndexMapping.Count > 0)
+            {
+                Console.WriteLine($"\n  Remapping {variableIndexMapping.Count} variable reference(s) in triggers...");
+                DiagnosticLogger.Log($"Remapping {variableIndexMapping.Count} variable indices");
+            }
+
             foreach (var sourceTrigger in triggersToCopy)
             {
                 // Use corruption-aware copy if source has corruption
@@ -1919,6 +1926,16 @@ namespace WTGMerger
                 else
                 {
                     copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), destCategory.Id);
+                }
+
+                // Remap variable indices from source to target
+                if (variableIndexMapping.Count > 0)
+                {
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[DEBUG] Remapping variables in trigger: {copiedTrigger.Name}");
+                    }
+                    RemapVariableIndices(copiedTrigger, variableIndexMapping);
                 }
 
                 target.TriggerItems.Insert(insertIndex, copiedTrigger);
@@ -2081,13 +2098,18 @@ namespace WTGMerger
 
             // Copy missing variables from source to target before copying triggers
             DiagnosticLogger.Log("Copying missing variables from source to target");
-            CopyMissingVariables(source, target, sourceCategoryTriggers);
+            var variableIndexMapping = CopyMissingVariables(source, target, sourceCategoryTriggers);
 
             // CRITICAL FOR 1.27 FORMAT: Insert triggers IMMEDIATELY after category
             // (not at the end of the file - file order determines visual nesting)
             var categoryIndex = target.TriggerItems.IndexOf(newCategory);
             int insertIndex = categoryIndex + 1;
             DiagnosticLogger.Log($"Category '{categoryName}' is at index {categoryIndex}, inserting {sourceCategoryTriggers.Count} triggers at index {insertIndex}");
+
+            if (variableIndexMapping.Count > 0)
+            {
+                DiagnosticLogger.Log($"Remapping {variableIndexMapping.Count} variable indices");
+            }
 
             DiagnosticLogger.Indent();
             foreach (var sourceTrigger in sourceCategoryTriggers)
@@ -2103,6 +2125,16 @@ namespace WTGMerger
                 else
                 {
                     copiedTrigger = CopyTrigger(sourceTrigger, GetNextId(target), newCategory.Id);
+                }
+
+                // Remap variable indices from source to target
+                if (variableIndexMapping.Count > 0)
+                {
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[DEBUG] Remapping variables in trigger: {copiedTrigger.Name}");
+                    }
+                    RemapVariableIndices(copiedTrigger, variableIndexMapping);
                 }
 
                 target.TriggerItems.Insert(insertIndex, copiedTrigger);
@@ -2506,8 +2538,9 @@ namespace WTGMerger
 
         /// <summary>
         /// Copies variables used by triggers, with automatic renaming on conflicts
+        /// Returns a mapping of source variable index -> target variable index
         /// </summary>
-        static void CopyMissingVariables(MapTriggers source, MapTriggers target, List<TriggerDefinition> triggers, bool copyAllVariables = true)
+        static Dictionary<int, int> CopyMissingVariables(MapTriggers source, MapTriggers target, List<TriggerDefinition> triggers, bool copyAllVariables = false)
         {
             if (DEBUG_MODE)
             {
@@ -2515,6 +2548,9 @@ namespace WTGMerger
                 Console.WriteLine($"[DEBUG] Analyzing {triggers.Count} trigger(s)");
                 Console.WriteLine($"[DEBUG] Copy ALL variables: {copyAllVariables}");
             }
+
+            // Build mapping of source variable index -> target variable index
+            var indexMapping = new Dictionary<int, int>();
 
             // Collect variables to copy
             var usedVariables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -2572,7 +2608,7 @@ namespace WTGMerger
                     {
                         Console.WriteLine("[DEBUG] ═══ CopyMissingVariables END (no variables) ═══\n");
                     }
-                    return;
+                    return indexMapping;
                 }
 
                 Console.WriteLine($"\n  Analyzing {usedVariables.Count} variable(s) used by triggers:");
@@ -2594,12 +2630,23 @@ namespace WTGMerger
                     continue;
                 }
 
+                // Find source variable index
+                int sourceIndex = source.Variables.IndexOf(sourceVar);
+
                 // Check if variable exists in target
                 if (targetVarDict.TryGetValue(varName, out var targetVar))
                 {
                     // Variable exists in both - check type
                     if (sourceVar.Type == targetVar.Type)
                     {
+                        // Map source index to existing target index
+                        int targetIndex = target.Variables.IndexOf(targetVar);
+                        indexMapping[sourceIndex] = targetIndex;
+
+                        if (DEBUG_MODE)
+                        {
+                            Console.WriteLine($"[DEBUG] Index mapping: source[{sourceIndex}]='{varName}' -> target[{targetIndex}]");
+                        }
                         Console.WriteLine($"    ✓ '{varName}' already exists with same type - no action needed");
                     }
                     else
@@ -2617,6 +2664,7 @@ namespace WTGMerger
                         renamedMappings[varName] = newName;
 
                         // Create renamed copy
+                        int newTargetIndex = target.Variables.Count;  // Index where it will be added
                         var newVar = new VariableDefinition
                         {
                             Name = newName,
@@ -2634,6 +2682,14 @@ namespace WTGMerger
                         targetVarNames.Add(newName);
                         renamedCount++;
 
+                        // Map source index to new target index
+                        indexMapping[sourceIndex] = newTargetIndex;
+
+                        if (DEBUG_MODE)
+                        {
+                            Console.WriteLine($"[DEBUG] Index mapping: source[{sourceIndex}]='{varName}' -> target[{newTargetIndex}]='{newName}' (renamed)");
+                        }
+
                         Console.ForegroundColor = ConsoleColor.Green;
                         Console.WriteLine($"    ✓ Renamed and copied: '{varName}' → '{newName}'");
                         Console.ResetColor();
@@ -2642,6 +2698,7 @@ namespace WTGMerger
                 else
                 {
                     // Variable doesn't exist in target - copy it
+                    int newTargetIndex = target.Variables.Count;  // Index where it will be added
                     var newVar = new VariableDefinition
                     {
                         Name = sourceVar.Name,
@@ -2658,6 +2715,14 @@ namespace WTGMerger
                     target.Variables.Add(newVar);
                     targetVarNames.Add(newVar.Name);
                     copiedCount++;
+
+                    // Map source index to new target index
+                    indexMapping[sourceIndex] = newTargetIndex;
+
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[DEBUG] Index mapping: source[{sourceIndex}]='{varName}' -> target[{newTargetIndex}]");
+                    }
                     Console.WriteLine($"    + Copied: '{newVar.Name}' ({newVar.Type})");
                 }
             }
@@ -2708,7 +2773,96 @@ namespace WTGMerger
 
             if (DEBUG_MODE)
             {
+                Console.WriteLine($"[DEBUG] Total index mappings: {indexMapping.Count}");
                 Console.WriteLine("[DEBUG] ═══ CopyMissingVariables END ═══\n");
+            }
+
+            return indexMapping;
+        }
+
+        /// <summary>
+        /// Remaps variable indices in a trigger from source to target
+        /// </summary>
+        static void RemapVariableIndices(TriggerDefinition trigger, Dictionary<int, int> indexMapping)
+        {
+            if (indexMapping.Count == 0)
+            {
+                return;  // No remapping needed
+            }
+
+            foreach (var function in trigger.Functions)
+            {
+                RemapVariableIndicesInFunction(function, indexMapping);
+            }
+        }
+
+        /// <summary>
+        /// Recursively remaps variable indices in a function and its parameters
+        /// </summary>
+        static void RemapVariableIndicesInFunction(TriggerFunction function, Dictionary<int, int> indexMapping)
+        {
+            foreach (var param in function.Parameters)
+            {
+                if (param.Type == TriggerFunctionParameterType.Variable)
+                {
+                    // param.Value contains the variable index as a string
+                    if (int.TryParse(param.Value, out int oldIndex))
+                    {
+                        if (indexMapping.TryGetValue(oldIndex, out int newIndex))
+                        {
+                            if (DEBUG_MODE)
+                            {
+                                Console.WriteLine($"[DEBUG]   Remapping variable reference: [{oldIndex}] -> [{newIndex}]");
+                            }
+                            param.Value = newIndex.ToString();
+                        }
+                    }
+                }
+
+                // Process nested function
+                if (param.Function != null)
+                {
+                    RemapVariableIndicesInFunction(param.Function, indexMapping);
+                }
+
+                // Process array indexer
+                if (param.ArrayIndexer != null)
+                {
+                    RemapVariableIndicesInParameter(param.ArrayIndexer, indexMapping);
+                }
+            }
+
+            // Process child functions (if-then-else blocks)
+            foreach (var childFunc in function.ChildFunctions)
+            {
+                RemapVariableIndicesInFunction(childFunc, indexMapping);
+            }
+        }
+
+        /// <summary>
+        /// Recursively remaps variable indices in a parameter
+        /// </summary>
+        static void RemapVariableIndicesInParameter(TriggerFunctionParameter param, Dictionary<int, int> indexMapping)
+        {
+            if (param.Type == TriggerFunctionParameterType.Variable)
+            {
+                if (int.TryParse(param.Value, out int oldIndex))
+                {
+                    if (indexMapping.TryGetValue(oldIndex, out int newIndex))
+                    {
+                        param.Value = newIndex.ToString();
+                    }
+                }
+            }
+
+            if (param.Function != null)
+            {
+                RemapVariableIndicesInFunction(param.Function, indexMapping);
+            }
+
+            if (param.ArrayIndexer != null)
+            {
+                RemapVariableIndicesInParameter(param.ArrayIndexer, indexMapping);
             }
         }
 
