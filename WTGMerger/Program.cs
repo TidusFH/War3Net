@@ -1868,9 +1868,23 @@ namespace WTGMerger
             }
 
             // Find or create destination category
+            // IMPORTANT: Prefer non-comment categories (comment categories are visual separators)
             var destCategory = target.TriggerItems
                 .OfType<TriggerCategoryDefinition>()
-                .FirstOrDefault(c => c.Name.Equals(destCategoryName, StringComparison.OrdinalIgnoreCase));
+                .Where(c => c.Name.Equals(destCategoryName, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(c => c.IsComment ? 1 : 0)  // Non-comment categories first
+                .FirstOrDefault();
+
+            // Check if we found a comment category (shouldn't happen with OrderBy, but safety check)
+            if (destCategory != null && destCategory.IsComment)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"\n  ⚠ WARNING: '{destCategoryName}' is a comment category (visual separator)");
+                Console.WriteLine($"     Comment categories cannot contain triggers. Creating new category instead.");
+                Console.ResetColor();
+                DiagnosticLogger.Log($"Found category '{destCategoryName}' but it's a comment - creating new real category");
+                destCategory = null;  // Force creation of new category
+            }
 
             if (destCategory == null)
             {
@@ -2158,16 +2172,30 @@ namespace WTGMerger
                 DiagnosticLogger.Log("WARNING: Source map has ID corruption - using repair-aware copy");
             }
 
-            // Find source category
+            // Find source category (prefer non-comment categories)
             var sourceCategory = source.TriggerItems
                 .OfType<TriggerCategoryDefinition>()
-                .FirstOrDefault(c => c.Name.Equals(categoryName, StringComparison.OrdinalIgnoreCase));
+                .Where(c => c.Name.Equals(categoryName, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(c => c.IsComment ? 1 : 0)  // Non-comment categories first
+                .FirstOrDefault();
 
             if (sourceCategory == null)
             {
                 DiagnosticLogger.Log($"ERROR: Category '{categoryName}' not found in source");
                 DiagnosticLogger.LogOperationEnd($"MERGE CATEGORY '{categoryName}' (Option 4)", false);
                 throw new InvalidOperationException($"Category '{categoryName}' not found in source");
+            }
+
+            // Prevent copying comment categories (they're visual separators, not real categories)
+            if (sourceCategory.IsComment)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"\n  ❌ ERROR: Cannot merge '{categoryName}' - it's a comment category (visual separator)");
+                Console.WriteLine($"     Comment categories don't contain triggers and shouldn't be copied.");
+                Console.ResetColor();
+                DiagnosticLogger.Log($"ERROR: Attempted to merge comment category '{categoryName}'");
+                DiagnosticLogger.LogOperationEnd($"MERGE CATEGORY '{categoryName}' (Option 4)", false);
+                return;
             }
 
             DiagnosticLogger.Log($"Found source category: ID={sourceCategory.Id}, ParentId={sourceCategory.ParentId}");
@@ -2177,10 +2205,12 @@ namespace WTGMerger
             Console.WriteLine($"  Found {sourceCategoryTriggers.Count} triggers in source category");
             DiagnosticLogger.Log($"Found {sourceCategoryTriggers.Count} triggers in source category");
 
-            // Check if category already exists in target
+            // Check if category already exists in target (ignore comment categories)
             var targetCategory = target.TriggerItems
                 .OfType<TriggerCategoryDefinition>()
-                .FirstOrDefault(c => c.Name.Equals(categoryName, StringComparison.OrdinalIgnoreCase));
+                .Where(c => c.Name.Equals(categoryName, StringComparison.OrdinalIgnoreCase))
+                .Where(c => !c.IsComment)  // Ignore comment categories
+                .FirstOrDefault();
 
             if (targetCategory != null)
             {
@@ -3720,9 +3750,12 @@ namespace WTGMerger
         /// </summary>
         static void RemoveCategory(MapTriggers triggers, string categoryName)
         {
+            // Prefer non-comment categories (comment categories are visual separators)
             var category = triggers.TriggerItems
                 .OfType<TriggerCategoryDefinition>()
-                .FirstOrDefault(c => c.Name.Equals(categoryName, StringComparison.OrdinalIgnoreCase));
+                .Where(c => c.Name.Equals(categoryName, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(c => c.IsComment ? 1 : 0)  // Non-comment categories first
+                .FirstOrDefault();
 
             if (category == null)
             {
