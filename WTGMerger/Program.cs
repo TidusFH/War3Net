@@ -2507,7 +2507,7 @@ namespace WTGMerger
         /// <summary>
         /// Copies variables used by triggers, with automatic renaming on conflicts
         /// </summary>
-        static void CopyMissingVariables(MapTriggers source, MapTriggers target, List<TriggerDefinition> triggers, bool copyAllVariables = true)
+        static void CopyMissingVariables(MapTriggers source, MapTriggers target, List<TriggerDefinition> triggers, bool copyAllVariables = false)
         {
             if (DEBUG_MODE)
             {
@@ -2753,7 +2753,7 @@ namespace WTGMerger
             {
                 if (DEBUG_MODE)
                 {
-                    Console.WriteLine($"[DEBUG]       Param: Type={param.Type}, Value='{param.Value}'");
+                    Console.WriteLine($"[DEBUG]       Param: Type={param.Type}, Value='{param.Value}', HasFunction={param.Function != null}, HasArrayIndexer={param.ArrayIndexer != null}");
                 }
 
                 if (param.Type == TriggerFunctionParameterType.Variable)
@@ -2765,10 +2765,17 @@ namespace WTGMerger
                         if (DEBUG_MODE)
                         {
                             Console.ForegroundColor = ConsoleColor.Cyan;
-                            Console.WriteLine($"[DEBUG]       >>> VARIABLE DETECTED: '{varName}'");
+                            Console.WriteLine($"[DEBUG]       >>> VARIABLE DETECTED: '{varName}' (from param.Value='{param.Value}')");
                             Console.ResetColor();
                         }
                         usedVariables.Add(varName);
+                    }
+                    else
+                    {
+                        // Variable reference but couldn't resolve name
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"[DEBUG]       !!! UNRESOLVED VARIABLE: Type=Variable but couldn't extract name from Value='{param.Value}'");
+                        Console.ResetColor();
                     }
                 }
 
