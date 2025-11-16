@@ -2648,6 +2648,16 @@ namespace WTGMerger
                 Console.WriteLine($"\n  ✓ Copied {copiedCount} variable(s), renamed {renamedCount} variable(s)");
                 Console.ResetColor();
             }
+            else if (usedVariables.Count > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"\n  ⚠ Warning: {usedVariables.Count} variable(s) were referenced but not found in source map:");
+                foreach (var varName in usedVariables.Take(10))
+                {
+                    Console.WriteLine($"      - '{varName}'");
+                }
+                Console.ResetColor();
+            }
 
             // Apply renamings to triggers if any
             if (renamedMappings.Count > 0)
