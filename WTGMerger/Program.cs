@@ -2017,15 +2017,50 @@ namespace WTGMerger
                     foreach (var trigger in orphanedTriggers)
                     {
                         Console.WriteLine($"      - {trigger.Name}");
-
-                        // Move to root level (ParentId = -1)
-                        trigger.ParentId = -1;
-                        fixedCount++;
                     }
 
-                    Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine($"  ✓ Moved {orphanedTriggers.Count} trigger(s) to root level");
-                    Console.ResetColor();
+                    // Try to find the next non-comment category after this comment category in file order
+                    // This is the most likely intended parent
+                    int commentIndex = triggers.TriggerItems.IndexOf(commentCat);
+                    var nextCategory = triggers.TriggerItems
+                        .Skip(commentIndex + 1)
+                        .OfType<TriggerCategoryDefinition>()
+                        .FirstOrDefault(c => !c.IsComment);
+
+                    if (nextCategory != null)
+                    {
+                        // Reassign to the next real category
+                        Console.ForegroundColor = ConsoleColor.Cyan;
+                        Console.WriteLine($"  → Found next category: '{nextCategory.Name}' (ID={nextCategory.Id})");
+                        Console.ResetColor();
+
+                        foreach (var trigger in orphanedTriggers)
+                        {
+                            trigger.ParentId = nextCategory.Id;
+                            fixedCount++;
+                        }
+
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"  ✓ Reassigned {orphanedTriggers.Count} trigger(s) to '{nextCategory.Name}'");
+                        Console.ResetColor();
+                    }
+                    else
+                    {
+                        // No next category found - move to root level
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"  ⚠ No next category found - moving to root level");
+                        Console.ResetColor();
+
+                        foreach (var trigger in orphanedTriggers)
+                        {
+                            trigger.ParentId = -1;
+                            fixedCount++;
+                        }
+
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"  ✓ Moved {orphanedTriggers.Count} trigger(s) to root level");
+                        Console.ResetColor();
+                    }
                 }
             }
 
