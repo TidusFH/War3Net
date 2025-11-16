@@ -368,8 +368,8 @@ namespace WTGMerger
         {
             writer.Write((int)function.Type);
 
-            // BUGFIX #2: Write Branch field for child functions
-            if (isChildFunction && function.Branch.HasValue)
+            // Write Branch field for child functions (only child functions have Branch set)
+            if (function.Branch.HasValue)
             {
                 writer.Write(function.Branch.Value);
             }
