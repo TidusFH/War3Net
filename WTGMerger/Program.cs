@@ -2723,6 +2723,20 @@ namespace WTGMerger
                     {
                         Console.WriteLine($"[DEBUG] Index mapping: source[{sourceIndex}]='{varName}' -> target[{newTargetIndex}]");
                     }
+
+                    // Check for preplaced unit/destructable/region references that might break
+                    if (sourceVar.IsInitialized && !string.IsNullOrEmpty(sourceVar.InitialValue))
+                    {
+                        if (IsPreplacedObjectReference(sourceVar.InitialValue, sourceVar.Type))
+                        {
+                            Console.ForegroundColor = ConsoleColor.Yellow;
+                            Console.WriteLine($"    ⚠ WARNING: '{varName}' references preplaced object: {sourceVar.InitialValue}");
+                            Console.WriteLine($"      This reference may break if the object doesn't exist in target map!");
+                            Console.WriteLine($"      You may need to manually reassign this variable in World Editor.");
+                            Console.ResetColor();
+                        }
+                    }
+
                     Console.WriteLine($"    + Copied: '{newVar.Name}' ({newVar.Type})");
                 }
             }
@@ -3038,6 +3052,50 @@ namespace WTGMerger
 
             // Last resort
             return $"{baseName}_{Guid.NewGuid().ToString().Substring(0, 8)}";
+        }
+
+        /// <summary>
+        /// Checks if a variable's initial value references a preplaced object (unit, destructable, region, etc.)
+        /// These references may break when merging to a different map
+        /// </summary>
+        static bool IsPreplacedObjectReference(string initialValue, string variableType)
+        {
+            if (string.IsNullOrWhiteSpace(initialValue))
+            {
+                return false;
+            }
+
+            // Common JASS prefixes for preplaced objects
+            string[] preplacedPrefixes = { "gg_unit_", "gg_dest_", "gg_rct_", "gg_trg_", "gg_snd_", "gg_cam_" };
+
+            foreach (var prefix in preplacedPrefixes)
+            {
+                if (initialValue.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            // Check for specific variable types that commonly reference preplaced objects
+            string[] preplacedTypes = { "unit", "destructable", "region", "rect", "trigger", "sound", "camerasetup" };
+
+            if (preplacedTypes.Any(t => variableType.Equals(t, StringComparison.OrdinalIgnoreCase)))
+            {
+                // If it's a preplaced type and contains underscores + numbers, likely a reference
+                // Examples: "Illidan_0001", "hero_unit_03", etc.
+                if (initialValue.Contains("_") && initialValue.Any(char.IsDigit))
+                {
+                    return true;
+                }
+
+                // Check for <gen> suffix (though this might not appear in binary format)
+                if (initialValue.Contains("<gen>") || initialValue.Contains("gen>"))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
