@@ -21,25 +21,6 @@ namespace WTGMerger
             DebugMode = enabled;
         }
 
-        /// <summary>
-        /// Writes a null-terminated string (WTG format)
-        /// CRITICAL: War3Net's WriteString adds extra bytes - use our own!
-        /// </summary>
-        private static void WriteWTGString(BinaryWriter writer, string value)
-        {
-            if (string.IsNullOrEmpty(value))
-            {
-                writer.Write((byte)0); // Just null terminator
-                return;
-            }
-
-            // Write UTF-8 bytes
-            byte[] bytes = Encoding.UTF8.GetBytes(value);
-            writer.Write(bytes);
-
-            // Write null terminator
-            writer.Write((byte)0);
-        }
 
         /// <summary>
         /// Writes MapTriggers to a WTG file with full control over format
@@ -57,6 +38,28 @@ namespace WTGMerger
             using var fileStream = File.Create(filePath);
             using var writer = new BinaryWriter(fileStream);
 
+            WriteMapTriggers(writer, triggers);
+
+            if (DebugMode)
+            {
+                Console.WriteLine($"[War3Writer] File size: {fileStream.Length} bytes");
+                Console.WriteLine($"[War3Writer] Write complete");
+            }
+        }
+
+        /// <summary>
+        /// Writes MapTriggers to a BinaryWriter (stream overload)
+        /// </summary>
+        public static void WriteMapTriggers(BinaryWriter writer, MapTriggers triggers)
+        {
+            if (DebugMode)
+            {
+                Console.WriteLine($"[War3Writer] Writing to stream");
+                Console.WriteLine($"[War3Writer] Format: {triggers.FormatVersion}, SubVersion: {triggers.SubVersion?.ToString() ?? "null"}");
+                Console.WriteLine($"[War3Writer] Variables: {triggers.Variables.Count}");
+                Console.WriteLine($"[War3Writer] Trigger Items: {triggers.TriggerItems.Count}");
+            }
+
             // Write file signature
             writer.Write(0x21475457); // 'WTG!'
 
@@ -69,12 +72,6 @@ namespace WTGMerger
             {
                 // WC3 1.31+ format (SubVersion=v4 or v7)
                 WriteFormatNew(writer, triggers);
-            }
-
-            if (DebugMode)
-            {
-                Console.WriteLine($"[War3Writer] File size: {fileStream.Length} bytes");
-                Console.WriteLine($"[War3Writer] Write complete");
             }
         }
 
@@ -150,7 +147,7 @@ namespace WTGMerger
         private static void WriteCategoryDefinition127(BinaryWriter writer, TriggerCategoryDefinition category, MapTriggersFormatVersion formatVersion)
         {
             writer.Write(category.Id);
-            WriteWTGString(writer, category.Name);
+            writer.WriteString(category.Name);
 
             if (formatVersion >= MapTriggersFormatVersion.v7)
             {
@@ -169,8 +166,8 @@ namespace WTGMerger
         /// </summary>
         private static void WriteVariableDefinition127(BinaryWriter writer, VariableDefinition variable, MapTriggersFormatVersion formatVersion)
         {
-            WriteWTGString(writer, variable.Name);
-            WriteWTGString(writer, variable.Type);
+            writer.WriteString(variable.Name);
+            writer.WriteString(variable.Type);
             writer.Write(variable.Unk);
             writer.WriteBool(variable.IsArray);
 
@@ -180,7 +177,7 @@ namespace WTGMerger
             }
 
             writer.WriteBool(variable.IsInitialized);
-            WriteWTGString(writer, variable.InitialValue);
+            writer.WriteString(variable.InitialValue);
 
             // NOTE: Id and ParentId are NOT written in 1.27 format
             if (DebugMode)
@@ -194,8 +191,8 @@ namespace WTGMerger
         /// </summary>
         private static void WriteTriggerDefinition127(BinaryWriter writer, TriggerDefinition trigger, MapTriggersFormatVersion formatVersion)
         {
-            WriteWTGString(writer, trigger.Name);
-            WriteWTGString(writer, trigger.Description);
+            writer.WriteString(trigger.Name);
+            writer.WriteString(trigger.Description);
 
             if (formatVersion >= MapTriggersFormatVersion.v7)
             {
@@ -287,7 +284,7 @@ namespace WTGMerger
         private static void WriteCategoryDefinitionNew(BinaryWriter writer, TriggerCategoryDefinition category, MapTriggersFormatVersion formatVersion)
         {
             writer.Write(category.Id);
-            WriteWTGString(writer, category.Name);
+            writer.WriteString(category.Name);
 
             if (formatVersion >= MapTriggersFormatVersion.v7)
             {
@@ -308,8 +305,8 @@ namespace WTGMerger
         /// </summary>
         private static void WriteVariableDefinitionNew(BinaryWriter writer, VariableDefinition variable, MapTriggersFormatVersion formatVersion)
         {
-            WriteWTGString(writer, variable.Name);
-            WriteWTGString(writer, variable.Type);
+            writer.WriteString(variable.Name);
+            writer.WriteString(variable.Type);
             writer.Write(variable.Unk);
             writer.WriteBool(variable.IsArray);
 
@@ -319,7 +316,7 @@ namespace WTGMerger
             }
 
             writer.WriteBool(variable.IsInitialized);
-            WriteWTGString(writer, variable.InitialValue);
+            writer.WriteString(variable.InitialValue);
 
             writer.Write(variable.Id);
             writer.Write(variable.ParentId);
@@ -335,8 +332,8 @@ namespace WTGMerger
         /// </summary>
         private static void WriteTriggerDefinitionNew(BinaryWriter writer, TriggerDefinition trigger, MapTriggersFormatVersion formatVersion)
         {
-            WriteWTGString(writer, trigger.Name);
-            WriteWTGString(writer, trigger.Description);
+            writer.WriteString(trigger.Name);
+            writer.WriteString(trigger.Description);
 
             if (formatVersion >= MapTriggersFormatVersion.v7)
             {
@@ -371,14 +368,14 @@ namespace WTGMerger
         {
             writer.Write((int)function.Type);
 
-            // BUGFIX #2: Write Branch field for child functions
-            if (isChildFunction && function.Branch.HasValue)
+            // Write Branch field for child functions (only child functions have Branch set)
+            if (function.Branch.HasValue)
             {
                 writer.Write(function.Branch.Value);
             }
 
             // BUGFIX #3: Name should ALWAYS be written (not conditional on format version)
-            WriteWTGString(writer, function.Name ?? string.Empty);
+            writer.WriteString(function.Name ?? string.Empty);
 
             writer.WriteBool(function.IsEnabled);
 
@@ -406,7 +403,7 @@ namespace WTGMerger
         private static void WriteTriggerFunctionParameter(BinaryWriter writer, TriggerFunctionParameter param, MapTriggersFormatVersion formatVersion, MapTriggersSubVersion? subVersion)
         {
             writer.Write((int)param.Type);
-            WriteWTGString(writer, param.Value ?? string.Empty);
+            writer.WriteString(param.Value ?? string.Empty);
 
             // BUGFIX #1: Always write bool flags before Function and ArrayIndexer
             // These are NOT mutually exclusive - both flags must be written separately

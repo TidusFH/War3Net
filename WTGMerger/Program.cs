@@ -2507,56 +2507,76 @@ namespace WTGMerger
         /// <summary>
         /// Copies variables used by triggers, with automatic renaming on conflicts
         /// </summary>
-        static void CopyMissingVariables(MapTriggers source, MapTriggers target, List<TriggerDefinition> triggers)
+        static void CopyMissingVariables(MapTriggers source, MapTriggers target, List<TriggerDefinition> triggers, bool copyAllVariables = true)
         {
             if (DEBUG_MODE)
             {
                 Console.WriteLine("\n[DEBUG] ═══ CopyMissingVariables START ═══");
                 Console.WriteLine($"[DEBUG] Analyzing {triggers.Count} trigger(s)");
+                Console.WriteLine($"[DEBUG] Copy ALL variables: {copyAllVariables}");
             }
 
-            // Collect all variables used by the triggers being copied
+            // Collect variables to copy
             var usedVariables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var trigger in triggers)
+
+            if (copyAllVariables)
             {
-                if (DEBUG_MODE)
+                // Copy ALL variables from source map (safer for maps with global variables)
+                Console.WriteLine($"\n  Copying ALL {source.Variables.Count} variable(s) from source map:");
+                foreach (var sourceVar in source.Variables)
                 {
-                    Console.WriteLine($"[DEBUG] Scanning trigger: {trigger.Name}");
+                    usedVariables.Add(sourceVar.Name);
                 }
 
-                var varsInTrigger = GetVariablesUsedByTrigger(trigger, source);
-
                 if (DEBUG_MODE)
                 {
-                    Console.WriteLine($"[DEBUG]   Found {varsInTrigger.Count} variable(s) in this trigger");
-                    foreach (var v in varsInTrigger)
+                    Console.WriteLine($"[DEBUG] Added all {source.Variables.Count} source variables to copy list");
+                }
+            }
+            else
+            {
+                // Only copy variables explicitly referenced by the triggers being copied
+                foreach (var trigger in triggers)
+                {
+                    if (DEBUG_MODE)
                     {
-                        Console.WriteLine($"[DEBUG]     - {v}");
+                        Console.WriteLine($"[DEBUG] Scanning trigger: {trigger.Name}");
+                    }
+
+                    var varsInTrigger = GetVariablesUsedByTrigger(trigger, source);
+
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine($"[DEBUG]   Found {varsInTrigger.Count} variable(s) in this trigger");
+                        foreach (var v in varsInTrigger)
+                        {
+                            Console.WriteLine($"[DEBUG]     - {v}");
+                        }
+                    }
+
+                    foreach (var varName in varsInTrigger)
+                    {
+                        usedVariables.Add(varName);
                     }
                 }
 
-                foreach (var varName in varsInTrigger)
-                {
-                    usedVariables.Add(varName);
-                }
-            }
-
-            if (DEBUG_MODE)
-            {
-                Console.WriteLine($"[DEBUG] Total unique variables used: {usedVariables.Count}");
-            }
-
-            if (usedVariables.Count == 0)
-            {
-                Console.WriteLine("  ℹ No variables used by these triggers");
                 if (DEBUG_MODE)
                 {
-                    Console.WriteLine("[DEBUG] ═══ CopyMissingVariables END (no variables) ═══\n");
+                    Console.WriteLine($"[DEBUG] Total unique variables used: {usedVariables.Count}");
                 }
-                return;
-            }
 
-            Console.WriteLine($"\n  Analyzing {usedVariables.Count} variable(s) used by triggers:");
+                if (usedVariables.Count == 0)
+                {
+                    Console.WriteLine("  ℹ No variables used by these triggers");
+                    if (DEBUG_MODE)
+                    {
+                        Console.WriteLine("[DEBUG] ═══ CopyMissingVariables END (no variables) ═══\n");
+                    }
+                    return;
+                }
+
+                Console.WriteLine($"\n  Analyzing {usedVariables.Count} variable(s) used by triggers:");
+            }
 
             var targetVarNames = new HashSet<string>(target.Variables.Select(v => v.Name), StringComparer.OrdinalIgnoreCase);
             var sourceVarDict = source.Variables.ToDictionary(v => v.Name, v => v, StringComparer.OrdinalIgnoreCase);
@@ -2646,6 +2666,16 @@ namespace WTGMerger
             {
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine($"\n  ✓ Copied {copiedCount} variable(s), renamed {renamedCount} variable(s)");
+                Console.ResetColor();
+            }
+            else if (usedVariables.Count > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"\n  ⚠ Warning: {usedVariables.Count} variable(s) were referenced but not found in source map:");
+                foreach (var varName in usedVariables.Take(10))
+                {
+                    Console.WriteLine($"      - '{varName}'");
+                }
                 Console.ResetColor();
             }
 
@@ -3664,24 +3694,11 @@ namespace WTGMerger
             RenumberCategoriesSequentially(triggers);
             DiagnosticLogger.LogMapTriggersState(triggers, "After Renumbering");
 
-            // Serialize triggers to memory
+            // Serialize triggers to memory using our custom writer (fixes BinaryWriter bugs)
             using var triggerStream = new MemoryStream();
             using var writer = new BinaryWriter(triggerStream);
 
-            // Use reflection to call internal WriteTo method
-            var writeToMethod = typeof(MapTriggers).GetMethod(
-                "WriteTo",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-                null,
-                new[] { typeof(BinaryWriter) },
-                null);
-
-            if (writeToMethod == null)
-            {
-                throw new InvalidOperationException("Could not find internal WriteTo(BinaryWriter) method");
-            }
-
-            writeToMethod.Invoke(triggers, new object[] { writer });
+            War3Writer.WriteMapTriggers(writer, triggers);
             writer.Flush();
 
             if (DEBUG_MODE)
