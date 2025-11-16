@@ -436,6 +436,10 @@ namespace WTGMerger
             if (param.Function is not null)
             {
                 WriteTriggerFunction(writer, param.Function, formatVersion, subVersion, isChildFunction: false);
+
+                // CRITICAL: WTG spec requires "Unknown (Always 0)" field after SubParameters/Function
+                // See: https://www.hiveworkshop.com/threads/warcraft-3-trigger-format-specification-wtg.279zerror6/
+                writer.Write(0);
             }
 
             // Write ArrayIndexer flag and data
