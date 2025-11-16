@@ -125,9 +125,9 @@ namespace WTGMerger
                     Console.WriteLine("4. Copy ENTIRE category");
                     Console.WriteLine("5. Copy SPECIFIC trigger(s)");
                     Console.WriteLine("6. Repair orphaned triggers (fix invalid ParentIds)");
-                    Console.WriteLine("7. Diagnose orphans (show orphaned triggers/categories)");
-                    Console.WriteLine("8. DEBUG: Show comprehensive debug information");
-                    Console.WriteLine("9. Run War3Diagnostic (comprehensive WTG file analysis)");
+                    Console.WriteLine("7. Fix triggers in comment categories (move to root)");
+                    Console.WriteLine("8. Diagnose orphans (show orphaned triggers/categories)");
+                    Console.WriteLine("9. DEBUG: Show comprehensive debug information");
                     Console.WriteLine("10. Perform FULL MERGE using intermediate approach");
                     Console.WriteLine("11. Perform SELECTIVE MERGE using intermediate approach (choose categories)");
                     Console.WriteLine("12. VALIDATE: Deep validation of specific trigger");
@@ -236,14 +236,30 @@ namespace WTGMerger
                             break;
 
                         case "7":
-                            OrphanRepair.DiagnoseOrphans(targetTriggers);
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║    FIX TRIGGERS IN COMMENT CATEGORIES                    ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nComment categories are visual separators and shouldn't contain triggers.");
+                            Console.WriteLine("This will move any triggers in comment categories to root level.");
+                            int fixedCommentCount = FixTriggersInCommentCategories(targetTriggers);
+                            if (fixedCommentCount > 0)
+                            {
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.WriteLine($"\n✓ Fixed {fixedCommentCount} trigger(s) in comment categories");
+                                Console.ResetColor();
+                                modified = true;
+                            }
                             break;
 
                         case "8":
-                            ShowComprehensiveDebugInfo(sourceTriggers, targetTriggers);
+                            OrphanRepair.DiagnoseOrphans(targetTriggers);
                             break;
 
                         case "9":
+                            ShowComprehensiveDebugInfo(sourceTriggers, targetTriggers);
+                            break;
+
+                        case "w":  // War3Diagnostic (accessible via 'w' key)
                             Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
                             Console.WriteLine("║        WAR3DIAGNOSTIC - COMPREHENSIVE ANALYSIS           ║");
                             Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
@@ -1753,9 +1769,21 @@ namespace WTGMerger
             {
                 var category = categories[i];
                 var categoryTriggers = GetTriggersInCategory(triggers, category.Name);
-                Console.WriteLine($"  [{i + 1}] {category.Name}");
-                Console.WriteLine($"      Triggers: {categoryTriggers.Count}");
-                Console.WriteLine($"      ID: {category.Id}");
+
+                // Show comment categories differently
+                if (category.IsComment)
+                {
+                    Console.ForegroundColor = ConsoleColor.DarkGray;
+                    Console.WriteLine($"  [{i + 1}] {category.Name} [COMMENT/SEPARATOR]");
+                    Console.WriteLine($"      ID: {category.Id}");
+                    Console.ResetColor();
+                }
+                else
+                {
+                    Console.WriteLine($"  [{i + 1}] {category.Name}");
+                    Console.WriteLine($"      Triggers: {categoryTriggers.Count}");
+                    Console.WriteLine($"      ID: {category.Id}");
+                }
                 Console.WriteLine();
             }
         }
@@ -1953,6 +1981,65 @@ namespace WTGMerger
         }
 
         /// <summary>
+        /// Finds and fixes triggers that are incorrectly assigned to comment categories
+        /// Comment categories are visual separators and should not contain triggers
+        /// </summary>
+        static int FixTriggersInCommentCategories(MapTriggers triggers)
+        {
+            var commentCategories = triggers.TriggerItems
+                .OfType<TriggerCategoryDefinition>()
+                .Where(c => c.IsComment)
+                .ToList();
+
+            if (commentCategories.Count == 0)
+            {
+                Console.WriteLine("  No comment categories found");
+                return 0;
+            }
+
+            int fixedCount = 0;
+            var allTriggers = triggers.TriggerItems.OfType<TriggerDefinition>().ToList();
+
+            Console.WriteLine($"\n  Found {commentCategories.Count} comment category/categories:");
+
+            foreach (var commentCat in commentCategories)
+            {
+                var orphanedTriggers = allTriggers
+                    .Where(t => t.ParentId == commentCat.Id)
+                    .ToList();
+
+                if (orphanedTriggers.Count > 0)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"\n  ⚠ Comment category '{commentCat.Name}' (ID={commentCat.Id}) has {orphanedTriggers.Count} trigger(s):");
+                    Console.ResetColor();
+
+                    foreach (var trigger in orphanedTriggers)
+                    {
+                        Console.WriteLine($"      - {trigger.Name}");
+
+                        // Move to root level (ParentId = -1)
+                        trigger.ParentId = -1;
+                        fixedCount++;
+                    }
+
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"  ✓ Moved {orphanedTriggers.Count} trigger(s) to root level");
+                    Console.ResetColor();
+                }
+            }
+
+            if (fixedCount == 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("  ✓ No triggers incorrectly assigned to comment categories");
+                Console.ResetColor();
+            }
+
+            return fixedCount;
+        }
+
+        /// <summary>
         /// Checks if a ParentId value represents root level (-1 or 0 in 1.27 format)
         /// </summary>
         static bool IsRootLevel(int parentId, MapTriggers triggers)
@@ -1981,12 +2068,26 @@ namespace WTGMerger
         /// </summary>
         static List<TriggerDefinition> GetTriggersInCategory(MapTriggers triggers, string categoryName)
         {
+            // IMPORTANT: Skip comment categories - they're visual separators, not real categories
+            // If multiple categories have the same name, prefer the non-comment one
             var category = triggers.TriggerItems
                 .OfType<TriggerCategoryDefinition>()
-                .FirstOrDefault(c => c.Name.Equals(categoryName, StringComparison.OrdinalIgnoreCase));
+                .Where(c => c.Name.Equals(categoryName, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(c => c.IsComment ? 1 : 0)  // Non-comment categories first
+                .FirstOrDefault();
 
             if (category == null)
             {
+                return new List<TriggerDefinition>();
+            }
+
+            // Comment categories should never contain triggers (they're visual separators)
+            if (category.IsComment)
+            {
+                if (DEBUG_MODE)
+                {
+                    Console.WriteLine($"[DEBUG] Warning: '{categoryName}' is a comment category - skipping trigger lookup");
+                }
                 return new List<TriggerDefinition>();
             }
 
