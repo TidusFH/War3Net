@@ -238,55 +238,69 @@ namespace WTGMerger
                 return -1;  // Shouldn't happen
             }
 
-            // Rebuild categories with new IDs
-            foreach (var categoryNode in allCategories)
+            // Helper function to recursively add items in hierarchical order
+            void AddNodeHierarchically(HierarchyNode node)
             {
-                var newCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
+                if (node is CategoryNode categoryNode)
                 {
-                    Id = categoryIdMap[categoryNode],
-                    ParentId = GetNewParentId(categoryNode),
-                    Name = categoryNode.Name,
-                    IsComment = categoryNode.IsComment,
-                    IsExpanded = categoryNode.IsExpanded
-                };
+                    var newCategory = new TriggerCategoryDefinition(TriggerItemType.Category)
+                    {
+                        Id = categoryIdMap[categoryNode],
+                        ParentId = GetNewParentId(categoryNode),
+                        Name = categoryNode.Name,
+                        IsComment = categoryNode.IsComment,
+                        IsExpanded = categoryNode.IsExpanded
+                    };
 
-                mapTriggers.TriggerItems.Add(newCategory);
+                    mapTriggers.TriggerItems.Add(newCategory);
 
-                if (debugMode)
+                    if (debugMode)
+                    {
+                        Console.WriteLine($"[DEBUG]   Rebuilt category '{newCategory.Name}' (ID={newCategory.Id}, ParentId={newCategory.ParentId})");
+                    }
+
+                    // Recursively add children (subcategories and triggers) immediately after this category
+                    foreach (var child in categoryNode.Children)
+                    {
+                        AddNodeHierarchically(child);
+                    }
+                }
+                else if (node is TriggerItemNode triggerNode)
                 {
-                    Console.WriteLine($"[DEBUG]   Rebuilt category '{newCategory.Name}' (ID={newCategory.Id}, ParentId={newCategory.ParentId})");
+                    // Clone the original trigger
+                    var original = triggerNode.OriginalTrigger;
+                    var newTrigger = new TriggerDefinition(original.Type)
+                    {
+                        Id = triggerIdMap[triggerNode],
+                        ParentId = GetNewParentId(triggerNode),
+                        Name = original.Name,
+                        Description = original.Description,
+                        IsEnabled = original.IsEnabled,
+                        IsCustomTextTrigger = original.IsCustomTextTrigger,
+                        RunOnMapInit = original.RunOnMapInit,
+                        IsComment = original.IsComment
+                    };
+
+                    // Copy functions (events, conditions, actions)
+                    foreach (var func in original.Functions)
+                    {
+                        newTrigger.Functions.Add(func);
+                    }
+
+                    mapTriggers.TriggerItems.Add(newTrigger);
+
+                    if (debugMode)
+                    {
+                        Console.WriteLine($"[DEBUG]   Rebuilt trigger '{newTrigger.Name}' (ID={newTrigger.Id}, ParentId={newTrigger.ParentId})");
+                    }
                 }
             }
 
-            // Rebuild triggers with new IDs
-            foreach (var triggerNode in allTriggers)
+            // Add all items in hierarchical depth-first order
+            // This ensures categories appear before their children in TriggerItems
+            foreach (var rootChild in intermediate.Root.Children)
             {
-                // Clone the original trigger
-                var original = triggerNode.OriginalTrigger;
-                var newTrigger = new TriggerDefinition(original.Type)
-                {
-                    Id = triggerIdMap[triggerNode],
-                    ParentId = GetNewParentId(triggerNode),
-                    Name = original.Name,
-                    Description = original.Description,
-                    IsEnabled = original.IsEnabled,
-                    IsCustomTextTrigger = original.IsCustomTextTrigger,
-                    RunOnMapInit = original.RunOnMapInit,
-                    IsComment = original.IsComment
-                };
-
-                // Copy functions (events, conditions, actions)
-                foreach (var func in original.Functions)
-                {
-                    newTrigger.Functions.Add(func);
-                }
-
-                mapTriggers.TriggerItems.Add(newTrigger);
-
-                if (debugMode)
-                {
-                    Console.WriteLine($"[DEBUG]   Rebuilt trigger '{newTrigger.Name}' (ID={newTrigger.Id}, ParentId={newTrigger.ParentId})");
-                }
+                AddNodeHierarchically(rootChild);
             }
 
             // Rebuild variables with new IDs
