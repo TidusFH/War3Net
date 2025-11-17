@@ -1766,8 +1766,44 @@ namespace WTGMerger
 
             Console.WriteLine($"\n  Total: {categories.Count} categories\n");
 
+            // DEBUG: Show category ID mapping and all trigger ParentIds
+            if (DEBUG_MODE)
+            {
+                Console.ForegroundColor = ConsoleColor.Magenta;
+                Console.WriteLine("  [DEBUG] ═══ CATEGORY ID MAPPING ═══");
+                Console.ResetColor();
+                foreach (var cat in categories)
+                {
+                    Console.WriteLine($"  [DEBUG] Category ID {cat.Id} = '{cat.Name}' {(cat.IsComment ? "[COMMENT]" : "")}");
+                }
+
+                var allTriggers = triggers.TriggerItems.OfType<TriggerDefinition>().ToList();
+                Console.ForegroundColor = ConsoleColor.Magenta;
+                Console.WriteLine($"\n  [DEBUG] ═══ ALL TRIGGERS ({allTriggers.Count} total) ═══");
+                Console.ResetColor();
+
+                var triggersByParent = allTriggers.GroupBy(t => t.ParentId).OrderBy(g => g.Key);
+                foreach (var group in triggersByParent)
+                {
+                    var parentCat = categories.FirstOrDefault(c => c.Id == group.Key);
+                    string parentName = parentCat != null ? $"'{parentCat.Name}'" : "(no matching category)";
+                    Console.WriteLine($"  [DEBUG] ParentId={group.Key} {parentName}: {group.Count()} triggers");
+                    foreach (var t in group.Take(3))
+                    {
+                        Console.WriteLine($"  [DEBUG]   • {t.Name}");
+                    }
+                    if (group.Count() > 3)
+                    {
+                        Console.WriteLine($"  [DEBUG]   ... and {group.Count() - 3} more");
+                    }
+                }
+                Console.ForegroundColor = ConsoleColor.Magenta;
+                Console.WriteLine("  [DEBUG] ═══════════════════════════\n");
+                Console.ResetColor();
+            }
+
             // Also detect triggers with incorrect ParentIds
-            var allTriggers = triggers.TriggerItems.OfType<TriggerDefinition>().ToList();
+            var allTriggers2 = triggers.TriggerItems.OfType<TriggerDefinition>().ToList();
             var misplacedTriggers = new List<(TriggerDefinition trigger, int expectedCategoryId, string actualCategoryName)>();
 
             for (int i = 0; i < categories.Count; i++)
@@ -1812,7 +1848,7 @@ namespace WTGMerger
 
             // Check for triggers with ParentIds that don't match any category
             var categoryIds = categories.Select(c => c.Id).ToHashSet();
-            var orphanedOrMisplaced = allTriggers
+            var orphanedOrMisplaced = allTriggers2
                 .Where(t => !IsRootLevel(t.ParentId, triggers) && !categoryIds.Contains(t.ParentId))
                 .ToList();
 
@@ -2194,10 +2230,26 @@ namespace WTGMerger
 
             // Get all triggers that have this category as their parent (using ParentId)
             // CRITICAL: Don't match triggers with ParentId=0 if that means "root level" in 1.27 format
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[DEBUG] GetTriggersInCategory: '{categoryName}' (ID={category.Id})");
+                Console.WriteLine($"[DEBUG]   Searching for triggers with ParentId={category.Id}");
+            }
+
             var triggersInCategory = triggers.TriggerItems
                 .OfType<TriggerDefinition>()
                 .Where(t => t.ParentId == category.Id && !IsRootLevel(t.ParentId, triggers))
                 .ToList();
+
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[DEBUG]   Found {triggersInCategory.Count} triggers");
+                foreach (var t in triggersInCategory)
+                {
+                    Console.WriteLine($"[DEBUG]     • {t.Name} (ParentId={t.ParentId})");
+                }
+            }
 
             return triggersInCategory;
         }
