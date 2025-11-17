@@ -1765,6 +1765,11 @@ namespace WTGMerger
             }
 
             Console.WriteLine($"\n  Total: {categories.Count} categories\n");
+
+            // Also detect triggers with incorrect ParentIds
+            var allTriggers = triggers.TriggerItems.OfType<TriggerDefinition>().ToList();
+            var misplacedTriggers = new List<(TriggerDefinition trigger, int expectedCategoryId, string actualCategoryName)>();
+
             for (int i = 0; i < categories.Count; i++)
             {
                 var category = categories[i];
@@ -1783,8 +1788,55 @@ namespace WTGMerger
                     Console.WriteLine($"  [{i + 1}] {category.Name}");
                     Console.WriteLine($"      Triggers: {categoryTriggers.Count}");
                     Console.WriteLine($"      ID: {category.Id}");
+
+                    // Show trigger names if there are any
+                    if (categoryTriggers.Count > 0)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Cyan;
+                        foreach (var trigger in categoryTriggers)
+                        {
+                            if (DEBUG_MODE)
+                            {
+                                Console.WriteLine($"        • {trigger.Name} (ParentId={trigger.ParentId})");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"        • {trigger.Name}");
+                            }
+                        }
+                        Console.ResetColor();
+                    }
                 }
                 Console.WriteLine();
+            }
+
+            // Check for triggers with ParentIds that don't match any category
+            var categoryIds = categories.Select(c => c.Id).ToHashSet();
+            var orphanedOrMisplaced = allTriggers
+                .Where(t => !IsRootLevel(t.ParentId, triggers) && !categoryIds.Contains(t.ParentId))
+                .ToList();
+
+            if (orphanedOrMisplaced.Count > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"\n  ⚠ WARNING: Found {orphanedOrMisplaced.Count} trigger(s) with invalid ParentIds:");
+                Console.ResetColor();
+
+                foreach (var trigger in orphanedOrMisplaced.Take(10))
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"    • {trigger.Name} (ParentId={trigger.ParentId} - category doesn't exist)");
+                    Console.ResetColor();
+                }
+
+                if (orphanedOrMisplaced.Count > 10)
+                {
+                    Console.WriteLine($"    ... and {orphanedOrMisplaced.Count - 10} more");
+                }
+
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine("\n  💡 Use Option 6 or 7 to fix these triggers");
+                Console.ResetColor();
             }
         }
 
