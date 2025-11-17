@@ -2192,56 +2192,14 @@ namespace WTGMerger
                 return new List<TriggerDefinition>();
             }
 
-            // WC3 1.27 format doesn't save ParentIds - it uses FILE ORDER for visual nesting
-            // WC3 1.31+ saves ParentIds and uses them
-            bool is127Format = triggers.SubVersion == null;
+            // Get all triggers that have this category as their parent (using ParentId)
+            // CRITICAL: Don't match triggers with ParentId=0 if that means "root level" in 1.27 format
+            var triggersInCategory = triggers.TriggerItems
+                .OfType<TriggerDefinition>()
+                .Where(t => t.ParentId == category.Id && !IsRootLevel(t.ParentId, triggers))
+                .ToList();
 
-            if (is127Format)
-            {
-                // For 1.27 format: Use file order
-                // All triggers immediately after a category (until next category) belong to it
-                var categoryIndex = triggers.TriggerItems.IndexOf(category);
-                var triggersInCategory = new List<TriggerDefinition>();
-
-                for (int i = categoryIndex + 1; i < triggers.TriggerItems.Count; i++)
-                {
-                    var item = triggers.TriggerItems[i];
-
-                    // Stop at next category
-                    if (item is TriggerCategoryDefinition)
-                    {
-                        break;
-                    }
-
-                    // Add trigger
-                    if (item is TriggerDefinition trigger)
-                    {
-                        triggersInCategory.Add(trigger);
-                    }
-                }
-
-                if (DEBUG_MODE)
-                {
-                    Console.WriteLine($"[DEBUG] GetTriggersInCategory (1.27 file order): '{categoryName}' has {triggersInCategory.Count} triggers");
-                }
-
-                return triggersInCategory;
-            }
-            else
-            {
-                // For 1.31+ format: Use ParentId matching (ParentIds are saved in the file)
-                var triggersInCategory = triggers.TriggerItems
-                    .OfType<TriggerDefinition>()
-                    .Where(t => t.ParentId == category.Id && !IsRootLevel(t.ParentId, triggers))
-                    .ToList();
-
-                if (DEBUG_MODE)
-                {
-                    Console.WriteLine($"[DEBUG] GetTriggersInCategory (1.31+ ParentId): '{categoryName}' has {triggersInCategory.Count} triggers");
-                }
-
-                return triggersInCategory;
-            }
+            return triggersInCategory;
         }
 
         /// <summary>
