@@ -1800,6 +1800,51 @@ namespace WTGMerger
                 Console.ForegroundColor = ConsoleColor.Magenta;
                 Console.WriteLine("  [DEBUG] ═══════════════════════════\n");
                 Console.ResetColor();
+
+                // NEW: Show complete file structure (TriggerItems order)
+                Console.ForegroundColor = ConsoleColor.Magenta;
+                Console.WriteLine("  [DEBUG] ═══ COMPLETE FILE STRUCTURE (TriggerItems order) ═══");
+                Console.ResetColor();
+                Console.WriteLine($"  [DEBUG] Total items in TriggerItems: {triggers.TriggerItems.Count}");
+                Console.WriteLine();
+
+                for (int i = 0; i < triggers.TriggerItems.Count; i++)
+                {
+                    var item = triggers.TriggerItems[i];
+
+                    if (item is TriggerCategoryDefinition cat)
+                    {
+                        string commentFlag = cat.IsComment ? " [COMMENT]" : "";
+                        Console.ForegroundColor = cat.IsComment ? ConsoleColor.DarkGray : ConsoleColor.Yellow;
+                        Console.WriteLine($"  [DEBUG] [{i:D4}] CATEGORY: '{cat.Name}' (ID={cat.Id}){commentFlag}");
+                        Console.ResetColor();
+                    }
+                    else if (item is TriggerDefinition trig)
+                    {
+                        var parentCat = categories.FirstOrDefault(c => c.Id == trig.ParentId);
+                        string parentInfo = parentCat != null
+                            ? $"'{parentCat.Name}'{(parentCat.IsComment ? " [COMMENT!]" : "")}"
+                            : "(no category)";
+
+                        // Highlight triggers in comment categories
+                        if (parentCat != null && parentCat.IsComment)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine($"  [DEBUG] [{i:D4}]   trigger: '{trig.Name}' (ParentId={trig.ParentId} -> {parentInfo}) ⚠");
+                            Console.ResetColor();
+                        }
+                        else
+                        {
+                            Console.ForegroundColor = ConsoleColor.Cyan;
+                            Console.WriteLine($"  [DEBUG] [{i:D4}]   trigger: '{trig.Name}' (ParentId={trig.ParentId} -> {parentInfo})");
+                            Console.ResetColor();
+                        }
+                    }
+                }
+
+                Console.ForegroundColor = ConsoleColor.Magenta;
+                Console.WriteLine("\n  [DEBUG] ═══════════════════════════════════════════════════\n");
+                Console.ResetColor();
             }
 
             // Also detect triggers with incorrect ParentIds
@@ -2121,36 +2166,60 @@ namespace WTGMerger
                         Console.WriteLine($"      - {trigger.Name}");
                     }
 
-                    // Try to find the next non-comment category after this comment category in file order
-                    // This is the most likely intended parent
+                    // Find position in file
                     int commentIndex = triggers.TriggerItems.IndexOf(commentCat);
+
+                    // Try to find the PREVIOUS non-comment category (comment likely ends a section)
+                    var prevCategory = triggers.TriggerItems
+                        .Take(commentIndex)
+                        .OfType<TriggerCategoryDefinition>()
+                        .Where(c => !c.IsComment)
+                        .LastOrDefault();
+
+                    // Also find the NEXT non-comment category (in case comment starts a section)
                     var nextCategory = triggers.TriggerItems
                         .Skip(commentIndex + 1)
                         .OfType<TriggerCategoryDefinition>()
                         .FirstOrDefault(c => !c.IsComment);
 
-                    if (nextCategory != null)
+                    if (DEBUG_MODE)
                     {
-                        // Reassign to the next real category
+                        Console.ForegroundColor = ConsoleColor.Magenta;
+                        Console.WriteLine($"\n  [DEBUG] Comment '{commentCat.Name}' at file index {commentIndex}:");
+                        Console.WriteLine($"  [DEBUG]   Previous category: {(prevCategory != null ? $"'{prevCategory.Name}' (ID={prevCategory.Id})" : "none")}");
+                        Console.WriteLine($"  [DEBUG]   Next category: {(nextCategory != null ? $"'{nextCategory.Name}' (ID={nextCategory.Id})" : "none")}");
+                        Console.ResetColor();
+                    }
+
+                    // Prefer PREVIOUS category (comment likely ends a section)
+                    var targetCategory = prevCategory ?? nextCategory;
+
+                    if (targetCategory != null)
+                    {
+                        string direction = prevCategory != null ? "previous" : "next";
                         Console.ForegroundColor = ConsoleColor.Cyan;
-                        Console.WriteLine($"  → Found next category: '{nextCategory.Name}' (ID={nextCategory.Id})");
+                        Console.WriteLine($"  → Using {direction} category: '{targetCategory.Name}' (ID={targetCategory.Id})");
                         Console.ResetColor();
 
                         foreach (var trigger in orphanedTriggers)
                         {
-                            trigger.ParentId = nextCategory.Id;
+                            if (DEBUG_MODE)
+                            {
+                                Console.WriteLine($"  [DEBUG] Reassigning '{trigger.Name}': ParentId {trigger.ParentId} -> {targetCategory.Id}");
+                            }
+                            trigger.ParentId = targetCategory.Id;
                             fixedCount++;
                         }
 
                         Console.ForegroundColor = ConsoleColor.Green;
-                        Console.WriteLine($"  ✓ Reassigned {orphanedTriggers.Count} trigger(s) to '{nextCategory.Name}'");
+                        Console.WriteLine($"  ✓ Reassigned {orphanedTriggers.Count} trigger(s) to '{targetCategory.Name}'");
                         Console.ResetColor();
                     }
                     else
                     {
-                        // No next category found - move to root level
+                        // No category found - move to root level
                         Console.ForegroundColor = ConsoleColor.Yellow;
-                        Console.WriteLine($"  ⚠ No next category found - moving to root level");
+                        Console.WriteLine($"  ⚠ No surrounding category found - moving to root level");
                         Console.ResetColor();
 
                         foreach (var trigger in orphanedTriggers)
