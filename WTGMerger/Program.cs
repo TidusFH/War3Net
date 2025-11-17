@@ -2201,9 +2201,7 @@ namespace WTGMerger
         }
 
         /// <summary>
-        /// Gets all triggers that belong to a specific category
-        /// For WC3 1.27 format: uses file order (ParentIds not saved to file)
-        /// For newer formats: uses ParentId matching
+        /// Gets all triggers that belong to a specific category (using ParentId)
         /// </summary>
         static List<TriggerDefinition> GetTriggersInCategory(MapTriggers triggers, string categoryName)
         {
@@ -2230,79 +2228,23 @@ namespace WTGMerger
                 return new List<TriggerDefinition>();
             }
 
-            // CRITICAL: In WC3 1.27 format, ParentIds are NOT saved to file
-            // World Editor uses file order to determine which triggers belong to which category
-            // So we must also use file order for 1.27 format files
-            bool is127Format = triggers.SubVersion == null;
+            // Get all triggers that have this category as their parent (using ParentId)
+            // CRITICAL: Don't match triggers with ParentId=0 if that means "root level" in 1.27 format
 
             if (DEBUG_MODE)
             {
                 Console.WriteLine($"[DEBUG] GetTriggersInCategory: '{categoryName}' (ID={category.Id})");
-                Console.WriteLine($"[DEBUG]   Format: {(is127Format ? "WC3 1.27 (using file order)" : "Newer (using ParentId)")}");
+                Console.WriteLine($"[DEBUG]   Searching for triggers with ParentId={category.Id}");
             }
 
-            List<TriggerDefinition> triggersInCategory;
-
-            if (is127Format)
-            {
-                // WC3 1.27: Use file order
-                // Find the index of this category in TriggerItems
-                int categoryIndex = triggers.TriggerItems.IndexOf(category);
-                if (categoryIndex == -1)
-                {
-                    return new List<TriggerDefinition>();
-                }
-
-                // Find the index of the next category (or end of list)
-                int nextCategoryIndex = -1;
-                for (int i = categoryIndex + 1; i < triggers.TriggerItems.Count; i++)
-                {
-                    if (triggers.TriggerItems[i] is TriggerCategoryDefinition)
-                    {
-                        nextCategoryIndex = i;
-                        break;
-                    }
-                }
-
-                // Get all triggers between this category and the next category
-                triggersInCategory = new List<TriggerDefinition>();
-                int endIndex = nextCategoryIndex == -1 ? triggers.TriggerItems.Count : nextCategoryIndex;
-
-                for (int i = categoryIndex + 1; i < endIndex; i++)
-                {
-                    if (triggers.TriggerItems[i] is TriggerDefinition trigger)
-                    {
-                        triggersInCategory.Add(trigger);
-                    }
-                }
-
-                if (DEBUG_MODE)
-                {
-                    Console.WriteLine($"[DEBUG]   Category at index {categoryIndex}, next category at {(nextCategoryIndex == -1 ? "end" : nextCategoryIndex.ToString())}");
-                    Console.WriteLine($"[DEBUG]   Found {triggersInCategory.Count} triggers by file order");
-                }
-            }
-            else
-            {
-                // Newer formats: Use ParentId matching
-                if (DEBUG_MODE)
-                {
-                    Console.WriteLine($"[DEBUG]   Searching for triggers with ParentId={category.Id}");
-                }
-
-                triggersInCategory = triggers.TriggerItems
-                    .OfType<TriggerDefinition>()
-                    .Where(t => t.ParentId == category.Id && !IsRootLevel(t.ParentId, triggers))
-                    .ToList();
-
-                if (DEBUG_MODE)
-                {
-                    Console.WriteLine($"[DEBUG]   Found {triggersInCategory.Count} triggers by ParentId");
-                }
-            }
+            var triggersInCategory = triggers.TriggerItems
+                .OfType<TriggerDefinition>()
+                .Where(t => t.ParentId == category.Id && !IsRootLevel(t.ParentId, triggers))
+                .ToList();
 
             if (DEBUG_MODE)
             {
+                Console.WriteLine($"[DEBUG]   Found {triggersInCategory.Count} triggers");
                 foreach (var t in triggersInCategory)
                 {
                     Console.WriteLine($"[DEBUG]     • {t.Name} (ParentId={t.ParentId})");
