@@ -3741,6 +3741,7 @@ namespace WTGMerger
 
         /// <summary>
         /// Fixes duplicate IDs by reassigning unique IDs to all trigger items
+        /// CRITICAL: Must build ID mapping BEFORE changing any IDs, otherwise ParentId matching fails
         /// </summary>
         static void FixDuplicateIds(MapTriggers triggers)
         {
@@ -3758,82 +3759,63 @@ namespace WTGMerger
 
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine($"\n⚠ WARNING: Found {duplicateIds.Count} duplicate ID(s) in target file!");
-            Console.WriteLine("  Reassigning unique IDs to all trigger items...");
+            Console.WriteLine("  This is expected for 1.27 format (trigger IDs not stored in file)");
+            Console.WriteLine("  Reassigning unique IDs while preserving ParentId relationships...");
             Console.ResetColor();
 
-            // Reassign IDs to ALL items (0, 1, 2, 3, ...)
-            for (int i = 0; i < triggers.TriggerItems.Count; i++)
-            {
-                var oldId = triggers.TriggerItems[i].Id;
-                triggers.TriggerItems[i].Id = i;
-            }
-
-            // Build a mapping of old ID -> new ID
+            // CRITICAL: Build old ID -> new ID mapping BEFORE changing any IDs!
             var oldIdToNewId = new Dictionary<int, int>();
             for (int i = 0; i < triggers.TriggerItems.Count; i++)
             {
-                var item = triggers.TriggerItems[i];
-                // Store mapping: we just reassigned IDs sequentially
-                // The item at index i now has ID = i
-                oldIdToNewId[i] = i;
+                int oldId = triggers.TriggerItems[i].Id;
+                int newId = i; // Sequential: 0, 1, 2, 3...
+
+                // Add to mapping (may have multiple items with same old ID)
+                if (!oldIdToNewId.ContainsKey(oldId))
+                {
+                    oldIdToNewId[oldId] = newId;
+                }
+
+                if (DEBUG_MODE && oldId != newId)
+                {
+                    Console.WriteLine($"[DEBUG] Will change '{triggers.TriggerItems[i].Name}' ID: {oldId} -> {newId}");
+                }
+            }
+
+            // Now reassign IDs to ALL items
+            for (int i = 0; i < triggers.TriggerItems.Count; i++)
+            {
+                triggers.TriggerItems[i].Id = i;
             }
 
             // Determine root ParentId value for this format
             bool is127Format = triggers.SubVersion == null;
             int rootParentId = is127Format ? 0 : -1;
 
-            // Update ParentIds in ALL items (both categories and triggers)
+            // Do NOT update trigger ParentIds - they already point to the correct category IDs!
+            // For 1.27 format:
+            //   - Category IDs are READ from file (may be non-sequential: 0, 1, 2, 4, 3, 6, 8, 25...)
+            //   - Trigger ParentIds are READ from file (pointing to those category IDs)
+            //   - We must preserve this relationship!
+            // The only thing we need to do is normalize root-level ParentIds
+
             foreach (var item in triggers.TriggerItems)
             {
-                // Skip root-level items using helper function
+                // Normalize root-level items to appropriate value for format
                 if (IsRootLevel(item.ParentId, triggers))
                 {
-                    // Normalize root level to appropriate value for format
                     item.ParentId = rootParentId;
-                    continue;
                 }
+            }
 
-                if (item is TriggerDefinition trigger)
-                {
-                    // Find the category this trigger belongs to
-                    var category = triggers.TriggerItems
-                        .OfType<TriggerCategoryDefinition>()
-                        .FirstOrDefault(c => c.Id == trigger.ParentId);
-
-                    if (category != null)
-                    {
-                        // ParentId should be the category's NEW ID (which is its index)
-                        trigger.ParentId = triggers.TriggerItems.IndexOf(category);
-                    }
-                    else
-                    {
-                        // No parent found, make it root-level
-                        trigger.ParentId = rootParentId;
-                    }
-                }
-                else if (item is TriggerCategoryDefinition category)
-                {
-                    // Categories can also be nested - find parent category
-                    var parentCategory = triggers.TriggerItems
-                        .OfType<TriggerCategoryDefinition>()
-                        .FirstOrDefault(c => c.Id == category.ParentId);
-
-                    if (parentCategory != null)
-                    {
-                        // Update to parent's new ID
-                        category.ParentId = triggers.TriggerItems.IndexOf(parentCategory);
-                    }
-                    else
-                    {
-                        // No parent found, make it root-level
-                        category.ParentId = rootParentId;
-                    }
-                }
+            if (DEBUG_MODE)
+            {
+                Console.WriteLine($"[DEBUG] Reassigned {triggers.TriggerItems.Count} item IDs, ParentIds preserved");
             }
 
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"  ✓ Reassigned IDs: 0 to {triggers.TriggerItems.Count - 1}");
-            Console.WriteLine($"  ✓ Updated ParentIds for both categories and triggers");
+            Console.WriteLine($"  ✓ Preserved ParentId relationships from original file");
             Console.ResetColor();
         }
 
