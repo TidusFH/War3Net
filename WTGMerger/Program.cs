@@ -2682,6 +2682,7 @@ namespace WTGMerger
         /// <summary>
         /// Fixes file order by moving all categories before triggers
         /// This ensures correct visual nesting in World Editor for WC3 1.27 format
+        /// NOTE: Does NOT renumber category IDs - just reorders items
         /// </summary>
         static void FixFileOrder(MapTriggers triggers)
         {
@@ -2706,45 +2707,13 @@ namespace WTGMerger
                 }
             }
 
-            // CRITICAL FIX: Build ID remapping before reordering
-            // When War3Net reads 1.27 format, it assigns category IDs sequentially based on file order
-            // After reordering, we must reassign IDs and update all trigger ParentIds
-            var categoryList = categories.Cast<TriggerCategoryDefinition>().ToList();
-            var oldIdToNewId = new Dictionary<int, int>();
-
-            for (int i = 0; i < categoryList.Count; i++)
-            {
-                int oldId = categoryList[i].Id;
-                int newId = i;  // Sequential IDs: 0, 1, 2, 3...
-                oldIdToNewId[oldId] = newId;
-
-                if (DEBUG_MODE && oldId != newId)
-                {
-                    Console.WriteLine($"[DEBUG] Remapping category '{categoryList[i].Name}': ID {oldId} -> {newId}");
-                }
-
-                categoryList[i].Id = newId;
-            }
-
-            // Update trigger ParentIds to match new category IDs
-            var triggerList = triggerDefs.Cast<TriggerDefinition>().ToList();
-            foreach (var trigger in triggerList)
-            {
-                if (trigger.ParentId >= 0 && oldIdToNewId.ContainsKey(trigger.ParentId))
-                {
-                    int oldParentId = trigger.ParentId;
-                    int newParentId = oldIdToNewId[oldParentId];
-
-                    if (DEBUG_MODE && oldParentId != newParentId)
-                    {
-                        Console.WriteLine($"[DEBUG] Remapping trigger '{trigger.Name}': ParentId {oldParentId} -> {newParentId}");
-                    }
-
-                    trigger.ParentId = newParentId;
-                }
-            }
+            // IMPORTANT: Do NOT renumber category IDs!
+            // War3Net reads category IDs directly from the file - they don't need to be sequential
+            // Non-sequential IDs work perfectly fine (as proven by maps created in World Editor)
+            // Renumbering causes ParentId corruption if any trigger ParentId update is missed
 
             // Rebuild TriggerItems with correct order: categories first, then triggers, then other items
+            // Keep all original IDs unchanged
             triggers.TriggerItems.Clear();
             foreach (var item in categories)
             {
@@ -2761,18 +2730,18 @@ namespace WTGMerger
 
             if (DEBUG_MODE)
             {
-                Console.WriteLine($"[DEBUG] Reordered: {categories.Count} categories, {triggerDefs.Count} triggers, {otherItems.Count} other items");
-                Console.WriteLine($"[DEBUG] Remapped {oldIdToNewId.Count(kvp => kvp.Key != kvp.Value)} category IDs");
+                Console.WriteLine($"[DEBUG] Reordered (IDs unchanged): {categories.Count} categories, {triggerDefs.Count} triggers, {otherItems.Count} other items");
             }
         }
 
         /// <summary>
-        /// Renumbers all categories sequentially (0, 1, 2, ...) and updates trigger ParentIds
-        /// CRITICAL: Must be called before writing to ensure IDs match what War3Net assigns when reading
+        /// Normalizes category ParentIds for 1.27 format (where ParentIds are not saved)
+        /// DOES NOT renumber category IDs - non-sequential IDs work perfectly fine!
+        /// War3Net reads/writes category IDs directly from/to the file - they don't need to be sequential
         /// </summary>
         static void RenumberCategoriesSequentially(MapTriggers triggers)
         {
-            DiagnosticLogger.Log("RenumberCategoriesSequentially: Starting");
+            DiagnosticLogger.Log("NormalizeCategoryParentIds: Starting");
             bool is127Format = triggers.SubVersion == null;
             DiagnosticLogger.Log($"Format: {(is127Format ? "1.27" : "newer")}");
 
@@ -2782,97 +2751,47 @@ namespace WTGMerger
                 .Where(c => c.Type != TriggerItemType.RootCategory)
                 .ToList();
 
-            DiagnosticLogger.Log($"Found {categories.Count} categories to renumber");
+            DiagnosticLogger.Log($"Found {categories.Count} categories");
 
-            // Build mapping of old ID to new ID
-            var oldIdToNewId = new Dictionary<int, int>();
+            // IMPORTANT: Do NOT renumber category IDs!
+            // War3Net reads category IDs directly from the file - they don't need to be sequential
+            // Non-sequential IDs work perfectly fine (as proven by maps created in World Editor)
+            // The only thing that matters is that trigger ParentIds correctly match category IDs
 
-            for (int i = 0; i < categories.Count; i++)
+            // For 1.27 format only: Normalize category ParentIds since they're not saved to file
+            if (is127Format)
             {
-                int oldId = categories[i].Id;
-                int newId = i; // Sequential: 0, 1, 2, 3...
-
-                if (oldId != newId)
+                int normalizedCount = 0;
+                foreach (var category in categories)
                 {
-                    oldIdToNewId[oldId] = newId;
-
-                    if (DEBUG_MODE)
-                    {
-                        Console.WriteLine($"[DEBUG] Renumbering category '{categories[i].Name}': ID {oldId} -> {newId}");
-                    }
-                    DiagnosticLogger.Log($"Renumbering category '{categories[i].Name}': ID {oldId} -> {newId}");
-
-                    categories[i].Id = newId;
-                }
-
-                // CRITICAL FIX FOR 1.27 FORMAT:
-                // In WC3 1.27, category ParentIds are NOT saved to file
-                // All categories default to ParentId=0 when read back
-                // So we must normalize ALL category ParentIds to 0 before writing
-                if (is127Format)
-                {
-                    int oldParentId = categories[i].ParentId;
+                    int oldParentId = category.ParentId;
 
                     // Normalize: -1 becomes 0, everything else stays the same
-                    // (In 1.27, ParentId doesn't matter - hierarchy is by file order)
+                    // (In 1.27, category ParentIds don't matter - hierarchy is shown by file order)
                     if (oldParentId == -1)
                     {
                         if (DEBUG_MODE)
                         {
-                            Console.WriteLine($"[DEBUG] Normalizing category '{categories[i].Name}': ParentId -1 -> 0 (1.27 format)");
+                            Console.WriteLine($"[DEBUG] Normalizing category '{category.Name}': ParentId -1 -> 0 (1.27 format)");
                         }
-                        DiagnosticLogger.Log($"Normalizing category '{categories[i].Name}': ParentId -1 -> 0 (1.27 format)");
-                        categories[i].ParentId = 0;
+                        DiagnosticLogger.Log($"Normalizing category '{category.Name}': ParentId -1 -> 0 (1.27 format)");
+                        category.ParentId = 0;
+                        normalizedCount++;
                     }
                 }
+
+                if (DEBUG_MODE && normalizedCount > 0)
+                {
+                    Console.WriteLine($"[DEBUG] Normalized {normalizedCount} category ParentIds for 1.27 format");
+                }
+                DiagnosticLogger.Log($"Normalized {normalizedCount} category ParentIds for 1.27 format");
             }
 
-            // Update all trigger ParentIds to match new category IDs
-            DiagnosticLogger.Log($"Updating trigger ParentIds (found {oldIdToNewId.Count} category ID changes)");
+            // Do NOT update trigger ParentIds - they are already correct!
+            // The original file's category IDs and trigger ParentIds match perfectly
+            // Renumbering was causing the corruption
 
-            if (oldIdToNewId.Count > 0)
-            {
-                var triggers_list = triggers.TriggerItems
-                    .OfType<TriggerDefinition>()
-                    .ToList();
-
-                DiagnosticLogger.Log($"Processing {triggers_list.Count} triggers");
-                int updatedCount = 0;
-
-                foreach (var trigger in triggers_list)
-                {
-                    // Skip root-level triggers using helper function
-                    if (IsRootLevel(trigger.ParentId, triggers))
-                    {
-                        // Normalize to -1
-                        trigger.ParentId = -1;
-                        continue;
-                    }
-
-                    if (oldIdToNewId.ContainsKey(trigger.ParentId))
-                    {
-                        int oldParentId = trigger.ParentId;
-                        int newParentId = oldIdToNewId[oldParentId];
-
-                        if (DEBUG_MODE)
-                        {
-                            Console.WriteLine($"[DEBUG] Updating trigger '{trigger.Name}': ParentId {oldParentId} -> {newParentId}");
-                        }
-                        DiagnosticLogger.Log($"Updating trigger '{trigger.Name}': ParentId {oldParentId} -> {newParentId}");
-
-                        trigger.ParentId = newParentId;
-                        updatedCount++;
-                    }
-                }
-
-                if (DEBUG_MODE)
-                {
-                    Console.WriteLine($"[DEBUG] Renumbered {oldIdToNewId.Count} categories and updated {updatedCount} trigger ParentIds");
-                }
-                DiagnosticLogger.Log($"Renumbered {oldIdToNewId.Count} categories and updated {updatedCount} trigger ParentIds");
-            }
-
-            DiagnosticLogger.Log("RenumberCategoriesSequentially: Complete");
+            DiagnosticLogger.Log("NormalizeCategoryParentIds: Complete (IDs unchanged)");
         }
 
         /// <summary>
