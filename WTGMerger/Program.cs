@@ -99,8 +99,12 @@ namespace WTGMerger
                     Console.WriteLine($"\n⚠ Output adjusted to match target type: {outputPath}");
                 }
 
-                // Fix duplicate IDs if they exist
-                FixDuplicateIds(targetTriggers);
+                // NOTE: Do NOT call FixDuplicateIds!
+                // For 1.27 format, all triggers have ID=0 by default (not stored in file).
+                // This is normal and War3Net handles it correctly.
+                // Source file displays correctly without fixing duplicate IDs, so Target should too.
+                // Calling FixDuplicateIds was corrupting ParentId relationships.
+                // FixDuplicateIds(targetTriggers); // DISABLED
 
                 // Fix variable IDs if they're all 0 or have duplicates
                 FixVariableIds(sourceTriggers, "source");
