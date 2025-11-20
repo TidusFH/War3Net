@@ -656,6 +656,106 @@ namespace ObjectDataExporter
             }
         }
 
+        // Overload for LevelObjectModification (Abilities, Upgrades)
+        private void ExportObject(StringBuilder sb, War3Net.Build.Object.LevelObjectModification obj, string objectType, FormatType format)
+        {
+            string code = obj.NewId.ToRawcode();
+            string baseCode = obj.OldId.ToRawcode();
+
+            if (format == FormatType.Txt)
+            {
+                sb.AppendLine($"[{code}] - Based on [{baseCode}]");
+                sb.AppendLine($"Type: {objectType}");
+                sb.AppendLine($"Modifications: {obj.Modifications.Count}");
+
+                if (obj.Modifications.Any())
+                {
+                    sb.AppendLine();
+                    foreach (var mod in obj.Modifications)
+                    {
+                        string modId = mod.Id.ToRawcode();
+                        sb.AppendLine($"  {modId} (Level {mod.Level}) = {FormatValue(mod.Value)} ({mod.Type})");
+                    }
+                }
+
+                sb.AppendLine();
+                sb.AppendLine("───────────────────────────────────────────────────────────");
+                sb.AppendLine();
+            }
+            else if (format == FormatType.Ini)
+            {
+                sb.AppendLine($"[{code}]");
+                sb.AppendLine($"base = {baseCode}");
+                sb.AppendLine($"type = {objectType}");
+
+                foreach (var mod in obj.Modifications)
+                {
+                    string modId = mod.Id.ToRawcode();
+                    sb.AppendLine($"{modId}_level{mod.Level} = {FormatValue(mod.Value)}");
+                }
+
+                sb.AppendLine();
+            }
+            else if (format == FormatType.Csv)
+            {
+                foreach (var mod in obj.Modifications)
+                {
+                    string modId = mod.Id.ToRawcode();
+                    sb.AppendLine($"{code},{baseCode},{modId},{mod.Level},{EscapeCsv(FormatValue(mod.Value))},{mod.Type}");
+                }
+            }
+        }
+
+        // Overload for VariationObjectModification (Doodads)
+        private void ExportObject(StringBuilder sb, War3Net.Build.Object.VariationObjectModification obj, string objectType, FormatType format)
+        {
+            string code = obj.NewId.ToRawcode();
+            string baseCode = obj.OldId.ToRawcode();
+
+            if (format == FormatType.Txt)
+            {
+                sb.AppendLine($"[{code}] - Based on [{baseCode}]");
+                sb.AppendLine($"Type: {objectType}");
+                sb.AppendLine($"Modifications: {obj.Modifications.Count}");
+
+                if (obj.Modifications.Any())
+                {
+                    sb.AppendLine();
+                    foreach (var mod in obj.Modifications)
+                    {
+                        string modId = mod.Id.ToRawcode();
+                        sb.AppendLine($"  {modId} = {FormatValue(mod.Value)} ({mod.Type})");
+                    }
+                }
+
+                sb.AppendLine();
+                sb.AppendLine("───────────────────────────────────────────────────────────");
+                sb.AppendLine();
+            }
+            else if (format == FormatType.Ini)
+            {
+                sb.AppendLine($"[{code}]");
+                sb.AppendLine($"base = {baseCode}");
+                sb.AppendLine($"type = {objectType}");
+
+                foreach (var mod in obj.Modifications)
+                {
+                    string modId = mod.Id.ToRawcode();
+                    sb.AppendLine($"{modId} = {FormatValue(mod.Value)}");
+                }
+
+                sb.AppendLine();
+            }
+            else if (format == FormatType.Csv)
+            {
+                foreach (var mod in obj.Modifications)
+                {
+                    string modId = mod.Id.ToRawcode();
+                    sb.AppendLine($"{code},{baseCode},{modId},,{EscapeCsv(FormatValue(mod.Value))},{mod.Type}");
+                }
+            }
+        }
+
         private string FormatValue(object? value)
         {
             if (value == null)
