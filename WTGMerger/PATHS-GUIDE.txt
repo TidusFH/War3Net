@@ -1,0 +1,51 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using War3Net.Build.Script;
+
+namespace WTGMerger
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            try
+            {
+                // ═══════════════════════════════════════════════════════════
+                // ⚙️ CONFIGURE SEUS CAMINHOS AQUI:
+                // ═══════════════════════════════════════════════════════════
+
+                // OPÇÃO A: Usar caminhos relativos (padrão)
+                var sourcePath = args.Length > 0 ? args[0] : "../Source/war3map.wtg";
+                var targetPath = args.Length > 1 ? args[1] : "../Target/war3map.wtg";
+                var outputPath = args.Length > 2 ? args[2] : "../Target/war3map_merged.wtg";
+
+                // OPÇÃO B: Usar caminhos absolutos (descomente as linhas abaixo)
+                // var sourcePath = args.Length > 0 ? args[0] : @"C:\Meus Mapas\Source\war3map.wtg";
+                // var targetPath = args.Length > 1 ? args[1] : @"C:\Meus Mapas\Target\war3map.wtg";
+                // var outputPath = args.Length > 2 ? args[2] : @"C:\Desktop\resultado.wtg";
+
+                // ═══════════════════════════════════════════════════════════
+
+                Console.WriteLine("=== War3Net WTG Trigger Merger ===\n");
+
+                if (args.Length > 0)
+                {
+                    Console.WriteLine("Using command line arguments:");
+                    Console.WriteLine($"  Source: {sourcePath}");
+                    Console.WriteLine($"  Target: {targetPath}");
+                    Console.WriteLine($"  Output: {outputPath}");
+                    Console.WriteLine();
+                }
+                else
+                {
+                    Console.WriteLine("Using default paths:");
+                    Console.WriteLine($"  Source: {Path.GetFullPath(sourcePath)}");
+                    Console.WriteLine($"  Target: {Path.GetFullPath(targetPath)}");
+                    Console.WriteLine($"  Output: {Path.GetFullPath(outputPath)}");
+                    Console.WriteLine();
+                }
+
+                // Read source WTG file
+                Console.WriteLine($"Reading source WTG: {sourcePath}");
