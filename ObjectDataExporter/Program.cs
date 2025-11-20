@@ -378,6 +378,152 @@ namespace ObjectDataExporter
         public required string Extension { get; set; }
     }
 
+    static class FieldNameDatabase
+    {
+        // Maps field codes to human-readable names for AI-friendly output
+        private static readonly Dictionary<string, string> FieldNames = new()
+        {
+            // Unit fields
+            ["unam"] = "Name",
+            ["upro"] = "Proper Names",
+            ["umas"] = "Model File",
+            ["umdl"] = "Model File (AI)",
+            ["uico"] = "Icon - Game Interface",
+            ["umvs"] = "Movement Speed (base)",
+            ["uhpm"] = "Hit Points (maximum)",
+            ["uhp0"] = "Hit Points (start)",
+            ["umpm"] = "Mana (maximum)",
+            ["ump0"] = "Mana (start)",
+            ["uarm"] = "Defense Type",
+            ["udty"] = "Defense Value (base)",
+            ["uabi"] = "Abilities - Normal",
+            ["uabt"] = "Abilities - Tech Tree Dependence",
+            ["ua1g"] = "Attack 1 - Damage Dice (sides)",
+            ["ua1b"] = "Attack 1 - Damage Base",
+            ["ua1d"] = "Attack 1 - Damage Dice (count)",
+            ["ua1t"] = "Attack 1 - Attack Type",
+            ["ua1w"] = "Attack 1 - Weapon Type",
+            ["ua1r"] = "Attack 1 - Range",
+            ["ua1p"] = "Attack 1 - Projectile Speed",
+            ["ua2g"] = "Attack 2 - Damage Dice (sides)",
+            ["ua2b"] = "Attack 2 - Damage Base",
+            ["ua2d"] = "Attack 2 - Damage Dice (count)",
+            ["ua2t"] = "Attack 2 - Attack Type",
+            ["ua2w"] = "Attack 2 - Weapon Type",
+            ["ua2r"] = "Attack 2 - Range",
+            ["ugol"] = "Gold Cost",
+            ["ulum"] = "Lumber Cost",
+            ["ubld"] = "Build Time",
+            ["urac"] = "Race",
+            ["usca"] = "Scale",
+            ["ucol"] = "Collision Size",
+            ["ufoo"] = "Food Cost",
+            ["ufma"] = "Food Produced",
+            ["upri"] = "Priority (selection)",
+            ["usid"] = "Sight Radius (day)",
+            ["usin"] = "Sight Radius (night)",
+            ["uhor"] = "Has Water Shadow",
+            ["ushb"] = "Shadow Image (unit)",
+            ["umvt"] = "Movement Type",
+            ["umvh"] = "Movement Height",
+            ["umvf"] = "Movement - Height (minimum)",
+            ["uclr"] = "Classification - Campaign",
+            ["utyp"] = "Unit Classification",
+            ["uspe"] = "Special",
+            ["utar"] = "Targets Allowed",
+            ["utco"] = "Tinting Color 1 (red)",
+            ["utc2"] = "Tinting Color 2 (green)",
+            ["utc3"] = "Tinting Color 3 (blue)",
+            ["ubui"] = "Builds",
+            ["utra"] = "Trains",
+            ["ures"] = "Researches",
+            ["useu"] = "Sells Units",
+            ["usei"] = "Sells Items",
+            ["umki"] = "Makes Items",
+            ["urev"] = "Revives Dead Heroes",
+            ["ucam"] = "Can Flee",
+            ["urun"] = "Run Speed",
+            ["uwlk"] = "Walk Speed",
+            ["uflh"] = "Fly Height",
+            ["uani"] = "Animation - Run Speed",
+            ["uwal"] = "Animation - Walk Speed",
+            ["urpo"] = "Repair Gold Cost Ratio",
+            ["urlm"] = "Repair Lumber Cost Ratio",
+            ["urep"] = "Repair Time Ratio",
+
+            // Item fields
+            ["inam"] = "Name",
+            ["iico"] = "Icon",
+            ["igol"] = "Gold Cost",
+            ["ilum"] = "Lumber Cost",
+            ["iabi"] = "Abilities",
+            ["iuse"] = "Usable",
+            ["ipow"] = "Powerup",
+            ["ipaw"] = "Pawnable",
+            ["isel"] = "Sellable",
+            ["idro"] = "Drop On Death",
+            ["idrp"] = "Can Be Dropped",
+            ["istr"] = "Stock Replenish Interval",
+            ["isto"] = "Stock Maximum",
+            ["istk"] = "Stock Start Delay",
+            ["icla"] = "Class",
+            ["ilev"] = "Level",
+            ["ilvo"] = "Level (unclassified)",
+            ["ipri"] = "Priority",
+            ["imod"] = "Model Used",
+            ["isca"] = "Scaling Value",
+            ["ides"] = "Description - Tooltip (extended)",
+            ["itp1"] = "Description - Tooltip (basic)",
+            ["ihtp"] = "Hit Points",
+
+            // Ability fields
+            ["anam"] = "Name",
+            ["aart"] = "Art - Icon",
+            ["aeat"] = "Art - Effect (target)",
+            ["aaea"] = "Art - Effect (area)",
+            ["atp1"] = "Tooltip - Learn (basic)",
+            ["ades"] = "Description - Tooltip (extended)",
+            ["aher"] = "Hero Ability",
+            ["alev"] = "Levels",
+            ["areq"] = "Requirements",
+            ["arqa"] = "Requirements Levels",
+            ["aman"] = "Mana Cost",
+            ["acol"] = "Cooldown",
+            ["acdn"] = "Casting Time",
+            ["adur"] = "Duration (hero)",
+            ["ahdu"] = "Duration (normal)",
+            ["atar"] = "Targets Allowed",
+            ["aran"] = "Cast Range",
+            ["aare"] = "Area of Effect",
+            ["aeff"] = "Data - Effects",
+            ["asta"] = "Stats - Bonus per Level",
+
+            // Upgrade fields
+            ["gnam"] = "Name",
+            ["gico"] = "Icon",
+            ["gef1"] = "Effect - Ability",
+            ["gtp1"] = "Tooltip - Learn (basic)",
+            ["gub1"] = "Tooltip - Upgrade (basic)",
+            ["gdes"] = "Description - Tooltip (extended)",
+            ["ggol"] = "Gold Cost (base)",
+            ["glmb"] = "Lumber Cost (base)",
+            ["gti1"] = "Time (base)",
+            ["glev"] = "Levels",
+            ["gtyp"] = "Class",
+            ["greq"] = "Requirements",
+            ["grqa"] = "Requirements Levels",
+        };
+
+        public static string GetFieldName(string rawCode)
+        {
+            if (FieldNames.TryGetValue(rawCode, out string? name))
+            {
+                return name;
+            }
+            return rawCode; // Return raw code if not found
+        }
+    }
+
     class ObjectDataExporter
     {
         private readonly Map map;
@@ -434,7 +580,16 @@ namespace ObjectDataExporter
 
         private void ExportUnits(string filePath, FormatType format)
         {
-            if (map.UnitObjectData == null || !map.UnitObjectData.NewUnits.Any())
+            if (map.UnitObjectData == null)
+            {
+                Console.WriteLine("  Units: None");
+                return;
+            }
+
+            int newCount = map.UnitObjectData.NewUnits.Count;
+            int modifiedCount = map.UnitObjectData.ModifiedUnits.Count;
+
+            if (newCount == 0 && modifiedCount == 0)
             {
                 Console.WriteLine("  Units: None");
                 return;
@@ -444,28 +599,60 @@ namespace ObjectDataExporter
 
             if (format == FormatType.Csv)
             {
-                sb.AppendLine("ObjectCode,BaseCode,ModificationId,ModificationName,Value,Type");
+                sb.AppendLine("ObjectCode,BaseCode,ModificationType,ModificationId,ModificationName,Level,Value,Type");
             }
             else if (format == FormatType.Txt)
             {
                 sb.AppendLine("═══════════════════════════════════════════════════════════");
-                sb.AppendLine("                      CUSTOM UNITS");
+                sb.AppendLine("                      UNITS");
                 sb.AppendLine("═══════════════════════════════════════════════════════════");
+                sb.AppendLine();
+            }
+
+            // Export MODIFIED objects first (edited existing units like Peasant)
+            if (modifiedCount > 0 && format == FormatType.Txt)
+            {
+                sb.AppendLine("─── MODIFIED EXISTING UNITS ───");
+                sb.AppendLine();
+            }
+
+            foreach (var unit in map.UnitObjectData.ModifiedUnits)
+            {
+                ExportObject(sb, unit, "Unit", format, isModified: true);
+            }
+
+            // Export NEW custom objects
+            if (newCount > 0 && format == FormatType.Txt)
+            {
+                if (modifiedCount > 0)
+                {
+                    sb.AppendLine();
+                }
+                sb.AppendLine("─── NEW CUSTOM UNITS ───");
                 sb.AppendLine();
             }
 
             foreach (var unit in map.UnitObjectData.NewUnits)
             {
-                ExportObject(sb, unit, "Unit", format);
+                ExportObject(sb, unit, "Unit", format, isModified: false);
             }
 
             File.WriteAllText(filePath, sb.ToString());
-            Console.WriteLine($"  ✓ Units: {map.UnitObjectData.NewUnits.Count} → {Path.GetFileName(filePath)}");
+            Console.WriteLine($"  ✓ Units: {newCount} new, {modifiedCount} modified → {Path.GetFileName(filePath)}");
         }
 
         private void ExportItems(string filePath, FormatType format)
         {
-            if (map.ItemObjectData == null || !map.ItemObjectData.NewItems.Any())
+            if (map.ItemObjectData == null)
+            {
+                Console.WriteLine("  Items: None");
+                return;
+            }
+
+            int newCount = map.ItemObjectData.NewItems.Count;
+            int modifiedCount = map.ItemObjectData.ModifiedItems.Count;
+
+            if (newCount == 0 && modifiedCount == 0)
             {
                 Console.WriteLine("  Items: None");
                 return;
@@ -475,28 +662,55 @@ namespace ObjectDataExporter
 
             if (format == FormatType.Csv)
             {
-                sb.AppendLine("ObjectCode,BaseCode,ModificationId,ModificationName,Value,Type");
+                sb.AppendLine("ObjectCode,BaseCode,ModificationType,ModificationId,ModificationName,Level,Value,Type");
             }
             else if (format == FormatType.Txt)
             {
                 sb.AppendLine("═══════════════════════════════════════════════════════════");
-                sb.AppendLine("                      CUSTOM ITEMS");
+                sb.AppendLine("                      ITEMS");
                 sb.AppendLine("═══════════════════════════════════════════════════════════");
+                sb.AppendLine();
+            }
+
+            if (modifiedCount > 0 && format == FormatType.Txt)
+            {
+                sb.AppendLine("─── MODIFIED EXISTING ITEMS ───");
+                sb.AppendLine();
+            }
+
+            foreach (var item in map.ItemObjectData.ModifiedItems)
+            {
+                ExportObject(sb, item, "Item", format, isModified: true);
+            }
+
+            if (newCount > 0 && format == FormatType.Txt)
+            {
+                if (modifiedCount > 0) sb.AppendLine();
+                sb.AppendLine("─── NEW CUSTOM ITEMS ───");
                 sb.AppendLine();
             }
 
             foreach (var item in map.ItemObjectData.NewItems)
             {
-                ExportObject(sb, item, "Item", format);
+                ExportObject(sb, item, "Item", format, isModified: false);
             }
 
             File.WriteAllText(filePath, sb.ToString());
-            Console.WriteLine($"  ✓ Items: {map.ItemObjectData.NewItems.Count} → {Path.GetFileName(filePath)}");
+            Console.WriteLine($"  ✓ Items: {newCount} new, {modifiedCount} modified → {Path.GetFileName(filePath)}");
         }
 
         private void ExportAbilities(string filePath, FormatType format)
         {
-            if (map.AbilityObjectData == null || !map.AbilityObjectData.NewAbilities.Any())
+            if (map.AbilityObjectData == null)
+            {
+                Console.WriteLine("  Abilities: None");
+                return;
+            }
+
+            int newCount = map.AbilityObjectData.NewAbilities.Count;
+            int modifiedCount = map.AbilityObjectData.ModifiedAbilities.Count;
+
+            if (newCount == 0 && modifiedCount == 0)
             {
                 Console.WriteLine("  Abilities: None");
                 return;
@@ -506,28 +720,55 @@ namespace ObjectDataExporter
 
             if (format == FormatType.Csv)
             {
-                sb.AppendLine("ObjectCode,BaseCode,ModificationId,ModificationName,Value,Type");
+                sb.AppendLine("ObjectCode,BaseCode,ModificationType,ModificationId,ModificationName,Level,Value,Type");
             }
             else if (format == FormatType.Txt)
             {
                 sb.AppendLine("═══════════════════════════════════════════════════════════");
-                sb.AppendLine("                    CUSTOM ABILITIES");
+                sb.AppendLine("                    ABILITIES");
                 sb.AppendLine("═══════════════════════════════════════════════════════════");
+                sb.AppendLine();
+            }
+
+            if (modifiedCount > 0 && format == FormatType.Txt)
+            {
+                sb.AppendLine("─── MODIFIED EXISTING ABILITIES ───");
+                sb.AppendLine();
+            }
+
+            foreach (var ability in map.AbilityObjectData.ModifiedAbilities)
+            {
+                ExportObject(sb, ability, "Ability", format, isModified: true);
+            }
+
+            if (newCount > 0 && format == FormatType.Txt)
+            {
+                if (modifiedCount > 0) sb.AppendLine();
+                sb.AppendLine("─── NEW CUSTOM ABILITIES ───");
                 sb.AppendLine();
             }
 
             foreach (var ability in map.AbilityObjectData.NewAbilities)
             {
-                ExportObject(sb, ability, "Ability", format);
+                ExportObject(sb, ability, "Ability", format, isModified: false);
             }
 
             File.WriteAllText(filePath, sb.ToString());
-            Console.WriteLine($"  ✓ Abilities: {map.AbilityObjectData.NewAbilities.Count} → {Path.GetFileName(filePath)}");
+            Console.WriteLine($"  ✓ Abilities: {newCount} new, {modifiedCount} modified → {Path.GetFileName(filePath)}");
         }
 
         private void ExportDestructables(string filePath, FormatType format)
         {
-            if (map.DestructableObjectData == null || !map.DestructableObjectData.NewDestructables.Any())
+            if (map.DestructableObjectData == null)
+            {
+                Console.WriteLine("  Destructables: None");
+                return;
+            }
+
+            int newCount = map.DestructableObjectData.NewDestructables.Count;
+            int modifiedCount = map.DestructableObjectData.ModifiedDestructables.Count;
+
+            if (newCount == 0 && modifiedCount == 0)
             {
                 Console.WriteLine("  Destructables: None");
                 return;
@@ -537,28 +778,55 @@ namespace ObjectDataExporter
 
             if (format == FormatType.Csv)
             {
-                sb.AppendLine("ObjectCode,BaseCode,ModificationId,ModificationName,Value,Type");
+                sb.AppendLine("ObjectCode,BaseCode,ModificationType,ModificationId,ModificationName,Level,Value,Type");
             }
             else if (format == FormatType.Txt)
             {
                 sb.AppendLine("═══════════════════════════════════════════════════════════");
-                sb.AppendLine("                  CUSTOM DESTRUCTABLES");
+                sb.AppendLine("                  DESTRUCTABLES");
                 sb.AppendLine("═══════════════════════════════════════════════════════════");
+                sb.AppendLine();
+            }
+
+            if (modifiedCount > 0 && format == FormatType.Txt)
+            {
+                sb.AppendLine("─── MODIFIED EXISTING DESTRUCTABLES ───");
+                sb.AppendLine();
+            }
+
+            foreach (var dest in map.DestructableObjectData.ModifiedDestructables)
+            {
+                ExportObject(sb, dest, "Destructable", format, isModified: true);
+            }
+
+            if (newCount > 0 && format == FormatType.Txt)
+            {
+                if (modifiedCount > 0) sb.AppendLine();
+                sb.AppendLine("─── NEW CUSTOM DESTRUCTABLES ───");
                 sb.AppendLine();
             }
 
             foreach (var dest in map.DestructableObjectData.NewDestructables)
             {
-                ExportObject(sb, dest, "Destructable", format);
+                ExportObject(sb, dest, "Destructable", format, isModified: false);
             }
 
             File.WriteAllText(filePath, sb.ToString());
-            Console.WriteLine($"  ✓ Destructables: {map.DestructableObjectData.NewDestructables.Count} → {Path.GetFileName(filePath)}");
+            Console.WriteLine($"  ✓ Destructables: {newCount} new, {modifiedCount} modified → {Path.GetFileName(filePath)}");
         }
 
         private void ExportDoodads(string filePath, FormatType format)
         {
-            if (map.DoodadObjectData == null || !map.DoodadObjectData.NewDoodads.Any())
+            if (map.DoodadObjectData == null)
+            {
+                Console.WriteLine("  Doodads: None");
+                return;
+            }
+
+            int newCount = map.DoodadObjectData.NewDoodads.Count;
+            int modifiedCount = map.DoodadObjectData.ModifiedDoodads.Count;
+
+            if (newCount == 0 && modifiedCount == 0)
             {
                 Console.WriteLine("  Doodads: None");
                 return;
@@ -568,28 +836,55 @@ namespace ObjectDataExporter
 
             if (format == FormatType.Csv)
             {
-                sb.AppendLine("ObjectCode,BaseCode,ModificationId,ModificationName,Value,Type");
+                sb.AppendLine("ObjectCode,BaseCode,ModificationType,ModificationId,ModificationName,Level,Value,Type");
             }
             else if (format == FormatType.Txt)
             {
                 sb.AppendLine("═══════════════════════════════════════════════════════════");
-                sb.AppendLine("                     CUSTOM DOODADS");
+                sb.AppendLine("                     DOODADS");
                 sb.AppendLine("═══════════════════════════════════════════════════════════");
+                sb.AppendLine();
+            }
+
+            if (modifiedCount > 0 && format == FormatType.Txt)
+            {
+                sb.AppendLine("─── MODIFIED EXISTING DOODADS ───");
+                sb.AppendLine();
+            }
+
+            foreach (var doodad in map.DoodadObjectData.ModifiedDoodads)
+            {
+                ExportObject(sb, doodad, "Doodad", format, isModified: true);
+            }
+
+            if (newCount > 0 && format == FormatType.Txt)
+            {
+                if (modifiedCount > 0) sb.AppendLine();
+                sb.AppendLine("─── NEW CUSTOM DOODADS ───");
                 sb.AppendLine();
             }
 
             foreach (var doodad in map.DoodadObjectData.NewDoodads)
             {
-                ExportObject(sb, doodad, "Doodad", format);
+                ExportObject(sb, doodad, "Doodad", format, isModified: false);
             }
 
             File.WriteAllText(filePath, sb.ToString());
-            Console.WriteLine($"  ✓ Doodads: {map.DoodadObjectData.NewDoodads.Count} → {Path.GetFileName(filePath)}");
+            Console.WriteLine($"  ✓ Doodads: {newCount} new, {modifiedCount} modified → {Path.GetFileName(filePath)}");
         }
 
         private void ExportBuffs(string filePath, FormatType format)
         {
-            if (map.BuffObjectData == null || !map.BuffObjectData.NewBuffs.Any())
+            if (map.BuffObjectData == null)
+            {
+                Console.WriteLine("  Buffs: None");
+                return;
+            }
+
+            int newCount = map.BuffObjectData.NewBuffs.Count;
+            int modifiedCount = map.BuffObjectData.ModifiedBuffs.Count;
+
+            if (newCount == 0 && modifiedCount == 0)
             {
                 Console.WriteLine("  Buffs: None");
                 return;
@@ -599,28 +894,55 @@ namespace ObjectDataExporter
 
             if (format == FormatType.Csv)
             {
-                sb.AppendLine("ObjectCode,BaseCode,ModificationId,ModificationName,Value,Type");
+                sb.AppendLine("ObjectCode,BaseCode,ModificationType,ModificationId,ModificationName,Level,Value,Type");
             }
             else if (format == FormatType.Txt)
             {
                 sb.AppendLine("═══════════════════════════════════════════════════════════");
-                sb.AppendLine("                      CUSTOM BUFFS");
+                sb.AppendLine("                      BUFFS");
                 sb.AppendLine("═══════════════════════════════════════════════════════════");
+                sb.AppendLine();
+            }
+
+            if (modifiedCount > 0 && format == FormatType.Txt)
+            {
+                sb.AppendLine("─── MODIFIED EXISTING BUFFS ───");
+                sb.AppendLine();
+            }
+
+            foreach (var buff in map.BuffObjectData.ModifiedBuffs)
+            {
+                ExportObject(sb, buff, "Buff", format, isModified: true);
+            }
+
+            if (newCount > 0 && format == FormatType.Txt)
+            {
+                if (modifiedCount > 0) sb.AppendLine();
+                sb.AppendLine("─── NEW CUSTOM BUFFS ───");
                 sb.AppendLine();
             }
 
             foreach (var buff in map.BuffObjectData.NewBuffs)
             {
-                ExportObject(sb, buff, "Buff", format);
+                ExportObject(sb, buff, "Buff", format, isModified: false);
             }
 
             File.WriteAllText(filePath, sb.ToString());
-            Console.WriteLine($"  ✓ Buffs: {map.BuffObjectData.NewBuffs.Count} → {Path.GetFileName(filePath)}");
+            Console.WriteLine($"  ✓ Buffs: {newCount} new, {modifiedCount} modified → {Path.GetFileName(filePath)}");
         }
 
         private void ExportUpgrades(string filePath, FormatType format)
         {
-            if (map.UpgradeObjectData == null || !map.UpgradeObjectData.NewUpgrades.Any())
+            if (map.UpgradeObjectData == null)
+            {
+                Console.WriteLine("  Upgrades: None");
+                return;
+            }
+
+            int newCount = map.UpgradeObjectData.NewUpgrades.Count;
+            int modifiedCount = map.UpgradeObjectData.ModifiedUpgrades.Count;
+
+            if (newCount == 0 && modifiedCount == 0)
             {
                 Console.WriteLine("  Upgrades: None");
                 return;
@@ -630,34 +952,53 @@ namespace ObjectDataExporter
 
             if (format == FormatType.Csv)
             {
-                sb.AppendLine("ObjectCode,BaseCode,ModificationId,ModificationName,Value,Type");
+                sb.AppendLine("ObjectCode,BaseCode,ModificationType,ModificationId,ModificationName,Level,Value,Type");
             }
             else if (format == FormatType.Txt)
             {
                 sb.AppendLine("═══════════════════════════════════════════════════════════");
-                sb.AppendLine("                    CUSTOM UPGRADES");
+                sb.AppendLine("                    UPGRADES");
                 sb.AppendLine("═══════════════════════════════════════════════════════════");
+                sb.AppendLine();
+            }
+
+            if (modifiedCount > 0 && format == FormatType.Txt)
+            {
+                sb.AppendLine("─── MODIFIED EXISTING UPGRADES ───");
+                sb.AppendLine();
+            }
+
+            foreach (var upgrade in map.UpgradeObjectData.ModifiedUpgrades)
+            {
+                ExportObject(sb, upgrade, "Upgrade", format, isModified: true);
+            }
+
+            if (newCount > 0 && format == FormatType.Txt)
+            {
+                if (modifiedCount > 0) sb.AppendLine();
+                sb.AppendLine("─── NEW CUSTOM UPGRADES ───");
                 sb.AppendLine();
             }
 
             foreach (var upgrade in map.UpgradeObjectData.NewUpgrades)
             {
-                ExportObject(sb, upgrade, "Upgrade", format);
+                ExportObject(sb, upgrade, "Upgrade", format, isModified: false);
             }
 
             File.WriteAllText(filePath, sb.ToString());
-            Console.WriteLine($"  ✓ Upgrades: {map.UpgradeObjectData.NewUpgrades.Count} → {Path.GetFileName(filePath)}");
+            Console.WriteLine($"  ✓ Upgrades: {newCount} new, {modifiedCount} modified → {Path.GetFileName(filePath)}");
         }
 
-        private void ExportObject(StringBuilder sb, SimpleObjectModification obj, string objectType, FormatType format)
+        private void ExportObject(StringBuilder sb, SimpleObjectModification obj, string objectType, FormatType format, bool isModified = false)
         {
             string code = obj.NewId.ToRawcode();
             string baseCode = obj.OldId.ToRawcode();
+            string modificationType = isModified ? "Modified" : "New";
 
             if (format == FormatType.Txt)
             {
-                sb.AppendLine($"[{code}] - Based on [{baseCode}]");
-                sb.AppendLine($"Type: {objectType}");
+                sb.AppendLine($"[{code}] {(isModified ? $"(Modified {baseCode})" : $"- Based on [{baseCode}]")}");
+                sb.AppendLine($"Type: {objectType} ({modificationType})");
                 sb.AppendLine($"Modifications: {obj.Modifications.Count}");
 
                 if (obj.Modifications.Any())
@@ -666,7 +1007,19 @@ namespace ObjectDataExporter
                     foreach (var mod in obj.Modifications)
                     {
                         string modId = mod.Id.ToRawcode();
-                        sb.AppendLine($"  {modId} = {FormatValue(mod.Value)} ({mod.Type})");
+                        string fieldName = FieldNameDatabase.GetFieldName(modId);
+                        string value = FormatValue(mod.Value);
+
+                        if (fieldName != modId)
+                        {
+                            sb.AppendLine($"  {fieldName} ({modId})");
+                            sb.AppendLine($"    = {value}");
+                            sb.AppendLine($"    Type: {mod.Type}");
+                        }
+                        else
+                        {
+                            sb.AppendLine($"  {modId} = {value} ({mod.Type})");
+                        }
                     }
                 }
 
@@ -679,10 +1032,13 @@ namespace ObjectDataExporter
                 sb.AppendLine($"[{code}]");
                 sb.AppendLine($"base = {baseCode}");
                 sb.AppendLine($"type = {objectType}");
+                sb.AppendLine($"modification_type = {modificationType}");
 
                 foreach (var mod in obj.Modifications)
                 {
                     string modId = mod.Id.ToRawcode();
+                    string fieldName = FieldNameDatabase.GetFieldName(modId);
+                    sb.AppendLine($"; {fieldName}");
                     sb.AppendLine($"{modId} = {FormatValue(mod.Value)}");
                 }
 
@@ -693,21 +1049,23 @@ namespace ObjectDataExporter
                 foreach (var mod in obj.Modifications)
                 {
                     string modId = mod.Id.ToRawcode();
-                    sb.AppendLine($"{code},{baseCode},{modId},,{EscapeCsv(FormatValue(mod.Value))},{mod.Type}");
+                    string fieldName = FieldNameDatabase.GetFieldName(modId);
+                    sb.AppendLine($"{code},{baseCode},{modificationType},{modId},{EscapeCsv(fieldName)},,{EscapeCsv(FormatValue(mod.Value))},{mod.Type}");
                 }
             }
         }
 
         // Overload for LevelObjectModification (Abilities, Upgrades)
-        private void ExportObject(StringBuilder sb, War3Net.Build.Object.LevelObjectModification obj, string objectType, FormatType format)
+        private void ExportObject(StringBuilder sb, War3Net.Build.Object.LevelObjectModification obj, string objectType, FormatType format, bool isModified = false)
         {
             string code = obj.NewId.ToRawcode();
             string baseCode = obj.OldId.ToRawcode();
+            string modificationType = isModified ? "Modified" : "New";
 
             if (format == FormatType.Txt)
             {
-                sb.AppendLine($"[{code}] - Based on [{baseCode}]");
-                sb.AppendLine($"Type: {objectType}");
+                sb.AppendLine($"[{code}] {(isModified ? $"(Modified {baseCode})" : $"- Based on [{baseCode}]")}");
+                sb.AppendLine($"Type: {objectType} ({modificationType})");
                 sb.AppendLine($"Modifications: {obj.Modifications.Count}");
 
                 if (obj.Modifications.Any())
@@ -716,7 +1074,19 @@ namespace ObjectDataExporter
                     foreach (var mod in obj.Modifications)
                     {
                         string modId = mod.Id.ToRawcode();
-                        sb.AppendLine($"  {modId} (Level {mod.Level}) = {FormatValue(mod.Value)} ({mod.Type})");
+                        string fieldName = FieldNameDatabase.GetFieldName(modId);
+                        string value = FormatValue(mod.Value);
+
+                        if (fieldName != modId)
+                        {
+                            sb.AppendLine($"  {fieldName} ({modId}) - Level {mod.Level}");
+                            sb.AppendLine($"    = {value}");
+                            sb.AppendLine($"    Type: {mod.Type}");
+                        }
+                        else
+                        {
+                            sb.AppendLine($"  {modId} (Level {mod.Level}) = {value} ({mod.Type})");
+                        }
                     }
                 }
 
@@ -729,10 +1099,13 @@ namespace ObjectDataExporter
                 sb.AppendLine($"[{code}]");
                 sb.AppendLine($"base = {baseCode}");
                 sb.AppendLine($"type = {objectType}");
+                sb.AppendLine($"modification_type = {modificationType}");
 
                 foreach (var mod in obj.Modifications)
                 {
                     string modId = mod.Id.ToRawcode();
+                    string fieldName = FieldNameDatabase.GetFieldName(modId);
+                    sb.AppendLine($"; {fieldName}");
                     sb.AppendLine($"{modId}_level{mod.Level} = {FormatValue(mod.Value)}");
                 }
 
@@ -743,21 +1116,23 @@ namespace ObjectDataExporter
                 foreach (var mod in obj.Modifications)
                 {
                     string modId = mod.Id.ToRawcode();
-                    sb.AppendLine($"{code},{baseCode},{modId},{mod.Level},{EscapeCsv(FormatValue(mod.Value))},{mod.Type}");
+                    string fieldName = FieldNameDatabase.GetFieldName(modId);
+                    sb.AppendLine($"{code},{baseCode},{modificationType},{modId},{EscapeCsv(fieldName)},{mod.Level},{EscapeCsv(FormatValue(mod.Value))},{mod.Type}");
                 }
             }
         }
 
         // Overload for VariationObjectModification (Doodads)
-        private void ExportObject(StringBuilder sb, War3Net.Build.Object.VariationObjectModification obj, string objectType, FormatType format)
+        private void ExportObject(StringBuilder sb, War3Net.Build.Object.VariationObjectModification obj, string objectType, FormatType format, bool isModified = false)
         {
             string code = obj.NewId.ToRawcode();
             string baseCode = obj.OldId.ToRawcode();
+            string modificationType = isModified ? "Modified" : "New";
 
             if (format == FormatType.Txt)
             {
-                sb.AppendLine($"[{code}] - Based on [{baseCode}]");
-                sb.AppendLine($"Type: {objectType}");
+                sb.AppendLine($"[{code}] {(isModified ? $"(Modified {baseCode})" : $"- Based on [{baseCode}]")}");
+                sb.AppendLine($"Type: {objectType} ({modificationType})");
                 sb.AppendLine($"Modifications: {obj.Modifications.Count}");
 
                 if (obj.Modifications.Any())
@@ -766,7 +1141,19 @@ namespace ObjectDataExporter
                     foreach (var mod in obj.Modifications)
                     {
                         string modId = mod.Id.ToRawcode();
-                        sb.AppendLine($"  {modId} = {FormatValue(mod.Value)} ({mod.Type})");
+                        string fieldName = FieldNameDatabase.GetFieldName(modId);
+                        string value = FormatValue(mod.Value);
+
+                        if (fieldName != modId)
+                        {
+                            sb.AppendLine($"  {fieldName} ({modId})");
+                            sb.AppendLine($"    = {value}");
+                            sb.AppendLine($"    Type: {mod.Type}");
+                        }
+                        else
+                        {
+                            sb.AppendLine($"  {modId} = {value} ({mod.Type})");
+                        }
                     }
                 }
 
@@ -779,10 +1166,13 @@ namespace ObjectDataExporter
                 sb.AppendLine($"[{code}]");
                 sb.AppendLine($"base = {baseCode}");
                 sb.AppendLine($"type = {objectType}");
+                sb.AppendLine($"modification_type = {modificationType}");
 
                 foreach (var mod in obj.Modifications)
                 {
                     string modId = mod.Id.ToRawcode();
+                    string fieldName = FieldNameDatabase.GetFieldName(modId);
+                    sb.AppendLine($"; {fieldName}");
                     sb.AppendLine($"{modId} = {FormatValue(mod.Value)}");
                 }
 
@@ -793,7 +1183,8 @@ namespace ObjectDataExporter
                 foreach (var mod in obj.Modifications)
                 {
                     string modId = mod.Id.ToRawcode();
-                    sb.AppendLine($"{code},{baseCode},{modId},,{EscapeCsv(FormatValue(mod.Value))},{mod.Type}");
+                    string fieldName = FieldNameDatabase.GetFieldName(modId);
+                    sb.AppendLine($"{code},{baseCode},{modificationType},{modId},{EscapeCsv(fieldName)},,{EscapeCsv(FormatValue(mod.Value))},{mod.Type}");
                 }
             }
         }
