@@ -587,7 +587,7 @@ namespace ObjectDataExporter
             }
 
             int newCount = map.UnitObjectData.NewUnits.Count;
-            int modifiedCount = map.UnitObjectData.ModifiedUnits.Count;
+            int modifiedCount = map.UnitObjectData.BaseUnits.Count;
 
             if (newCount == 0 && modifiedCount == 0)
             {
@@ -616,7 +616,7 @@ namespace ObjectDataExporter
                 sb.AppendLine();
             }
 
-            foreach (var unit in map.UnitObjectData.ModifiedUnits)
+            foreach (var unit in map.UnitObjectData.BaseUnits)
             {
                 ExportObject(sb, unit, "Unit", format, isModified: true);
             }
@@ -650,7 +650,7 @@ namespace ObjectDataExporter
             }
 
             int newCount = map.ItemObjectData.NewItems.Count;
-            int modifiedCount = map.ItemObjectData.ModifiedItems.Count;
+            int modifiedCount = map.ItemObjectData.BaseItems.Count;
 
             if (newCount == 0 && modifiedCount == 0)
             {
@@ -678,7 +678,7 @@ namespace ObjectDataExporter
                 sb.AppendLine();
             }
 
-            foreach (var item in map.ItemObjectData.ModifiedItems)
+            foreach (var item in map.ItemObjectData.BaseItems)
             {
                 ExportObject(sb, item, "Item", format, isModified: true);
             }
@@ -708,7 +708,7 @@ namespace ObjectDataExporter
             }
 
             int newCount = map.AbilityObjectData.NewAbilities.Count;
-            int modifiedCount = map.AbilityObjectData.ModifiedAbilities.Count;
+            int modifiedCount = map.AbilityObjectData.BaseAbilities.Count;
 
             if (newCount == 0 && modifiedCount == 0)
             {
@@ -736,7 +736,7 @@ namespace ObjectDataExporter
                 sb.AppendLine();
             }
 
-            foreach (var ability in map.AbilityObjectData.ModifiedAbilities)
+            foreach (var ability in map.AbilityObjectData.BaseAbilities)
             {
                 ExportObject(sb, ability, "Ability", format, isModified: true);
             }
@@ -766,7 +766,7 @@ namespace ObjectDataExporter
             }
 
             int newCount = map.DestructableObjectData.NewDestructables.Count;
-            int modifiedCount = map.DestructableObjectData.ModifiedDestructables.Count;
+            int modifiedCount = map.DestructableObjectData.BaseDestructables.Count;
 
             if (newCount == 0 && modifiedCount == 0)
             {
@@ -794,7 +794,7 @@ namespace ObjectDataExporter
                 sb.AppendLine();
             }
 
-            foreach (var dest in map.DestructableObjectData.ModifiedDestructables)
+            foreach (var dest in map.DestructableObjectData.BaseDestructables)
             {
                 ExportObject(sb, dest, "Destructable", format, isModified: true);
             }
@@ -824,7 +824,7 @@ namespace ObjectDataExporter
             }
 
             int newCount = map.DoodadObjectData.NewDoodads.Count;
-            int modifiedCount = map.DoodadObjectData.ModifiedDoodads.Count;
+            int modifiedCount = map.DoodadObjectData.BaseDoodads.Count;
 
             if (newCount == 0 && modifiedCount == 0)
             {
@@ -852,7 +852,7 @@ namespace ObjectDataExporter
                 sb.AppendLine();
             }
 
-            foreach (var doodad in map.DoodadObjectData.ModifiedDoodads)
+            foreach (var doodad in map.DoodadObjectData.BaseDoodads)
             {
                 ExportObject(sb, doodad, "Doodad", format, isModified: true);
             }
@@ -882,7 +882,7 @@ namespace ObjectDataExporter
             }
 
             int newCount = map.BuffObjectData.NewBuffs.Count;
-            int modifiedCount = map.BuffObjectData.ModifiedBuffs.Count;
+            int modifiedCount = map.BuffObjectData.BaseBuffs.Count;
 
             if (newCount == 0 && modifiedCount == 0)
             {
@@ -910,7 +910,7 @@ namespace ObjectDataExporter
                 sb.AppendLine();
             }
 
-            foreach (var buff in map.BuffObjectData.ModifiedBuffs)
+            foreach (var buff in map.BuffObjectData.BaseBuffs)
             {
                 ExportObject(sb, buff, "Buff", format, isModified: true);
             }
@@ -940,7 +940,7 @@ namespace ObjectDataExporter
             }
 
             int newCount = map.UpgradeObjectData.NewUpgrades.Count;
-            int modifiedCount = map.UpgradeObjectData.ModifiedUpgrades.Count;
+            int modifiedCount = map.UpgradeObjectData.BaseUpgrades.Count;
 
             if (newCount == 0 && modifiedCount == 0)
             {
@@ -968,7 +968,7 @@ namespace ObjectDataExporter
                 sb.AppendLine();
             }
 
-            foreach (var upgrade in map.UpgradeObjectData.ModifiedUpgrades)
+            foreach (var upgrade in map.UpgradeObjectData.BaseUpgrades)
             {
                 ExportObject(sb, upgrade, "Upgrade", format, isModified: true);
             }
