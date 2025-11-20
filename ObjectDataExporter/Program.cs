@@ -290,6 +290,32 @@ namespace ObjectDataExporter
             {
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine($"✗ Error loading map: {ex.Message}");
+                Console.WriteLine();
+                Console.WriteLine("═══ DETAILED ERROR INFORMATION ═══");
+                Console.WriteLine($"Exception Type: {ex.GetType().FullName}");
+                Console.WriteLine($"Message: {ex.Message}");
+
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("Inner Exception:");
+                    Console.WriteLine($"  Type: {ex.InnerException.GetType().FullName}");
+                    Console.WriteLine($"  Message: {ex.InnerException.Message}");
+                }
+
+                Console.WriteLine();
+                Console.WriteLine("Stack Trace:");
+                Console.WriteLine(ex.StackTrace);
+
+                if (ex is System.IO.FileLoadException || ex is System.IO.FileNotFoundException)
+                {
+                    Console.WriteLine();
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine("⚠ This looks like a missing dependency issue.");
+                    Console.WriteLine("⚠ Make sure all required DLL files are in the same folder as the executable.");
+                    Console.ResetColor();
+                }
+
                 Console.ResetColor();
                 return;
             }
@@ -324,6 +350,22 @@ namespace ObjectDataExporter
             {
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine($"\n✗ Error during export: {ex.Message}");
+                Console.WriteLine();
+                Console.WriteLine("═══ DETAILED ERROR INFORMATION ═══");
+                Console.WriteLine($"Exception Type: {ex.GetType().FullName}");
+                Console.WriteLine($"Message: {ex.Message}");
+
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("Inner Exception:");
+                    Console.WriteLine($"  Type: {ex.InnerException.GetType().FullName}");
+                    Console.WriteLine($"  Message: {ex.InnerException.Message}");
+                }
+
+                Console.WriteLine();
+                Console.WriteLine("Stack Trace:");
+                Console.WriteLine(ex.StackTrace);
                 Console.ResetColor();
             }
         }
