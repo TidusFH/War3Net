@@ -143,6 +143,7 @@ namespace WTGMerger
                     Console.WriteLine("18. EXTRACT: Extract trigger + variables to standalone .wtg");
                     Console.WriteLine("19. HEALTH CHECK: Comprehensive WTG file validation");
                     Console.WriteLine("20. HEX ANALYSIS: Binary hex dump and comparison");
+                    Console.WriteLine("21. EXPORT STRUCTURE: Export trigger structure to .txt file");
                     Console.WriteLine($"d. DEBUG: Toggle debug mode (currently: {(DEBUG_MODE ? "ON" : "OFF")})");
                     Console.WriteLine($"l. DIAGNOSTIC: Toggle deep diagnostic logging (currently: {(DiagnosticLogger.IsEnabled ? "ON - logging to file" : "OFF")})");
                     Console.WriteLine("s. Save and exit");
@@ -1260,6 +1261,73 @@ namespace WTGMerger
                                 {
                                     Console.ForegroundColor = ConsoleColor.Red;
                                     Console.WriteLine($"✗ File not found: {analyzePath}");
+                                    Console.ResetColor();
+                                }
+                            }
+                            break;
+
+                        case "21":
+                            Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
+                            Console.WriteLine("║         EXPORT TRIGGER STRUCTURE TO TEXT FILE           ║");
+                            Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                            Console.WriteLine("\nSelect which map to export:");
+                            Console.WriteLine("  [1] SOURCE map");
+                            Console.WriteLine("  [2] TARGET map");
+                            Console.WriteLine("  [3] BOTH (side-by-side comparison)");
+                            Console.Write("\nChoice: ");
+                            string? exportChoice = Console.ReadLine();
+
+                            MapTriggers? exportSource = null;
+                            MapTriggers? exportTarget = null;
+                            string exportTitle = "";
+
+                            switch (exportChoice)
+                            {
+                                case "1":
+                                    exportSource = sourceTriggers;
+                                    exportTitle = "SOURCE";
+                                    break;
+                                case "2":
+                                    exportTarget = targetTriggers;
+                                    exportTitle = "TARGET";
+                                    break;
+                                case "3":
+                                    exportSource = sourceTriggers;
+                                    exportTarget = targetTriggers;
+                                    exportTitle = "COMPARISON";
+                                    break;
+                                default:
+                                    Console.WriteLine("Invalid choice.");
+                                    break;
+                            }
+
+                            if (exportSource != null || exportTarget != null)
+                            {
+                                string defaultFileName = $"trigger_structure_{exportTitle.ToLower()}_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+                                Console.Write($"\nEnter output filename (or press Enter for '{defaultFileName}'): ");
+                                string? exportFileName = Console.ReadLine();
+                                if (string.IsNullOrWhiteSpace(exportFileName))
+                                {
+                                    exportFileName = defaultFileName;
+                                }
+
+                                // Make sure it has .txt extension
+                                if (!exportFileName.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    exportFileName += ".txt";
+                                }
+
+                                try
+                                {
+                                    ExportTriggerStructure(exportSource, exportTarget, exportFileName);
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine($"\n✓ Exported to: {Path.GetFullPath(exportFileName)}");
+                                    Console.ResetColor();
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine($"\n✗ Export failed: {ex.Message}");
                                     Console.ResetColor();
                                 }
                             }
@@ -4239,6 +4307,183 @@ namespace WTGMerger
             }
 
             return minimal;
+        }
+
+        static void ExportTriggerStructure(MapTriggers? source, MapTriggers? target, string outputPath)
+        {
+            var sb = new System.Text.StringBuilder();
+
+            sb.AppendLine("╔══════════════════════════════════════════════════════════╗");
+            sb.AppendLine("║        WARCRAFT 3 TRIGGER STRUCTURE EXPORT               ║");
+            sb.AppendLine("╚══════════════════════════════════════════════════════════╝");
+            sb.AppendLine();
+            sb.AppendLine($"Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            sb.AppendLine();
+
+            if (source != null && target == null)
+            {
+                // Export SOURCE only
+                sb.AppendLine("═══════════════════════════════════════════════════════════");
+                sb.AppendLine("                      SOURCE MAP");
+                sb.AppendLine("═══════════════════════════════════════════════════════════");
+                sb.AppendLine();
+                AppendTriggerStructure(sb, source, "SOURCE");
+            }
+            else if (target != null && source == null)
+            {
+                // Export TARGET only
+                sb.AppendLine("═══════════════════════════════════════════════════════════");
+                sb.AppendLine("                      TARGET MAP");
+                sb.AppendLine("═══════════════════════════════════════════════════════════");
+                sb.AppendLine();
+                AppendTriggerStructure(sb, target, "TARGET");
+            }
+            else if (source != null && target != null)
+            {
+                // Export BOTH side-by-side
+                sb.AppendLine("═══════════════════════════════════════════════════════════");
+                sb.AppendLine("                SOURCE vs TARGET COMPARISON");
+                sb.AppendLine("═══════════════════════════════════════════════════════════");
+                sb.AppendLine();
+
+                sb.AppendLine("─── SOURCE MAP ───");
+                sb.AppendLine();
+                AppendTriggerStructure(sb, source, "SOURCE");
+
+                sb.AppendLine();
+                sb.AppendLine("═══════════════════════════════════════════════════════════");
+                sb.AppendLine();
+
+                sb.AppendLine("─── TARGET MAP ───");
+                sb.AppendLine();
+                AppendTriggerStructure(sb, target, "TARGET");
+            }
+
+            File.WriteAllText(outputPath, sb.ToString());
+        }
+
+        static void AppendTriggerStructure(System.Text.StringBuilder sb, MapTriggers triggers, string mapName)
+        {
+            var categories = triggers.TriggerItems
+                .OfType<TriggerCategoryDefinition>()
+                .Where(c => c.Type != TriggerItemType.RootCategory)
+                .ToList();
+
+            var allTriggers = triggers.TriggerItems
+                .OfType<TriggerDefinition>()
+                .ToList();
+
+            // Summary
+            sb.AppendLine($"Total Categories: {categories.Count}");
+            sb.AppendLine($"Total Triggers: {allTriggers.Count}");
+            sb.AppendLine($"Total Variables: {triggers.Variables.Count}");
+            sb.AppendLine();
+
+            // Variables list
+            if (triggers.Variables.Any())
+            {
+                sb.AppendLine("─── VARIABLES ───");
+                sb.AppendLine();
+                foreach (var variable in triggers.Variables)
+                {
+                    sb.AppendLine($"  • {variable.Name} ({variable.Type})");
+                    if (!string.IsNullOrWhiteSpace(variable.InitialValue))
+                    {
+                        sb.AppendLine($"    Initial: {variable.InitialValue}");
+                    }
+                }
+                sb.AppendLine();
+            }
+
+            // Categories and their triggers
+            sb.AppendLine("─── TRIGGER STRUCTURE ───");
+            sb.AppendLine();
+
+            foreach (var category in categories)
+            {
+                // Category header
+                string commentFlag = category.IsComment ? " [COMMENT/SEPARATOR]" : "";
+                sb.AppendLine($"📁 {category.Name}{commentFlag}");
+                sb.AppendLine($"   ID: {category.Id}");
+
+                if (!category.IsComment)
+                {
+                    // Find triggers in this category
+                    var categoryTriggers = allTriggers
+                        .Where(t => t.ParentId == category.Id)
+                        .ToList();
+
+                    if (categoryTriggers.Any())
+                    {
+                        sb.AppendLine($"   Triggers: {categoryTriggers.Count}");
+                        sb.AppendLine();
+
+                        foreach (var trigger in categoryTriggers)
+                        {
+                            string enabledFlag = trigger.IsEnabled ? "" : " [DISABLED]";
+                            string initiallyOnFlag = trigger.IsInitiallyOn ? " [Initially ON]" : " [Initially OFF]";
+                            string runOnMapInitFlag = trigger.RunOnMapInit ? " [Runs on Map Init]" : "";
+
+                            sb.AppendLine($"      ⚡ {trigger.Name}{enabledFlag}{initiallyOnFlag}{runOnMapInitFlag}");
+
+                            if (!string.IsNullOrWhiteSpace(trigger.Description))
+                            {
+                                sb.AppendLine($"         Description: {trigger.Description}");
+                            }
+
+                            // Show event count, condition count, action count
+                            int eventCount = trigger.Functions?.Count(f => f.Type == TriggerFunctionType.Event) ?? 0;
+                            int conditionCount = trigger.Functions?.Count(f => f.Type == TriggerFunctionType.Condition) ?? 0;
+                            int actionCount = trigger.Functions?.Count(f => f.Type == TriggerFunctionType.Action) ?? 0;
+
+                            sb.AppendLine($"         Events: {eventCount}, Conditions: {conditionCount}, Actions: {actionCount}");
+                            sb.AppendLine();
+                        }
+                    }
+                    else
+                    {
+                        sb.AppendLine($"   Triggers: 0 (empty category)");
+                        sb.AppendLine();
+                    }
+                }
+                else
+                {
+                    sb.AppendLine("   (Comment category - for organization only)");
+                    sb.AppendLine();
+                }
+            }
+
+            // Check for orphaned triggers (triggers not in any category)
+            var orphanedTriggers = allTriggers
+                .Where(t => !IsRootLevel(t.ParentId, triggers) && !categories.Any(c => c.Id == t.ParentId))
+                .ToList();
+
+            if (orphanedTriggers.Any())
+            {
+                sb.AppendLine("─── ORPHANED TRIGGERS (Invalid ParentId) ───");
+                sb.AppendLine();
+                foreach (var trigger in orphanedTriggers)
+                {
+                    sb.AppendLine($"  ⚠ {trigger.Name} (ParentId={trigger.ParentId} - no matching category!)");
+                }
+                sb.AppendLine();
+            }
+
+            // Root level triggers (if any)
+            var rootTriggers = allTriggers
+                .Where(t => IsRootLevel(t.ParentId, triggers))
+                .ToList();
+
+            if (rootTriggers.Any())
+            {
+                sb.AppendLine("─── ROOT LEVEL TRIGGERS (No Category) ───");
+                sb.AppendLine();
+                foreach (var trigger in rootTriggers)
+                {
+                    sb.AppendLine($"  ⚡ {trigger.Name}");
+                }
+                sb.AppendLine();
+            }
         }
     }
 }
