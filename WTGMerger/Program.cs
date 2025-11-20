@@ -4431,13 +4431,51 @@ namespace WTGMerger
                                 sb.AppendLine($"         Description: {trigger.Description}");
                             }
 
-                            // Show event count, condition count, action count
-                            int eventCount = trigger.Functions?.Count(f => f.Type == TriggerFunctionType.Event) ?? 0;
-                            int conditionCount = trigger.Functions?.Count(f => f.Type == TriggerFunctionType.Condition) ?? 0;
-                            int actionCount = trigger.Functions?.Count(f => f.Type == TriggerFunctionType.Action) ?? 0;
+                            // Get events, conditions, actions
+                            var events = trigger.Functions?.Where(f => f.Type == TriggerFunctionType.Event).ToList() ?? new List<TriggerFunction>();
+                            var conditions = trigger.Functions?.Where(f => f.Type == TriggerFunctionType.Condition).ToList() ?? new List<TriggerFunction>();
+                            var actions = trigger.Functions?.Where(f => f.Type == TriggerFunctionType.Action).ToList() ?? new List<TriggerFunction>();
 
-                            sb.AppendLine($"         Events: {eventCount}, Conditions: {conditionCount}, Actions: {actionCount}");
                             sb.AppendLine();
+
+                            // Show Events
+                            if (events.Any())
+                            {
+                                sb.AppendLine($"         📌 EVENTS ({events.Count}):");
+                                foreach (var evt in events)
+                                {
+                                    sb.AppendLine($"            • {FormatTriggerFunction(evt)}");
+                                }
+                                sb.AppendLine();
+                            }
+
+                            // Show Conditions
+                            if (conditions.Any())
+                            {
+                                sb.AppendLine($"         ❓ CONDITIONS ({conditions.Count}):");
+                                foreach (var cond in conditions)
+                                {
+                                    sb.AppendLine($"            • {FormatTriggerFunction(cond)}");
+                                }
+                                sb.AppendLine();
+                            }
+
+                            // Show Actions
+                            if (actions.Any())
+                            {
+                                sb.AppendLine($"         ⚙️ ACTIONS ({actions.Count}):");
+                                for (int i = 0; i < actions.Count; i++)
+                                {
+                                    sb.AppendLine($"            {i + 1}. {FormatTriggerFunction(actions[i])}");
+                                }
+                                sb.AppendLine();
+                            }
+
+                            if (!events.Any() && !conditions.Any() && !actions.Any())
+                            {
+                                sb.AppendLine($"         (Empty trigger - no events, conditions, or actions)");
+                                sb.AppendLine();
+                            }
                         }
                     }
                     else
@@ -4483,6 +4521,68 @@ namespace WTGMerger
                     sb.AppendLine($"  ⚡ {trigger.Name}");
                 }
                 sb.AppendLine();
+            }
+        }
+
+        static string FormatTriggerFunction(TriggerFunction function)
+        {
+            var sb = new System.Text.StringBuilder();
+
+            // Function name
+            sb.Append(function.Name ?? "<unnamed>");
+
+            // If it has parameters, show them
+            if (function.Parameters != null && function.Parameters.Any())
+            {
+                sb.Append(" (");
+
+                var paramStrings = new List<string>();
+                foreach (var param in function.Parameters)
+                {
+                    string paramValue = FormatTriggerParameter(param);
+                    if (!string.IsNullOrEmpty(paramValue))
+                    {
+                        paramStrings.Add(paramValue);
+                    }
+                }
+
+                sb.Append(string.Join(", ", paramStrings));
+                sb.Append(")");
+            }
+
+            return sb.ToString();
+        }
+
+        static string FormatTriggerParameter(TriggerFunctionParameter param)
+        {
+            if (param.Type == TriggerFunctionParameterType.Preset)
+            {
+                // Preset value (dropdown selection)
+                return param.Value ?? "";
+            }
+            else if (param.Type == TriggerFunctionParameterType.Variable)
+            {
+                // Variable reference
+                return $"Variable: {param.Value}";
+            }
+            else if (param.Type == TriggerFunctionParameterType.Function)
+            {
+                // Nested function call
+                if (param.Function != null)
+                {
+                    return FormatTriggerFunction(param.Function);
+                }
+                return "<function>";
+            }
+            else if (param.Type == TriggerFunctionParameterType.String)
+            {
+                // String literal
+                return $"\"{param.Value}\"";
+            }
+            else
+            {
+                // Other types (numbers, etc.)
+                return param.Value ?? "";
             }
         }
     }
