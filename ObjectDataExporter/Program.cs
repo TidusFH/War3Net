@@ -9,58 +9,265 @@ namespace ObjectDataExporter
     {
         static void Main(string[] args)
         {
+            ShowBanner();
+
+            // Command-line mode (if args provided)
+            if (args.Length >= 1)
+            {
+                CommandLineMode(args);
+                return;
+            }
+
+            // Interactive mode
+            InteractiveMode();
+        }
+
+        static void ShowBanner()
+        {
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine("╔══════════════════════════════════════════════════════════╗");
-            Console.WriteLine("║        WARCRAFT 3 OBJECT DATA EXPORTER v1.0              ║");
+            Console.WriteLine("║        WARCRAFT 3 OBJECT DATA EXPORTER v2.0              ║");
             Console.WriteLine("║    Export all object data to human-readable format       ║");
             Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
             Console.ResetColor();
             Console.WriteLine();
+        }
 
-            // Get input parameters
-            string mapPath;
-            string outputPath;
-            string format;
+        static void CommandLineMode(string[] args)
+        {
+            string mapPath = args[0];
+            string outputPath = args.Length >= 2 ? args[1] : Path.ChangeExtension(mapPath, null) + "_objects";
+            string format = args.Length >= 3 ? args[2].ToLower() : "txt";
 
-            if (args.Length >= 1)
-            {
-                mapPath = args[0];
-                outputPath = args.Length >= 2 ? args[1] : Path.ChangeExtension(mapPath, null) + "_objects";
-                format = args.Length >= 3 ? args[2].ToLower() : "txt";
-            }
-            else
-            {
-                Console.Write("Map file path (.w3x): ");
-                mapPath = Console.ReadLine()?.Trim() ?? string.Empty;
-
-                Console.Write("Output path (or press Enter for auto): ");
-                outputPath = Console.ReadLine()?.Trim() ?? string.Empty;
-                if (string.IsNullOrEmpty(outputPath))
-                {
-                    outputPath = Path.ChangeExtension(mapPath, null) + "_objects";
-                }
-
-                Console.Write("Format [txt/ini/csv] (default: txt): ");
-                format = Console.ReadLine()?.Trim().ToLower() ?? "txt";
-                if (string.IsNullOrEmpty(format))
-                {
-                    format = "txt";
-                }
-            }
-
-            // Validate input
             if (!File.Exists(mapPath))
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"\n✗ Error: Map file not found: {mapPath}");
+                Console.WriteLine($"✗ Error: Map file not found: {mapPath}");
                 Console.ResetColor();
                 return;
             }
 
+            ExportMap(mapPath, outputPath, format);
+        }
+
+        static void InteractiveMode()
+        {
+            while (true)
+            {
+                // Scan for maps
+                var maps = ScanForMaps();
+
+                if (!maps.Any())
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine("⚠ No .w3x or .w3m files found in current directory");
+                    Console.ResetColor();
+                    Console.WriteLine("\nOptions:");
+                    Console.WriteLine("  1. Enter map path manually");
+                    Console.WriteLine("  2. Exit");
+                    Console.Write("\nChoice: ");
+                    string? choice = Console.ReadLine();
+
+                    if (choice == "1")
+                    {
+                        Console.Write("\nMap file path: ");
+                        string? manualPath = Console.ReadLine()?.Trim();
+                        if (!string.IsNullOrEmpty(manualPath) && File.Exists(manualPath))
+                        {
+                            ProcessMap(manualPath);
+                        }
+                        else
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine("✗ Invalid file path");
+                            Console.ResetColor();
+                        }
+                    }
+                    else
+                    {
+                        return;
+                    }
+                }
+                else
+                {
+                    // Show detected maps
+                    Console.WriteLine("╔══════════════════════════════════════════════════════════╗");
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"║  DETECTED {maps.Count} MAP(S) IN CURRENT DIRECTORY");
+                    Console.ResetColor();
+                    Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
+                    Console.WriteLine();
+
+                    // List maps with numbers
+                    for (int i = 0; i < maps.Count; i++)
+                    {
+                        var map = maps[i];
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.Write($"  [{i + 1}] ");
+                        Console.ResetColor();
+                        Console.Write($"{map.Name}");
+
+                        // Show file size
+                        var fileInfo = new FileInfo(map.FullPath);
+                        double sizeMB = fileInfo.Length / 1024.0 / 1024.0;
+                        Console.ForegroundColor = ConsoleColor.DarkGray;
+                        Console.WriteLine($" ({sizeMB:F2} MB)");
+                        Console.ResetColor();
+                    }
+
+                    Console.WriteLine();
+                    Console.WriteLine("  [A] Export ALL maps");
+                    Console.WriteLine("  [M] Enter manual path");
+                    Console.WriteLine("  [0] Exit");
+
+                    Console.Write("\nSelect map number (or A/M/0): ");
+                    string? input = Console.ReadLine()?.Trim().ToUpper();
+
+                    if (input == "0")
+                    {
+                        Console.WriteLine("Goodbye!");
+                        return;
+                    }
+                    else if (input == "A")
+                    {
+                        // Export all maps
+                        Console.WriteLine();
+                        foreach (var map in maps)
+                        {
+                            ProcessMap(map.FullPath);
+                            Console.WriteLine();
+                        }
+
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"✓ Exported all {maps.Count} maps!");
+                        Console.ResetColor();
+                        Console.WriteLine("\nPress Enter to continue...");
+                        Console.ReadLine();
+                    }
+                    else if (input == "M")
+                    {
+                        Console.Write("\nMap file path: ");
+                        string? manualPath = Console.ReadLine()?.Trim();
+                        if (!string.IsNullOrEmpty(manualPath) && File.Exists(manualPath))
+                        {
+                            ProcessMap(manualPath);
+                        }
+                        else
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine("✗ Invalid file path");
+                            Console.ResetColor();
+                        }
+                    }
+                    else if (int.TryParse(input, out int mapIndex) && mapIndex >= 1 && mapIndex <= maps.Count)
+                    {
+                        // Export selected map
+                        ProcessMap(maps[mapIndex - 1].FullPath);
+                        Console.WriteLine("\nPress Enter to continue...");
+                        Console.ReadLine();
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine("✗ Invalid selection");
+                        Console.ResetColor();
+                    }
+                }
+
+                Console.Clear();
+                ShowBanner();
+            }
+        }
+
+        static List<MapInfo> ScanForMaps()
+        {
+            var maps = new List<MapInfo>();
+
+            try
+            {
+                var currentDir = Directory.GetCurrentDirectory();
+
+                // Find .w3x files
+                foreach (var file in Directory.GetFiles(currentDir, "*.w3x"))
+                {
+                    maps.Add(new MapInfo
+                    {
+                        Name = Path.GetFileName(file),
+                        FullPath = file,
+                        Extension = ".w3x"
+                    });
+                }
+
+                // Find .w3m files
+                foreach (var file in Directory.GetFiles(currentDir, "*.w3m"))
+                {
+                    maps.Add(new MapInfo
+                    {
+                        Name = Path.GetFileName(file),
+                        FullPath = file,
+                        Extension = ".w3m"
+                    });
+                }
+
+                // Sort by name
+                maps = maps.OrderBy(m => m.Name).ToList();
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"Error scanning directory: {ex.Message}");
+                Console.ResetColor();
+            }
+
+            return maps;
+        }
+
+        static void ProcessMap(string mapPath)
+        {
+            Console.WriteLine();
+            Console.WriteLine("═══════════════════════════════════════════════════════════");
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"PROCESSING: {Path.GetFileName(mapPath)}");
+            Console.ResetColor();
+            Console.WriteLine("═══════════════════════════════════════════════════════════");
+            Console.WriteLine();
+
+            // Select format
+            Console.WriteLine("Select export format:");
+            Console.WriteLine("  [1] TXT - Human-readable text (recommended)");
+            Console.WriteLine("  [2] INI - Configuration style (version control friendly)");
+            Console.WriteLine("  [3] CSV - Spreadsheet format (Excel/LibreOffice)");
+            Console.Write("\nChoice (1-3) or press Enter for TXT: ");
+
+            string? formatChoice = Console.ReadLine()?.Trim();
+            string format = formatChoice switch
+            {
+                "2" => "ini",
+                "3" => "csv",
+                _ => "txt"
+            };
+
+            // Auto-generate output path
+            string outputPath = Path.ChangeExtension(mapPath, null) + "_objects";
+
+            Console.Write($"\nOutput folder (or press Enter for '{Path.GetFileName(outputPath)}'): ");
+            string? customOutput = Console.ReadLine()?.Trim();
+            if (!string.IsNullOrEmpty(customOutput))
+            {
+                outputPath = customOutput;
+            }
+
+            // Export
+            ExportMap(mapPath, outputPath, format);
+        }
+
+        static void ExportMap(string mapPath, string outputPath, string format)
+        {
+            // Validate format
             if (format != "txt" && format != "ini" && format != "csv")
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"\n⚠ Warning: Unknown format '{format}', using 'txt'");
+                Console.WriteLine($"⚠ Warning: Unknown format '{format}', using 'txt'");
                 Console.ResetColor();
                 format = "txt";
             }
@@ -69,7 +276,7 @@ namespace ObjectDataExporter
             Map map;
             try
             {
-                Console.WriteLine($"\nLoading map: {mapPath}");
+                Console.WriteLine($"\nLoading map...");
                 map = Map.Open(mapPath);
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine("✓ Map loaded successfully");
@@ -78,7 +285,7 @@ namespace ObjectDataExporter
             catch (Exception ex)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"\n✗ Error loading map: {ex.Message}");
+                Console.WriteLine($"✗ Error loading map: {ex.Message}");
                 Console.ResetColor();
                 return;
             }
@@ -86,7 +293,7 @@ namespace ObjectDataExporter
             // Export object data
             try
             {
-                Console.WriteLine($"\nExporting object data to {format.ToUpper()} format...\n");
+                Console.WriteLine($"\nExporting to {format.ToUpper()} format...\n");
 
                 var exporter = new ObjectDataExporter(map);
 
@@ -103,19 +310,26 @@ namespace ObjectDataExporter
                         break;
                 }
 
+                Console.WriteLine();
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"\n✓ Export completed successfully!");
+                Console.WriteLine("✓ Export completed successfully!");
                 Console.ResetColor();
-                Console.WriteLine($"\nOutput files created in: {Path.GetFullPath(outputPath)}");
+                Console.WriteLine($"\nOutput location: {Path.GetFullPath(outputPath)}");
             }
             catch (Exception ex)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine($"\n✗ Error during export: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 Console.ResetColor();
             }
         }
+    }
+
+    class MapInfo
+    {
+        public required string Name { get; set; }
+        public required string FullPath { get; set; }
+        public required string Extension { get; set; }
     }
 
     class ObjectDataExporter
