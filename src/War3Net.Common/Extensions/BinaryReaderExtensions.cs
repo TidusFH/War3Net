@@ -97,7 +97,7 @@ namespace War3Net.Common.Extensions
         public static TEnum ReadInt32<TEnum>(this BinaryReader reader)
             where TEnum : struct, Enum
         {
-            return EnumConvert<TEnum>.FromInt32(reader.ReadInt32());
+            return EnumConvert<TEnum>.FromInt32(reader.ReadInt32(), allowNoFlags: false);
         }
     }
 }

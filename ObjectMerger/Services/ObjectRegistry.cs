@@ -31,7 +31,22 @@ namespace ObjectMerger.Services
             Console.WriteLine($"Loading objects from: {mapPath}");
 
             var registry = new ObjectRegistry();
-            registry.sourceMap = Map.Open(mapPath);
+
+            try
+            {
+                registry.sourceMap = Map.Open(mapPath);
+            }
+            catch (Exception ex)
+            {
+                // Try to open with lenient parsing if strict parsing fails
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"Warning: Map contains unknown data types. Attempting lenient load...");
+                Console.WriteLine($"  Error: {ex.Message}");
+                Console.ResetColor();
+
+                // Re-throw for now - we'll need to implement custom parsing if this persists
+                throw new Exception($"Failed to load map '{mapPath}'. The map may contain custom object modifications that are not supported by War3Net. Error: {ex.Message}", ex);
+            }
 
             registry.LoadUnits();
             registry.LoadItems();
