@@ -8,22 +8,8 @@ namespace ObjectMerger
     /// </summary>
     public static class Extensions
     {
-        /// <summary>
-        /// Convert rawcode string to int
-        /// Example: "h001" -> int
-        /// </summary>
-        public static int FromRawcode(this string rawcode)
-        {
-            return War3Net.Common.Extensions.RawcodeExtensions.FromRawcode(rawcode);
-        }
-
-        /// <summary>
-        /// Convert int to rawcode string
-        /// Example: int -> "h001"
-        /// </summary>
-        public static string ToRawcode(this int value)
-        {
-            return War3Net.Common.Extensions.RawcodeExtensions.ToRawcode(value);
-        }
+        // War3Net.Common.Extensions already provides these extension methods
+        // No need to wrap them - just use .ToRawcode() directly on int values
+        // and .FromRawcode() on string values
     }
 }

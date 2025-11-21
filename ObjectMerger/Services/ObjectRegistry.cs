@@ -225,6 +225,40 @@ namespace ObjectMerger.Services
         }
 
         /// <summary>
+        /// Get a modification value from a level object (abilities, upgrades)
+        /// </summary>
+        private string? GetModificationValue(War3Net.Build.Object.LevelObjectModification obj, string modCode)
+        {
+            try
+            {
+                int modId = modCode.FromRawcode();
+                var mod = obj.Modifications.FirstOrDefault(m => m.Id == modId && m.Level == 0);
+                return mod?.Value?.ToString();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Get a modification value from a variation object (doodads)
+        /// </summary>
+        private string? GetModificationValue(War3Net.Build.Object.VariationObjectModification obj, string modCode)
+        {
+            try
+            {
+                int modId = modCode.FromRawcode();
+                var mod = obj.Modifications.FirstOrDefault(m => m.Id == modId);
+                return mod?.Value?.ToString();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Get object by code and type
         /// </summary>
         public ObjectInfo? GetObject(string code, ObjectType type)
