@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using War3Net.Build;
 using War3Net.Build.Object;
 using War3Net.Common.Extensions;

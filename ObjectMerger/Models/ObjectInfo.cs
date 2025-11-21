@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using War3Net.Build.Object;
 
 namespace ObjectMerger.Models
