@@ -1,5 +1,9 @@
 using ObjectMerger.Models;
 using ObjectMerger.Services;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 
 namespace ObjectMerger
 {
@@ -19,6 +23,7 @@ namespace ObjectMerger
             Console.WriteLine("║     Copy custom units, items, abilities between maps     ║");
             Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
             Console.ResetColor();
+            Console.WriteLine();
 
             // Get input paths
             if (args.Length >= 3)
@@ -29,24 +34,10 @@ namespace ObjectMerger
             }
             else
             {
-                Console.WriteLine("\nUsage: ObjectMerger.exe <source.w3x> <target.w3x> <output.w3x>");
-                Console.WriteLine("\nOr enter paths now:");
-
-                Console.Write("\nSource map path: ");
-                sourcePath = Console.ReadLine()?.Trim() ?? string.Empty;
-
-                Console.Write("Target map path: ");
-                targetPath = Console.ReadLine()?.Trim() ?? string.Empty;
-
-                Console.Write("Output map path (or press Enter for 'target_merged.w3x'): ");
-                outputPath = Console.ReadLine()?.Trim() ?? string.Empty;
-
-                if (string.IsNullOrEmpty(outputPath))
+                // Interactive mode - scan for maps
+                if (!SelectMapsInteractive())
                 {
-                    outputPath = Path.Combine(
-                        Path.GetDirectoryName(targetPath) ?? ".",
-                        Path.GetFileNameWithoutExtension(targetPath) + "_merged" + Path.GetExtension(targetPath)
-                    );
+                    return;
                 }
             }
 
@@ -96,6 +87,156 @@ namespace ObjectMerger
             InteractiveMode();
         }
 
+        static bool SelectMapsInteractive()
+        {
+            var maps = ScanForMaps();
+
+            if (!maps.Any())
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("⚠ No .w3x or .w3m files found in current directory");
+                Console.ResetColor();
+                Console.WriteLine("\nPlease enter paths manually:");
+                Console.Write("\nSource map path: ");
+                sourcePath = Console.ReadLine()?.Trim() ?? string.Empty;
+                Console.Write("Target map path: ");
+                targetPath = Console.ReadLine()?.Trim() ?? string.Empty;
+
+                if (string.IsNullOrEmpty(sourcePath) || string.IsNullOrEmpty(targetPath))
+                {
+                    Console.WriteLine("Invalid paths");
+                    return false;
+                }
+            }
+            else
+            {
+                // Show detected maps
+                Console.WriteLine("═══════════════════════════════════════════════════════════");
+                Console.WriteLine("DETECTED MAPS IN CURRENT FOLDER");
+                Console.WriteLine("═══════════════════════════════════════════════════════════\n");
+
+                for (int i = 0; i < maps.Count; i++)
+                {
+                    var map = maps[i];
+                    double sizeMB = new FileInfo(map.FullPath).Length / (1024.0 * 1024.0);
+                    Console.WriteLine($"  [{i + 1}] {map.Name} ({sizeMB:F2} MB)");
+                }
+
+                Console.WriteLine("\n  [M] Enter manual path");
+                Console.WriteLine("  [0] Exit");
+
+                // Select SOURCE map
+                Console.WriteLine("\n───────────────────────────────────────────────────────────");
+                Console.Write("Select SOURCE map (copy FROM): ");
+                string? sourceChoice = Console.ReadLine()?.Trim();
+
+                if (sourceChoice == "0")
+                {
+                    return false;
+                }
+                else if (sourceChoice?.ToUpper() == "M")
+                {
+                    Console.Write("Enter source map path: ");
+                    sourcePath = Console.ReadLine()?.Trim() ?? string.Empty;
+                }
+                else if (int.TryParse(sourceChoice, out int sourceIndex) && sourceIndex > 0 && sourceIndex <= maps.Count)
+                {
+                    sourcePath = maps[sourceIndex - 1].FullPath;
+                }
+                else
+                {
+                    Console.WriteLine("Invalid selection");
+                    return false;
+                }
+
+                // Select TARGET map
+                Console.Write("Select TARGET map (copy TO): ");
+                string? targetChoice = Console.ReadLine()?.Trim();
+
+                if (targetChoice == "0")
+                {
+                    return false;
+                }
+                else if (targetChoice?.ToUpper() == "M")
+                {
+                    Console.Write("Enter target map path: ");
+                    targetPath = Console.ReadLine()?.Trim() ?? string.Empty;
+                }
+                else if (int.TryParse(targetChoice, out int targetIndex) && targetIndex > 0 && targetIndex <= maps.Count)
+                {
+                    targetPath = maps[targetIndex - 1].FullPath;
+                }
+                else
+                {
+                    Console.WriteLine("Invalid selection");
+                    return false;
+                }
+            }
+
+            // Set output path
+            Console.Write("\nOutput map path (or press Enter for auto): ");
+            outputPath = Console.ReadLine()?.Trim() ?? string.Empty;
+
+            if (string.IsNullOrEmpty(outputPath))
+            {
+                outputPath = Path.Combine(
+                    Path.GetDirectoryName(targetPath) ?? ".",
+                    Path.GetFileNameWithoutExtension(targetPath) + "_merged" + Path.GetExtension(targetPath)
+                );
+            }
+
+            // Show summary
+            Console.WriteLine("\n═══════════════════════════════════════════════════════════");
+            Console.WriteLine("CONFIGURATION:");
+            Console.WriteLine($"  Source: {Path.GetFileName(sourcePath)}");
+            Console.WriteLine($"  Target: {Path.GetFileName(targetPath)}");
+            Console.WriteLine($"  Output: {Path.GetFileName(outputPath)}");
+            Console.WriteLine("═══════════════════════════════════════════════════════════");
+
+            return true;
+        }
+
+        static List<MapInfo> ScanForMaps()
+        {
+            var maps = new List<MapInfo>();
+            var currentDir = Directory.GetCurrentDirectory();
+
+            try
+            {
+                // Find .w3x files
+                foreach (var file in Directory.GetFiles(currentDir, "*.w3x"))
+                {
+                    maps.Add(new MapInfo
+                    {
+                        Name = Path.GetFileName(file),
+                        FullPath = file,
+                        Extension = ".w3x"
+                    });
+                }
+
+                // Find .w3m files
+                foreach (var file in Directory.GetFiles(currentDir, "*.w3m"))
+                {
+                    maps.Add(new MapInfo
+                    {
+                        Name = Path.GetFileName(file),
+                        FullPath = file,
+                        Extension = ".w3m"
+                    });
+                }
+
+                maps = maps.OrderBy(m => m.Name).ToList();
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"Error scanning directory: {ex.Message}");
+                Console.ResetColor();
+            }
+
+            return maps;
+        }
+
         static void InteractiveMode()
         {
             while (true)
@@ -103,13 +244,20 @@ namespace ObjectMerger
                 Console.WriteLine("\n╔══════════════════════════════════════════════════════════╗");
                 Console.WriteLine("║                    MAIN MENU                             ║");
                 Console.WriteLine("╚══════════════════════════════════════════════════════════╝");
-                Console.WriteLine("1. List objects from SOURCE");
-                Console.WriteLine("2. List objects from TARGET");
-                Console.WriteLine("3. Copy specific objects");
-                Console.WriteLine("4. Copy all objects of a type");
-                Console.WriteLine("5. Show statistics");
-                Console.WriteLine("6. Save and exit");
-                Console.WriteLine("0. Exit without saving");
+                Console.WriteLine();
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine("COPY OPTIONS:");
+                Console.ResetColor();
+                Console.WriteLine("  1. Copy SPECIFIC objects (by code - e.g., h001, A001)");
+                Console.WriteLine("  2. Copy ALL objects of a type (all units, all items, etc.)");
+                Console.WriteLine();
+                Console.WriteLine("VIEW OPTIONS:");
+                Console.WriteLine("  3. List objects from SOURCE");
+                Console.WriteLine("  4. List objects from TARGET");
+                Console.WriteLine("  5. Show statistics");
+                Console.WriteLine();
+                Console.WriteLine("  6. Save and exit");
+                Console.WriteLine("  0. Exit without saving");
 
                 Console.Write("\nChoice: ");
                 string? choice = Console.ReadLine();
@@ -119,16 +267,16 @@ namespace ObjectMerger
                     switch (choice)
                     {
                         case "1":
-                            ListObjects(sourceRegistry!, "SOURCE");
-                            break;
-                        case "2":
-                            ListObjects(targetRegistry!, "TARGET");
-                            break;
-                        case "3":
                             CopySpecificObjects();
                             break;
-                        case "4":
+                        case "2":
                             CopyObjectsByType();
+                            break;
+                        case "3":
+                            ListObjects(sourceRegistry!, "SOURCE");
+                            break;
+                        case "4":
+                            ListObjects(targetRegistry!, "TARGET");
                             break;
                         case "5":
                             ShowStatistics();
@@ -387,5 +535,12 @@ namespace ObjectMerger
                 Console.ResetColor();
             }
         }
+    }
+
+    class MapInfo
+    {
+        public required string Name { get; set; }
+        public required string FullPath { get; set; }
+        public required string Extension { get; set; }
     }
 }
