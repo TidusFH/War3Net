@@ -167,7 +167,7 @@ namespace ObjectMerger.Services
 
         private bool CopyAbility(Map sourceMap, Map targetMap, ObjectInfo obj)
         {
-            var sourceAbility = obj.SourceObject as SimpleObjectModification;
+            var sourceAbility = obj.SourceObject as War3Net.Build.Object.LevelObjectModification;
             if (sourceAbility == null) return false;
 
             if (targetMap.AbilityObjectData == null)
@@ -175,7 +175,7 @@ namespace ObjectMerger.Services
                 targetMap.AbilityObjectData = new AbilityObjectData(sourceMap.AbilityObjectData!.FormatVersion);
             }
 
-            var clone = CloneSimpleObject(sourceAbility);
+            var clone = CloneLevelObject(sourceAbility);
             targetMap.AbilityObjectData.NewAbilities.Add(clone);
 
             return true;
@@ -199,7 +199,7 @@ namespace ObjectMerger.Services
 
         private bool CopyDoodad(Map sourceMap, Map targetMap, ObjectInfo obj)
         {
-            var sourceDoodad = obj.SourceObject as SimpleObjectModification;
+            var sourceDoodad = obj.SourceObject as War3Net.Build.Object.VariationObjectModification;
             if (sourceDoodad == null) return false;
 
             if (targetMap.DoodadObjectData == null)
@@ -207,7 +207,7 @@ namespace ObjectMerger.Services
                 targetMap.DoodadObjectData = new DoodadObjectData(sourceMap.DoodadObjectData!.FormatVersion);
             }
 
-            var clone = CloneSimpleObject(sourceDoodad);
+            var clone = CloneVariationObject(sourceDoodad);
             targetMap.DoodadObjectData.NewDoodads.Add(clone);
 
             return true;
@@ -231,7 +231,7 @@ namespace ObjectMerger.Services
 
         private bool CopyUpgrade(Map sourceMap, Map targetMap, ObjectInfo obj)
         {
-            var sourceUpgrade = obj.SourceObject as SimpleObjectModification;
+            var sourceUpgrade = obj.SourceObject as War3Net.Build.Object.LevelObjectModification;
             if (sourceUpgrade == null) return false;
 
             if (targetMap.UpgradeObjectData == null)
@@ -239,7 +239,7 @@ namespace ObjectMerger.Services
                 targetMap.UpgradeObjectData = new UpgradeObjectData(sourceMap.UpgradeObjectData!.FormatVersion);
             }
 
-            var clone = CloneSimpleObject(sourceUpgrade);
+            var clone = CloneLevelObject(sourceUpgrade);
             targetMap.UpgradeObjectData.NewUpgrades.Add(clone);
 
             return true;
@@ -263,8 +263,60 @@ namespace ObjectMerger.Services
                 {
                     Id = mod.Id,
                     Type = mod.Type,
+                    Value = mod.Value
+                });
+            }
+
+            return clone;
+        }
+
+        /// <summary>
+        /// Clone a LevelObjectModification (for abilities, upgrades)
+        /// </summary>
+        private War3Net.Build.Object.LevelObjectModification CloneLevelObject(War3Net.Build.Object.LevelObjectModification source)
+        {
+            var clone = new War3Net.Build.Object.LevelObjectModification
+            {
+                OldId = source.OldId,
+                NewId = source.NewId
+            };
+
+            // Clone level modifications
+            foreach (var mod in source.Modifications)
+            {
+                clone.Modifications.Add(new War3Net.Build.Object.LevelObjectDataModification
+                {
+                    Id = mod.Id,
+                    Type = mod.Type,
                     Value = mod.Value,
-                    End = mod.End
+                    Level = mod.Level,
+                    Pointer = mod.Pointer
+                });
+            }
+
+            return clone;
+        }
+
+        /// <summary>
+        /// Clone a VariationObjectModification (for doodads)
+        /// </summary>
+        private War3Net.Build.Object.VariationObjectModification CloneVariationObject(War3Net.Build.Object.VariationObjectModification source)
+        {
+            var clone = new War3Net.Build.Object.VariationObjectModification
+            {
+                OldId = source.OldId,
+                NewId = source.NewId
+            };
+
+            // Clone variation modifications
+            foreach (var mod in source.Modifications)
+            {
+                clone.Modifications.Add(new War3Net.Build.Object.VariationObjectDataModification
+                {
+                    Id = mod.Id,
+                    Type = mod.Type,
+                    Value = mod.Value,
+                    Pointer = mod.Pointer
                 });
             }
 

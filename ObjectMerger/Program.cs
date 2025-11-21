@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using War3Net.IO.Mpq;
 
 namespace ObjectMerger
 {
@@ -518,8 +519,18 @@ namespace ObjectMerger
                     throw new Exception("Target map not loaded");
                 }
 
-                Console.WriteLine("Saving map...");
-                targetMap.Save(outputPath);
+                Console.WriteLine("Opening target archive...");
+                using var targetArchive = MpqArchive.Open(targetPath, true);
+                targetArchive.DiscoverFileNames();
+
+                Console.WriteLine("Creating archive builder...");
+                var builder = new MpqArchiveBuilder(targetArchive);
+
+                // Save each object data type that exists in the map
+                SaveObjectData(builder, targetMap);
+
+                Console.WriteLine($"Saving to {outputPath}...");
+                builder.SaveTo(outputPath);
 
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine($"\n✓ Map saved successfully to: {outputPath}");
@@ -533,6 +544,107 @@ namespace ObjectMerger
                 Console.WriteLine($"\n✗ Error saving map: {ex.Message}");
                 Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 Console.ResetColor();
+            }
+        }
+
+        static void SaveObjectData(MpqArchiveBuilder builder, War3Net.Build.Map targetMap)
+        {
+            // Units (war3map.w3u)
+            if (targetMap.UnitObjectData != null)
+            {
+                Console.WriteLine("  Saving unit data...");
+                using var stream = new MemoryStream();
+                using var writer = new BinaryWriter(stream);
+                targetMap.UnitObjectData.WriteTo(writer);
+                writer.Flush();
+                stream.Position = 0;
+
+                builder.RemoveFile(War3Net.Build.Object.UnitObjectData.MapFileName);
+                builder.AddFile(MpqFile.New(stream, War3Net.Build.Object.UnitObjectData.MapFileName));
+            }
+
+            // Items (war3map.w3t)
+            if (targetMap.ItemObjectData != null)
+            {
+                Console.WriteLine("  Saving item data...");
+                using var stream = new MemoryStream();
+                using var writer = new BinaryWriter(stream);
+                targetMap.ItemObjectData.WriteTo(writer);
+                writer.Flush();
+                stream.Position = 0;
+
+                builder.RemoveFile(War3Net.Build.Object.ItemObjectData.MapFileName);
+                builder.AddFile(MpqFile.New(stream, War3Net.Build.Object.ItemObjectData.MapFileName));
+            }
+
+            // Abilities (war3map.w3a)
+            if (targetMap.AbilityObjectData != null)
+            {
+                Console.WriteLine("  Saving ability data...");
+                using var stream = new MemoryStream();
+                using var writer = new BinaryWriter(stream);
+                targetMap.AbilityObjectData.WriteTo(writer);
+                writer.Flush();
+                stream.Position = 0;
+
+                builder.RemoveFile(War3Net.Build.Object.AbilityObjectData.MapFileName);
+                builder.AddFile(MpqFile.New(stream, War3Net.Build.Object.AbilityObjectData.MapFileName));
+            }
+
+            // Destructables (war3map.w3b)
+            if (targetMap.DestructableObjectData != null)
+            {
+                Console.WriteLine("  Saving destructable data...");
+                using var stream = new MemoryStream();
+                using var writer = new BinaryWriter(stream);
+                targetMap.DestructableObjectData.WriteTo(writer);
+                writer.Flush();
+                stream.Position = 0;
+
+                builder.RemoveFile(War3Net.Build.Object.DestructableObjectData.MapFileName);
+                builder.AddFile(MpqFile.New(stream, War3Net.Build.Object.DestructableObjectData.MapFileName));
+            }
+
+            // Doodads (war3map.w3d)
+            if (targetMap.DoodadObjectData != null)
+            {
+                Console.WriteLine("  Saving doodad data...");
+                using var stream = new MemoryStream();
+                using var writer = new BinaryWriter(stream);
+                targetMap.DoodadObjectData.WriteTo(writer);
+                writer.Flush();
+                stream.Position = 0;
+
+                builder.RemoveFile(War3Net.Build.Object.DoodadObjectData.MapFileName);
+                builder.AddFile(MpqFile.New(stream, War3Net.Build.Object.DoodadObjectData.MapFileName));
+            }
+
+            // Buffs (war3map.w3h)
+            if (targetMap.BuffObjectData != null)
+            {
+                Console.WriteLine("  Saving buff data...");
+                using var stream = new MemoryStream();
+                using var writer = new BinaryWriter(stream);
+                targetMap.BuffObjectData.WriteTo(writer);
+                writer.Flush();
+                stream.Position = 0;
+
+                builder.RemoveFile(War3Net.Build.Object.BuffObjectData.MapFileName);
+                builder.AddFile(MpqFile.New(stream, War3Net.Build.Object.BuffObjectData.MapFileName));
+            }
+
+            // Upgrades (war3map.w3q)
+            if (targetMap.UpgradeObjectData != null)
+            {
+                Console.WriteLine("  Saving upgrade data...");
+                using var stream = new MemoryStream();
+                using var writer = new BinaryWriter(stream);
+                targetMap.UpgradeObjectData.WriteTo(writer);
+                writer.Flush();
+                stream.Position = 0;
+
+                builder.RemoveFile(War3Net.Build.Object.UpgradeObjectData.MapFileName);
+                builder.AddFile(MpqFile.New(stream, War3Net.Build.Object.UpgradeObjectData.MapFileName));
             }
         }
     }
