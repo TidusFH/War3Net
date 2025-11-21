@@ -25,6 +25,14 @@
     <Reference Include="War3Net.IO.Mpq">
       <HintPath>../Libs/War3Net.IO.Mpq.dll</HintPath>
     </Reference>
+    <Reference Include="War3Net.IO.Compression">
+      <HintPath>../Libs/War3Net.IO.Compression.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- NuGet package for compression (required by War3Net.IO.Compression) -->
+    <PackageReference Include="DotNetZip" Version="1.16.0" />
   </ItemGroup>
 
 </Project>
