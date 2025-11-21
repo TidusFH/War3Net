@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using War3Net.Build.Extensions;
 using War3Net.IO.Mpq;
 
 namespace ObjectMerger
@@ -521,7 +522,6 @@ namespace ObjectMerger
 
                 Console.WriteLine("Opening target archive...");
                 using var targetArchive = MpqArchive.Open(targetPath, true);
-                targetArchive.DiscoverFileNames();
 
                 Console.WriteLine("Creating archive builder...");
                 var builder = new MpqArchiveBuilder(targetArchive);
@@ -555,7 +555,7 @@ namespace ObjectMerger
                 Console.WriteLine("  Saving unit data...");
                 using var stream = new MemoryStream();
                 using var writer = new BinaryWriter(stream);
-                targetMap.UnitObjectData.WriteTo(writer);
+                writer.Write(targetMap.UnitObjectData);
                 writer.Flush();
                 stream.Position = 0;
 
@@ -569,7 +569,7 @@ namespace ObjectMerger
                 Console.WriteLine("  Saving item data...");
                 using var stream = new MemoryStream();
                 using var writer = new BinaryWriter(stream);
-                targetMap.ItemObjectData.WriteTo(writer);
+                writer.Write(targetMap.ItemObjectData);
                 writer.Flush();
                 stream.Position = 0;
 
@@ -583,7 +583,7 @@ namespace ObjectMerger
                 Console.WriteLine("  Saving ability data...");
                 using var stream = new MemoryStream();
                 using var writer = new BinaryWriter(stream);
-                targetMap.AbilityObjectData.WriteTo(writer);
+                writer.Write(targetMap.AbilityObjectData);
                 writer.Flush();
                 stream.Position = 0;
 
@@ -597,7 +597,7 @@ namespace ObjectMerger
                 Console.WriteLine("  Saving destructable data...");
                 using var stream = new MemoryStream();
                 using var writer = new BinaryWriter(stream);
-                targetMap.DestructableObjectData.WriteTo(writer);
+                writer.Write(targetMap.DestructableObjectData);
                 writer.Flush();
                 stream.Position = 0;
 
@@ -611,7 +611,7 @@ namespace ObjectMerger
                 Console.WriteLine("  Saving doodad data...");
                 using var stream = new MemoryStream();
                 using var writer = new BinaryWriter(stream);
-                targetMap.DoodadObjectData.WriteTo(writer);
+                writer.Write(targetMap.DoodadObjectData);
                 writer.Flush();
                 stream.Position = 0;
 
@@ -625,7 +625,7 @@ namespace ObjectMerger
                 Console.WriteLine("  Saving buff data...");
                 using var stream = new MemoryStream();
                 using var writer = new BinaryWriter(stream);
-                targetMap.BuffObjectData.WriteTo(writer);
+                writer.Write(targetMap.BuffObjectData);
                 writer.Flush();
                 stream.Position = 0;
 
@@ -639,7 +639,7 @@ namespace ObjectMerger
                 Console.WriteLine("  Saving upgrade data...");
                 using var stream = new MemoryStream();
                 using var writer = new BinaryWriter(stream);
-                targetMap.UpgradeObjectData.WriteTo(writer);
+                writer.Write(targetMap.UpgradeObjectData);
                 writer.Flush();
                 stream.Position = 0;
 
