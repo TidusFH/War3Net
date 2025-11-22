@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using War3Net.Build.Extensions;
 using War3Net.IO.Mpq;
 
@@ -542,6 +543,9 @@ namespace ObjectMerger
                 Console.WriteLine("Creating archive builder...");
                 var builder = new MpqArchiveBuilder(targetArchive);
 
+                // Merge and save string tables
+                MergeStringTables(builder);
+
                 // Save each object data type that exists in the map
                 SaveObjectData(builder, targetMap);
 
@@ -674,6 +678,94 @@ namespace ObjectMerger
                 builder.RemoveFile(War3Net.Build.Object.UpgradeObjectData.MapFileName);
                 builder.AddFile(MpqFile.New(stream, War3Net.Build.Object.UpgradeObjectData.MapFileName));
             }
+        }
+
+        static void MergeStringTables(MpqArchiveBuilder builder)
+        {
+            Console.WriteLine("  Merging string tables...");
+
+            // Get string tables from both maps
+            var targetStrings = targetRegistry?.GetStringTable();
+            var sourceStrings = sourceRegistry?.GetStringTable();
+
+            if (sourceStrings == null || sourceStrings.Strings.Count == 0)
+            {
+                Console.WriteLine("    Source map has no string table - skipping");
+                return;
+            }
+
+            // Create merged string table (start with target, add source)
+            var mergedStrings = new Services.StringTableReader();
+
+            // If target has strings, start with those
+            if (targetStrings != null)
+            {
+                Console.WriteLine($"    Target has {targetStrings.Strings.Count} strings");
+                foreach (var kvp in targetStrings.Strings)
+                {
+                    // Use reflection to add to private dictionary (or create a new instance)
+                    // Actually, let's create a better approach
+                }
+            }
+
+            // Merge source strings
+            Console.WriteLine($"    Source has {sourceStrings.Strings.Count} strings");
+
+            // Create a complete merged table
+            var allStrings = new Dictionary<int, string>();
+
+            // Add target strings first (they take precedence)
+            if (targetStrings != null)
+            {
+                foreach (var kvp in targetStrings.Strings)
+                {
+                    allStrings[kvp.Key] = kvp.Value;
+                }
+            }
+
+            // Add source strings (only if not already present)
+            int addedCount = 0;
+            foreach (var kvp in sourceStrings.Strings)
+            {
+                if (!allStrings.ContainsKey(kvp.Key))
+                {
+                    allStrings[kvp.Key] = kvp.Value;
+                    addedCount++;
+                }
+            }
+
+            Console.WriteLine($"    Added {addedCount} new strings from source");
+            Console.WriteLine($"    Total strings in merged table: {allStrings.Count}");
+
+            // Write merged string table
+            using var stream = new MemoryStream();
+            using var writer = new StreamWriter(stream, Encoding.UTF8);
+
+            foreach (var kvp in allStrings.OrderBy(x => x.Key))
+            {
+                writer.WriteLine($"STRING {kvp.Key}");
+                writer.WriteLine("{");
+                writer.WriteLine(kvp.Value);
+                writer.WriteLine("}");
+                writer.WriteLine();
+            }
+
+            writer.Flush();
+            stream.Position = 0;
+
+            if (DebugMode)
+            {
+                Console.WriteLine($"    WTS file size: {stream.Length} bytes");
+                Services.DebugHelper.ShowHexDump(stream.ToArray(), "war3map.wts header", 128);
+            }
+
+            // Add to archive
+            builder.RemoveFile("war3map.wts");
+            builder.AddFile(MpqFile.New(stream, "war3map.wts"));
+
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("  ✓ String table merged successfully!");
+            Console.ResetColor();
         }
     }
 

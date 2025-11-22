@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using War3Net.Build;
 
@@ -12,6 +13,43 @@ namespace ObjectMerger.Services
     public class StringTableReader
     {
         private readonly Dictionary<int, string> strings = new();
+
+        /// <summary>
+        /// Get all strings in the table
+        /// </summary>
+        public IReadOnlyDictionary<int, string> Strings => strings;
+
+        /// <summary>
+        /// Merge another string table into this one
+        /// </summary>
+        public void Merge(StringTableReader other)
+        {
+            foreach (var kvp in other.strings)
+            {
+                // Only add if not already present (target map's strings take precedence)
+                if (!strings.ContainsKey(kvp.Key))
+                {
+                    strings[kvp.Key] = kvp.Value;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Write the string table to WTS format
+        /// </summary>
+        public void WriteTo(Stream stream)
+        {
+            using var writer = new StreamWriter(stream, Encoding.UTF8, leaveOpen: true);
+
+            foreach (var kvp in strings.OrderBy(x => x.Key))
+            {
+                writer.WriteLine($"STRING {kvp.Key}");
+                writer.WriteLine("{");
+                writer.WriteLine(kvp.Value);
+                writer.WriteLine("}");
+                writer.WriteLine();
+            }
+        }
 
         /// <summary>
         /// Load string table from a map

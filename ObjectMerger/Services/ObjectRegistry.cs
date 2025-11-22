@@ -25,6 +25,11 @@ namespace ObjectMerger.Services
         private StringTableReader? stringTable;
 
         /// <summary>
+        /// Get the string table for this map
+        /// </summary>
+        public StringTableReader? GetStringTable() => stringTable;
+
+        /// <summary>
         /// Load all custom objects from a map
         /// </summary>
         public static ObjectRegistry LoadFromMap(string mapPath)
