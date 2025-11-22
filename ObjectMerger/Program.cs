@@ -569,11 +569,23 @@ namespace ObjectMerger
             if (targetMap.UnitObjectData != null)
             {
                 Console.WriteLine("  Saving unit data...");
+                if (DebugMode)
+                {
+                    Console.WriteLine($"    Base units: {targetMap.UnitObjectData.BaseUnits.Count}");
+                    Console.WriteLine($"    New units: {targetMap.UnitObjectData.NewUnits.Count}");
+                }
+
                 using var stream = new MemoryStream();
                 using var writer = new BinaryWriter(stream);
                 writer.Write(targetMap.UnitObjectData);
                 writer.Flush();
                 stream.Position = 0;
+
+                if (DebugMode)
+                {
+                    Console.WriteLine($"    File size: {stream.Length} bytes");
+                    Services.DebugHelper.ShowHexDump(stream.ToArray(), "war3map.w3u header", 64);
+                }
 
                 builder.RemoveFile(War3Net.Build.Object.UnitObjectData.MapFileName);
                 builder.AddFile(MpqFile.New(stream, War3Net.Build.Object.UnitObjectData.MapFileName));
