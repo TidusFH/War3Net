@@ -543,14 +543,29 @@ namespace ObjectMerger
                 Console.WriteLine("Creating archive builder...");
                 var builder = new MpqArchiveBuilder(targetArchive);
 
+                // Keep all streams alive until after SaveTo() completes
+                var keepAliveStreams = new List<MemoryStream>();
+
                 // Merge and save string tables
-                MergeStringTables(builder);
+                var wtsStream = MergeStringTables();
+                if (wtsStream != null)
+                {
+                    builder.RemoveFile("war3map.wts");
+                    builder.AddFile(MpqFile.New(wtsStream, "war3map.wts"));
+                    keepAliveStreams.Add(wtsStream);
+                }
 
                 // Save each object data type that exists in the map
-                SaveObjectData(builder, targetMap);
+                SaveObjectData(builder, targetMap, keepAliveStreams);
 
                 Console.WriteLine($"Saving to {outputPath}...");
                 builder.SaveTo(outputPath);
+
+                // Now streams can be disposed
+                foreach (var stream in keepAliveStreams)
+                {
+                    stream.Dispose();
+                }
 
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine($"\n✓ Map saved successfully to: {outputPath}");
@@ -567,7 +582,7 @@ namespace ObjectMerger
             }
         }
 
-        static void SaveObjectData(MpqArchiveBuilder builder, War3Net.Build.Map targetMap)
+        static void SaveObjectData(MpqArchiveBuilder builder, War3Net.Build.Map targetMap, List<MemoryStream> keepAliveStreams)
         {
             // Units (war3map.w3u)
             if (targetMap.UnitObjectData != null)
@@ -596,8 +611,10 @@ namespace ObjectMerger
                     Services.DebugHelper.ShowHexDump(unitData, "war3map.w3u header", 64);
                 }
 
+                var stream = new MemoryStream(unitData);
                 builder.RemoveFile(War3Net.Build.Object.UnitObjectData.MapFileName);
-                builder.AddFile(MpqFile.New(new MemoryStream(unitData), War3Net.Build.Object.UnitObjectData.MapFileName));
+                builder.AddFile(MpqFile.New(stream, War3Net.Build.Object.UnitObjectData.MapFileName));
+                keepAliveStreams.Add(stream);
             }
 
             // Items (war3map.w3t)
@@ -615,8 +632,10 @@ namespace ObjectMerger
                     itemData = tempStream.ToArray();
                 }
 
+                var stream = new MemoryStream(itemData);
                 builder.RemoveFile(War3Net.Build.Object.ItemObjectData.MapFileName);
-                builder.AddFile(MpqFile.New(new MemoryStream(itemData), War3Net.Build.Object.ItemObjectData.MapFileName));
+                builder.AddFile(MpqFile.New(stream, War3Net.Build.Object.ItemObjectData.MapFileName));
+                keepAliveStreams.Add(stream);
             }
 
             // Abilities (war3map.w3a)
@@ -634,8 +653,10 @@ namespace ObjectMerger
                     abilityData = tempStream.ToArray();
                 }
 
+                var stream = new MemoryStream(abilityData);
                 builder.RemoveFile(War3Net.Build.Object.AbilityObjectData.MapFileName);
-                builder.AddFile(MpqFile.New(new MemoryStream(abilityData), War3Net.Build.Object.AbilityObjectData.MapFileName));
+                builder.AddFile(MpqFile.New(stream, War3Net.Build.Object.AbilityObjectData.MapFileName));
+                keepAliveStreams.Add(stream);
             }
 
             // Destructables (war3map.w3b)
@@ -653,8 +674,10 @@ namespace ObjectMerger
                     destructableData = tempStream.ToArray();
                 }
 
+                var stream = new MemoryStream(destructableData);
                 builder.RemoveFile(War3Net.Build.Object.DestructableObjectData.MapFileName);
-                builder.AddFile(MpqFile.New(new MemoryStream(destructableData), War3Net.Build.Object.DestructableObjectData.MapFileName));
+                builder.AddFile(MpqFile.New(stream, War3Net.Build.Object.DestructableObjectData.MapFileName));
+                keepAliveStreams.Add(stream);
             }
 
             // Doodads (war3map.w3d)
@@ -672,8 +695,10 @@ namespace ObjectMerger
                     doodadData = tempStream.ToArray();
                 }
 
+                var stream = new MemoryStream(doodadData);
                 builder.RemoveFile(War3Net.Build.Object.DoodadObjectData.MapFileName);
-                builder.AddFile(MpqFile.New(new MemoryStream(doodadData), War3Net.Build.Object.DoodadObjectData.MapFileName));
+                builder.AddFile(MpqFile.New(stream, War3Net.Build.Object.DoodadObjectData.MapFileName));
+                keepAliveStreams.Add(stream);
             }
 
             // Buffs (war3map.w3h)
@@ -691,8 +716,10 @@ namespace ObjectMerger
                     buffData = tempStream.ToArray();
                 }
 
+                var stream = new MemoryStream(buffData);
                 builder.RemoveFile(War3Net.Build.Object.BuffObjectData.MapFileName);
-                builder.AddFile(MpqFile.New(new MemoryStream(buffData), War3Net.Build.Object.BuffObjectData.MapFileName));
+                builder.AddFile(MpqFile.New(stream, War3Net.Build.Object.BuffObjectData.MapFileName));
+                keepAliveStreams.Add(stream);
             }
 
             // Upgrades (war3map.w3q)
@@ -710,12 +737,14 @@ namespace ObjectMerger
                     upgradeData = tempStream.ToArray();
                 }
 
+                var stream = new MemoryStream(upgradeData);
                 builder.RemoveFile(War3Net.Build.Object.UpgradeObjectData.MapFileName);
-                builder.AddFile(MpqFile.New(new MemoryStream(upgradeData), War3Net.Build.Object.UpgradeObjectData.MapFileName));
+                builder.AddFile(MpqFile.New(stream, War3Net.Build.Object.UpgradeObjectData.MapFileName));
+                keepAliveStreams.Add(stream);
             }
         }
 
-        static void MergeStringTables(MpqArchiveBuilder builder)
+        static MemoryStream? MergeStringTables()
         {
             Console.WriteLine("  Merging string tables...");
 
@@ -726,25 +755,15 @@ namespace ObjectMerger
             if (sourceStrings == null || sourceStrings.Strings.Count == 0)
             {
                 Console.WriteLine("    Source map has no string table - skipping");
-                return;
-            }
-
-            // Create merged string table (start with target, add source)
-            var mergedStrings = new Services.StringTableReader();
-
-            // If target has strings, start with those
-            if (targetStrings != null)
-            {
-                Console.WriteLine($"    Target has {targetStrings.Strings.Count} strings");
-                foreach (var kvp in targetStrings.Strings)
-                {
-                    // Use reflection to add to private dictionary (or create a new instance)
-                    // Actually, let's create a better approach
-                }
+                return null;
             }
 
             // Merge source strings
             Console.WriteLine($"    Source has {sourceStrings.Strings.Count} strings");
+            if (targetStrings != null)
+            {
+                Console.WriteLine($"    Target has {targetStrings.Strings.Count} strings");
+            }
 
             // Create a complete merged table
             var allStrings = new Dictionary<int, string>();
@@ -798,16 +817,14 @@ namespace ObjectMerger
                 Services.DebugHelper.ShowHexDump(wtsData, "war3map.wts header", 128);
             }
 
-            // Create final stream for archive
+            // Create final stream and return it (caller will add to archive and keep alive)
             var wtsStream = new MemoryStream(wtsData);
-
-            // Add to archive
-            builder.RemoveFile("war3map.wts");
-            builder.AddFile(MpqFile.New(wtsStream, "war3map.wts"));
 
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine("  ✓ String table merged successfully!");
             Console.ResetColor();
+
+            return wtsStream;
         }
     }
 
