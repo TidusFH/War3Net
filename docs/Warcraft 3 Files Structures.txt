@@ -1,0 +1,2253 @@
+Part 1: MPQ Archive Format - Deep Dive
+1.1 MPQ Header Structure (Hex-Level)
+Detection Algorithm:
+
+text
+offset = 0
+while offset < file_size:
+    read 4 bytes at offset
+    if bytes == 'MPQ\x1A':
+        found MPQ header at offset
+        break
+    if bytes == 'MPQ\x1B':
+        found MPQ shunt at offset
+        read shunt, get real header position
+        break
+    offset += 0x200  // Check every 512 bytes
+MPQ Header Binary Structure:
+
+text
+Offset  Size  Type     Field Name           Hex Example         Notes
+0x00    4     char[4]  Magic                4D 50 51 1A         'MPQ\x1A'
+0x04    4     uint32   HeaderSize           20 00 00 00         32 bytes (LE)
+0x08    4     uint32   ArchiveSize          XX XX XX XX         Total archive size
+0x0C    2     uint16   FormatVersion        00 00               0=v1, 1=v2
+0x0E    2     uint16   BlockSize            03 00               Sector size = 512*(2^n)
+0x10    4     uint32   HashTablePosition    XX XX XX XX         Relative to archive start
+0x14    4     uint32   BlockTablePosition   XX XX XX XX         Relative to archive start
+0x18    4     uint32   HashTableSize        XX XX XX XX         Number of entries
+0x1C    4     uint32   BlockTableSize       XX XX XX XX         Number of entries
+BlockSize Calculation:
+
+c
+uint16 block_size_raw = read_uint16(0x0E);
+uint32 actual_sector_size = 512 * (1 << block_size_raw);
+// Example: 0x0003 → 512 * 2^3 = 4096 bytes per sector
+Extended Header (Version 1+):
+
+text
+Offset  Size  Type     Field Name           Notes
+0x20    8     uint64   ExtBlockTablePos     For archives >4GB
+0x28    2     uint16   HashTablePosHigh     High 16 bits of hash table offset
+0x2A    2     uint16   BlockTablePosHigh    High 16 bits of block table offset
+1.2 MPQ Hash Table - Cryptographic Implementation
+Hash Table Entry Structure (16 bytes each):
+
+text
+Offset  Size  Type     Field Name           Purpose
+0x00    4     uint32   FilePathHashA        Hash #1 (lookup key)
+0x04    4     uint32   FilePathHashB        Hash #2 (verification)
+0x08    2     uint16   Locale               Language ID (0=default)
+0x0A    2     uint16   Platform             Platform (0=default)
+0x0C    4     uint32   BlockIndex           Index into block table
+MPQ Hash Algorithm Implementation:
+
+c
+// Encryption table (1280 entries, 4 bytes each)
+uint32 cryptTable[0x500];
+
+void prepareCryptTable() {
+    uint32 seed = 0x00100001;
+    uint32 index1 = 0;
+    uint32 index2 = 0;
+    
+    for(index1 = 0; index1 < 0x100; index1++) {
+        for(index2 = index1, i = 0; i < 5; i++, index2 += 0x100) {
+            uint32 temp1, temp2;
+            seed = (seed * 125 + 3) % 0x2AAAAB;
+            temp1 = (seed & 0xFFFF) << 0x10;
+            
+            seed = (seed * 125 + 3) % 0x2AAAAB;
+            temp2 = (seed & 0xFFFF);
+            
+            cryptTable[index2] = (temp1 | temp2);
+        }
+    }
+}
+
+uint32 hashString(const char *str, uint32 hashType) {
+    uint32 seed1 = 0x7FED7FED;
+    uint32 seed2 = 0xEEEEEEEE;
+    
+    while(*str != 0) {
+        uint32 ch = toupper(*str++);  // Case-insensitive
+        seed1 = cryptTable[(hashType * 0x100) + ch] ^ (seed1 + seed2);
+        seed2 = ch + seed1 + seed2 + (seed2 << 5) + 3;
+    }
+    
+    return seed1;
+}
+
+// Hash types:
+// 0 = Hash for lookup (FilePathHashA)
+// 1 = Hash for verification A (FilePathHashB)
+// 2 = Block table offset hash
+File Lookup Algorithm:
+
+c
+typedef struct {
+    uint32 hashA;
+    uint32 hashB;
+    uint16 locale;
+    uint16 platform;
+    uint32 blockIndex;
+} HashEntry;
+
+uint32 findFile(const char *filename, HashEntry *hashTable, uint32 hashTableSize) {
+    // Calculate hashes
+    uint32 hashA = hashString(filename, 0);
+    uint32 hashB = hashString(filename, 1);
+    
+    // Find starting index
+    uint32 index = hashString(filename, 0) & (hashTableSize - 1);
+    uint32 start = index;
+    
+    do {
+        HashEntry *entry = &hashTable[index];
+        
+        // Check for match
+        if(entry->blockIndex == 0xFFFFFFFF) {
+            return NOT_FOUND;  // Empty slot
+        }
+        
+        if(entry->hashA == hashA && entry->hashB == hashB) {
+            return entry->blockIndex;  // Found!
+        }
+        
+        // Linear probing
+        index = (index + 1) & (hashTableSize - 1);
+        
+    } while(index != start);
+    
+    return NOT_FOUND;
+}
+Hash Table Decryption:
+
+c
+void decryptHashTable(uint8_t *data, uint32 size) {
+    uint32 *dwordData = (uint32*)data;
+    uint32 seed = hashString("(hash table)", 0x300);
+    uint32 seed2 = 0xEEEEEEEE;
+    
+    for(uint32 i = 0; i < size / 4; i++) {
+        seed2 += cryptTable[0x400 + (seed & 0xFF)];
+        dwordData[i] ^= (seed + seed2);
+        seed = ((~seed << 0x15) + 0x11111111) | (seed >> 0x0B);
+        seed2 = dwordData[i] + seed2 + (seed2 << 5) + 3;
+    }
+}
+1.3 MPQ Block Table - Binary Layout
+Block Table Entry (16 bytes each):
+
+text
+Offset  Size  Type     Field Name           Hex Example         Notes
+0x00    4     uint32   FilePosition         XX XX XX XX         Relative to archive start
+0x04    4     uint32   CompressedSize       XX XX XX XX         Size in archive
+0x08    4     uint32   UncompressedSize     XX XX XX XX         Size after decompression
+0x0C    4     uint32   Flags                XX XX XX XX         Compression/encryption flags
+Flags Bitfield:
+
+c
+#define MPQ_FILE_IMPLODE         0x00000100  // PKWare DCL compression
+#define MPQ_FILE_COMPRESS        0x00000200  // Multiple compression
+#define MPQ_FILE_ENCRYPTED       0x00010000  // File is encrypted
+#define MPQ_FILE_FIX_KEY         0x00020000  // File decrypt key adjusted
+#define MPQ_FILE_PATCH_FILE      0x00100000  // File is a patch
+#define MPQ_FILE_SINGLE_UNIT     0x01000000  // Single unit file
+#define MPQ_FILE_DELETE_MARKER   0x02000000  // File is deleted
+#define MPQ_FILE_SECTOR_CRC      0x04000000  // Has sector CRC
+#define MPQ_FILE_EXISTS          0x80000000  // File exists
+Block Table Decryption:
+
+c
+void decryptBlockTable(uint8_t *data, uint32 size) {
+    uint32 *dwordData = (uint32*)data;
+    uint32 seed = hashString("(block table)", 0x300);
+    uint32 seed2 = 0xEEEEEEEE;
+    
+    for(uint32 i = 0; i < size / 4; i++) {
+        seed2 += cryptTable[0x400 + (seed & 0xFF)];
+        dwordData[i] ^= (seed + seed2);
+        seed = ((~seed << 0x15) + 0x11111111) | (seed >> 0x0B);
+        seed2 = dwordData[i] + seed2 + (seed2 << 5) + 3;
+    }
+}
+1.4 File Extraction Implementation
+Sector-Based Extraction:
+
+c
+typedef struct {
+    uint32 position;
+    uint32 compressedSize;
+    uint32 uncompressedSize;
+    uint32 flags;
+} BlockEntry;
+
+uint8_t* extractFile(FILE *archive, BlockEntry *block, uint32 archiveOffset) {
+    // Seek to file position
+    fseek(archive, archiveOffset + block->position, SEEK_SET);
+    
+    // Check if file is single unit (no sectors)
+    if(block->flags & MPQ_FILE_SINGLE_UNIT) {
+        return extractSingleUnit(archive, block);
+    }
+    
+    // Calculate sector size
+    uint32 sectorSize = 512 * (1 << blockSizeValue);
+    uint32 sectorCount = (block->uncompressedSize + sectorSize - 1) / sectorSize;
+    
+    // Read sector offset table
+    uint32 *sectorOffsets = malloc((sectorCount + 1) * sizeof(uint32));
+    fread(sectorOffsets, sizeof(uint32), sectorCount + 1, archive);
+    
+    // Decrypt sector offsets if encrypted
+    if(block->flags & MPQ_FILE_ENCRYPTED) {
+        uint32 key = calculateFileKey(filename, block);
+        decryptSectorOffsets(sectorOffsets, sectorCount + 1, key - 1);
+    }
+    
+    // Allocate output buffer
+    uint8_t *output = malloc(block->uncompressedSize);
+    uint32 outputPos = 0;
+    
+    // Extract each sector
+    for(uint32 i = 0; i < sectorCount; i++) {
+        uint32 sectorStart = sectorOffsets[i];
+        uint32 sectorEnd = sectorOffsets[i + 1];
+        uint32 sectorCompSize = sectorEnd - sectorStart;
+        
+        uint8_t *compressedSector = malloc(sectorCompSize);
+        fread(compressedSector, 1, sectorCompSize, archive);
+        
+        // Decrypt if needed
+        if(block->flags & MPQ_FILE_ENCRYPTED) {
+            uint32 key = calculateFileKey(filename, block) + i;
+            decryptBlock(compressedSector, sectorCompSize, key);
+        }
+        
+        // Decompress sector
+        uint32 decompSize = decompressSector(
+            compressedSector, sectorCompSize,
+            output + outputPos, sectorSize,
+            block->flags
+        );
+        
+        outputPos += decompSize;
+        free(compressedSector);
+    }
+    
+    free(sectorOffsets);
+    return output;
+}
+Compression Detection:
+
+c
+uint32 decompressSector(uint8_t *input, uint32 inSize, 
+                        uint8_t *output, uint32 outSize, uint32 flags) {
+    // If not compressed, just copy
+    if(!(flags & (MPQ_FILE_COMPRESS | MPQ_FILE_IMPLODE))) {
+        memcpy(output, input, inSize);
+        return inSize;
+    }
+    
+    // Check compression type from first byte
+    uint8_t compressionType = input[0];
+    uint8_t *compData = input + 1;
+    uint32 compSize = inSize - 1;
+    
+    switch(compressionType) {
+        case 0x02:  // zlib
+            return zlibDecompress(compData, compSize, output, outSize);
+        case 0x08:  // PKWare DCL implode
+            return pkDecompress(compData, compSize, output, outSize);
+        case 0x10:  // bzip2
+            return bzip2Decompress(compData, compSize, output, outSize);
+        case 0x80:  // IMA ADPCM mono
+            return adpcmDecompress(compData, compSize, output, outSize, 1);
+        case 0x81:  // IMA ADPCM stereo
+            return adpcmDecompress(compData, compSize, output, outSize, 2);
+        default:
+            // Multiple compression or unknown
+            return 0;
+    }
+}
+Part 2: W3X Map File Format - Hex Specification
+2.1 W3X Header (512 Bytes)
+Complete Hex Structure:
+
+text
+Offset  Size  Type     Field Name           Hex Example         Decoded
+0x000   4     char[4]  FileID               48 4D 33 57         "HM3W"
+0x004   4     uint32   Unknown              00 00 00 00         Always 0
+0x008   ?     string   MapName              XX ... 00           Null-terminated UTF-8
+...     4     uint32   MapFlags             XX XX XX XX         Bitfield
+...     4     uint32   MaxPlayers           XX 00 00 00         Player count
+...     ?     byte[]   Padding              00 00 00 ...        Zeros to 512 bytes
+Map Flags Detailed Breakdown:
+
+c
+// Hex values and their meanings
+0x00000001  // Bit 0:  Hide minimap in preview
+0x00000002  // Bit 1:  Modify ally priorities
+0x00000004  // Bit 2:  Melee map
+0x00000008  // Bit 3:  Large map size (never reduced)
+0x00000010  // Bit 4:  Masked areas partially visible
+0x00000020  // Bit 5:  Fixed player settings
+0x00000040  // Bit 6:  Use custom forces
+0x00000080  // Bit 7:  Use custom tech tree
+0x00000100  // Bit 8:  Use custom abilities
+0x00000200  // Bit 9:  Use custom upgrades
+0x00000400  // Bit 10: Map properties opened once
+0x00000800  // Bit 11: Water waves on cliff shores
+0x00001000  // Bit 12: Water waves on rolling shores
+
+// Example parsing:
+uint32 flags = read_uint32_le(offset);
+bool is_melee = (flags & 0x04) != 0;
+bool custom_abilities = (flags & 0x100) != 0;
+String Reading Algorithm:
+
+c
+char* readUTF8String(FILE *f) {
+    uint32 pos = ftell(f);
+    uint32 len = 0;
+    
+    // Find length
+    while(fgetc(f) != 0) len++;
+    
+    // Allocate and read
+    char *str = malloc(len + 1);
+    fseek(f, pos, SEEK_SET);
+    fread(str, 1, len + 1, f);
+    
+    return str;
+}
+2.2 W3E Tileset File - Complete Binary Specification
+Header Structure:
+
+text
+Offset  Size  Type     Field Name           Hex Example         Decoded
+0x000   4     char[4]  FileID               57 33 45 21         "W3E!"
+0x004   4     uint32   Version              0B 00 00 00         11
+0x008   1     char     MainTileset          41                  'A' (Ashenvale)
+0x009   4     uint32   CustomTilesetFlag    00 00 00 00         0=no, 1=yes
+0x00D   4     uint32   GroundTilesetCount   XX XX XX XX         Number (a)
+0x011   4*a   char[4]  GroundTilesetIDs     4C 64 72 74 ...     "Ldrt", etc.
+...     4     uint32   CliffTilesetCount    XX XX XX XX         Number (b)
+...     4*b   char[4]  CliffTilesetIDs      43 4C 64 69 ...     "CLdi", etc.
+...     4     uint32   MapWidth+1           A1 00 00 00         161 (160 tiles)
+...     4     uint32   MapHeight+1          81 00 00 00         129 (128 tiles)
+...     4     float    CenterOffsetX        00 00 F0 C4         -2048.0
+...     4     float    CenterOffsetY        00 00 F0 C4         -2048.0
+Tilepoint Structure (7 bytes each):
+
+text
+Offset  Size  Format          Field Name           Hex Example     Decoded
+0       2     int16 LE        GroundHeight         51 21           0x2151 = 8529
+2       2     int16 LE+Flags  WaterLevel+Boundary  00 62           See below
+4       1     4bit+4bit       Flags+TextureType    56              5=flags, 6=texture
+5       1     byte            TextureDetails       84              0x84 = detail #132
+6       1     4bit+4bit       CliffType+LayerH     13              1=cliff, 3=layer
+Water Level + Boundary Flag Decoding:
+
+c
+uint16 waterAndFlags = read_uint16_le(offset + 2);
+
+// Extract boundary flag (bit 15 and 14)
+bool boundaryFlag1 = (waterAndFlags & 0x8000) != 0;
+bool boundaryFlag2 = (waterAndFlags & 0x4000) != 0;
+
+// Extract water level (bits 0-13)
+int16 waterLevel = waterAndFlags & 0x3FFF;
+if(waterLevel >= 0x2000) {
+    waterLevel -= 0x4000;  // Sign extension
+}
+
+// Convert to game units
+float gameWaterLevel = (waterLevel - 0x2000) / 4.0f - 89.6f;
+Flags Nibble (4 bits):
+
+c
+uint8 flagsAndTexture = read_uint8(offset + 4);
+uint8 flags = (flagsAndTexture >> 4) & 0x0F;
+uint8 textureType = flagsAndTexture & 0x0F;
+
+bool isRamp      = (flags & 0x01) != 0;  // Bit 0
+bool hasBlight   = (flags & 0x02) != 0;  // Bit 1
+bool hasWater    = (flags & 0x04) != 0;  // Bit 2
+bool isBoundary2 = (flags & 0x08) != 0;  // Bit 3
+Height Calculation Formula:
+
+c
+int16 groundHeight = read_int16_le(offset);
+uint8 layerData = read_uint8(offset + 6);
+uint8 layer = layerData & 0x0F;
+
+// Final height formula
+float finalHeight = (groundHeight - 0x2000 + (layer - 2) * 0x0200) / 4.0f;
+
+// Example:
+// groundHeight = 0x2151 (8529)
+// layer = 3
+// finalHeight = (8529 - 8192 + (3-2)*512) / 4 = 212.25
+2.3 WTG Trigger File - Binary Parse Algorithm
+Root Structure Implementation:
+
+c
+typedef struct {
+    char fileID[4];              // "WTG!"
+    uint32 version;              // 4 or 7
+    uint32 categoryCount;
+    TriggerCategory *categories;
+    uint32 unknown;              // Always 0
+    uint32 variableCount;
+    Variable *variables;
+    uint32 triggerCount;
+    Trigger *triggers;
+} WTGRoot;
+
+WTGRoot* parseWTG(uint8_t *data, uint32 size) {
+    WTGRoot *root = malloc(sizeof(WTGRoot));
+    uint32 offset = 0;
+    
+    // Read header
+    memcpy(root->fileID, data + offset, 4);
+    offset += 4;
+    
+    if(strncmp(root->fileID, "WTG!", 4) != 0) {
+        return NULL;  // Invalid file
+    }
+    
+    root->version = read_uint32_le(data + offset);
+    offset += 4;
+    
+    // Read categories
+    root->categoryCount = read_uint32_le(data + offset);
+    offset += 4;
+    
+    root->categories = malloc(sizeof(TriggerCategory) * root->categoryCount);
+    for(uint32 i = 0; i < root->categoryCount; i++) {
+        offset = parseTriggerCategory(data, offset, &root->categories[i], root->version);
+    }
+    
+    // Skip unknown field
+    offset += 4;
+    
+    // Read variables
+    root->variableCount = read_uint32_le(data + offset);
+    offset += 4;
+    
+    root->variables = malloc(sizeof(Variable) * root->variableCount);
+    for(uint32 i = 0; i < root->variableCount; i++) {
+        offset = parseVariable(data, offset, &root->variables[i], root->version);
+    }
+    
+    // Read triggers
+    root->triggerCount = read_uint32_le(data + offset);
+    offset += 4;
+    
+    root->triggers = malloc(sizeof(Trigger) * root->triggerCount);
+    for(uint32 i = 0; i < root->triggerCount; i++) {
+        offset = parseTrigger(data, offset, &root->triggers[i], root->version);
+    }
+    
+    return root;
+}
+String Parsing (Null-Terminated):
+
+c
+uint32 parseString(uint8_t *data, uint32 offset, char **outString) {
+    uint32 start = offset;
+    
+    // Find null terminator
+    while(data[offset] != 0) {
+        offset++;
+    }
+    
+    // Allocate and copy
+    uint32 length = offset - start;
+    *outString = malloc(length + 1);
+    memcpy(*outString, data + start, length + 1);
+    
+    return offset + 1;  // Skip null terminator
+}
+Trigger Structure Parser:
+
+c
+uint32 parseTrigger(uint8_t *data, uint32 offset, Trigger *trigger, uint32 version) {
+    // Read name
+    offset = parseString(data, offset, &trigger->name);
+    
+    // Read description
+    offset = parseString(data, offset, &trigger->description);
+    
+    // Version 7 has is_comment field
+    if(version >= 7) {
+        trigger->isComment = read_uint32_le(data + offset);
+        offset += 4;
+    }
+    
+    // Read flags
+    trigger->isEnabled = read_uint32_le(data + offset);
+    offset += 4;
+    
+    trigger->isCustom = read_uint32_le(data + offset);
+    offset += 4;
+    
+    trigger->isInitiallyOff = read_uint32_le(data + offset);
+    offset += 4;
+    
+    trigger->runOnInit = read_uint32_le(data + offset);
+    offset += 4;
+    
+    // Category ID
+    trigger->categoryID = read_uint32_le(data + offset);
+    offset += 4;
+    
+    // ECA count
+    trigger->ecaCount = read_uint32_le(data + offset);
+    offset += 4;
+    
+    // Parse ECAs
+    trigger->ecas = malloc(sizeof(ECA) * trigger->ecaCount);
+    for(uint32 i = 0; i < trigger->ecaCount; i++) {
+        offset = parseECA(data, offset, &trigger->ecas[i], version, false);
+    }
+    
+    return offset;
+}
+ECA (Event/Condition/Action) Parser:
+
+c
+uint32 parseECA(uint8_t *data, uint32 offset, ECA *eca, uint32 version, bool isChild) {
+    // Type (0=event, 1=condition, 2=action)
+    eca->type = read_uint32_le(data + offset);
+    offset += 4;
+    
+    // Group (only for child ECAs)
+    if(isChild) {
+        eca->group = read_uint32_le(data + offset);
+        offset += 4;
+    }
+    
+    // Function name
+    offset = parseString(data, offset, &eca->functionName);
+    
+    // Enabled flag
+    eca->isEnabled = read_uint32_le(data + offset);
+    offset += 4;
+    
+    // Look up parameter count from TriggerData.txt
+    uint32 paramCount = lookupParamCount(eca->functionName);
+    
+    // Parse parameters
+    eca->parameters = malloc(sizeof(Parameter) * paramCount);
+    for(uint32 i = 0; i < paramCount; i++) {
+        offset = parseParameter(data, offset, &eca->parameters[i], version);
+    }
+    
+    // Version 7 has child ECAs
+    if(version >= 7) {
+        eca->childCount = read_uint32_le(data + offset);
+        offset += 4;
+        
+        eca->children = malloc(sizeof(ECA) * eca->childCount);
+        for(uint32 i = 0; i < eca->childCount; i++) {
+            offset = parseECA(data, offset, &eca->children[i], version, true);
+        }
+    }
+    
+    return offset;
+}
+Parameter Parser (Version-Dependent):
+
+c
+uint32 parseParameter(uint8_t *data, uint32 offset, Parameter *param, uint32 version) {
+    // Type (-1=INVALID, 0=PRESET, 1=VARIABLE, 2=FUNCTION, 3=STRING)
+    param->type = read_uint32_le(data + offset);
+    offset += 4;
+    
+    // Value
+    offset = parseString(data, offset, &param->value);
+    
+    // Has sub parameters
+    param->hasSubParams = read_uint32_le(data + offset);
+    offset += 4;
+    
+    if(param->hasSubParams) {
+        // Unknown field (only in version 7 or if type == FUNCTION in v4)
+        if(version >= 7 || (version == 4 && param->type == 2)) {
+            param->unknown = read_uint32_le(data + offset);
+            offset += 4;
+        }
+        
+        // Parse sub parameters
+        offset = parseSubParameters(data, offset, &param->subParams, version);
+    }
+    
+    // Is array (not present if type == FUNCTION)
+    if(param->type != 2) {
+        param->isArray = read_uint32_le(data + offset);
+        offset += 4;
+        
+        // Array index parameter
+        if(param->isArray) {
+            param->arrayIndex = malloc(sizeof(Parameter));
+            offset = parseParameter(data, offset, param->arrayIndex, version);
+        }
+    }
+    
+    return offset;
+}
+Part 3: Object Data Files (W3U/W3A/W3B/W3D/W3Q/W3H) - Binary Format
+3.1 Object File Structure
+Universal Header:
+
+text
+Offset  Size  Type     Field Name              Hex Example
+0x00    4     uint32   FileVersion             02 00 00 00 (version 2)
+0x04    4     uint32   OriginalObjectsCount    XX XX XX XX
+Object Modification Entry:
+
+text
+Offset  Size  Type     Field Name              Notes
+0x00    4     char[4]  BaseObjectID            Original object ID
+0x04    4     char[4]  NewObjectID             Custom object ID (0 if modifying original)
+0x08    4     uint32   ModificationCount       Number of field changes
+Modification Record:
+
+text
+Offset  Size  Type     Field Name              Notes
+0x00    4     char[4]  FieldID                 4-char field identifier
+0x04    4     uint32   DataType                0=int, 1=real, 2=unreal, 3=string
+0x08    4     uint32   Level/Variation         For abilities: level; for others: data column
+0x0C    4     uint32   DataPointer             Usually 0
+0x10    ?     varies   Value                   Depends on DataType
+0x??    4     char[4]  EndObjectID             New object ID repeated (validation)
+Data Type Sizes:
+
+c
+switch(dataType) {
+    case 0:  // int
+        valueSize = 4;
+        value = read_uint32_le(data + offset);
+        break;
+        
+    case 1:  // real (float)
+        valueSize = 4;
+        value = read_float_le(data + offset);
+        break;
+        
+    case 2:  // unreal (fixed-point)
+        valueSize = 4;
+        value = read_uint32_le(data + offset) / 1000.0f;
+        break;
+        
+    case 3:  // string
+        valueSize = 0;
+        while(data[offset + valueSize] != 0) valueSize++;
+        valueSize++;  // Include null terminator
+        value = malloc(valueSize);
+        memcpy(value, data + offset, valueSize);
+        break;
+}
+Complete Object File Parser:
+
+c
+typedef struct {
+    char baseID[5];
+    char newID[5];
+    uint32 modCount;
+    ObjectModification *mods;
+} ObjectEntry;
+
+typedef struct {
+    char fieldID[5];
+    uint32 dataType;
+    uint32 level;
+    uint32 dataPointer;
+    void *value;
+} ObjectModification;
+
+typedef struct {
+    uint32 version;
+    uint32 originalCount;
+    ObjectEntry *originalObjects;
+    uint32 customCount;
+    ObjectEntry *customObjects;
+} ObjectFile;
+
+ObjectFile* parseObjectFile(uint8_t *data, uint32 size) {
+    ObjectFile *obj = malloc(sizeof(ObjectFile));
+    uint32 offset = 0;
+    
+    // Read version
+    obj->version = read_uint32_le(data + offset);
+    offset += 4;
+    
+    // Read original objects
+    obj->originalCount = read_uint32_le(data + offset);
+    offset += 4;
+    
+    obj->originalObjects = malloc(sizeof(ObjectEntry) * obj->originalCount);
+    for(uint32 i = 0; i < obj->originalCount; i++) {
+        offset = parseObjectEntry(data, offset, &obj->originalObjects[i]);
+    }
+    
+    // Read custom objects
+    obj->customCount = read_uint32_le(data + offset);
+    offset += 4;
+    
+    obj->customObjects = malloc(sizeof(ObjectEntry) * obj->customCount);
+    for(uint32 i = 0; i < obj->customCount; i++) {
+        offset = parseObjectEntry(data, offset, &obj->customObjects[i]);
+    }
+    
+    return obj;
+}
+
+uint32 parseObjectEntry(uint8_t *data, uint32 offset, ObjectEntry *entry) {
+    // Read base ID
+    memcpy(entry->baseID, data + offset, 4);
+    entry->baseID[4] = 0;
+    offset += 4;
+    
+    // Read new ID (for custom objects)
+    memcpy(entry->newID, data + offset, 4);
+    entry->newID[4] = 0;
+    offset += 4;
+    
+    // Read modification count
+    entry->modCount = read_uint32_le(data + offset);
+    offset += 4;
+    
+    // Parse modifications
+    entry->mods = malloc(sizeof(ObjectModification) * entry->modCount);
+    for(uint32 i = 0; i < entry->modCount; i++) {
+        offset = parseModification(data, offset, &entry->mods[i]);
+    }
+    
+    return offset;
+}
+
+uint32 parseModification(uint8_t *data, uint32 offset, ObjectModification *mod) {
+    // Read field ID
+    memcpy(mod->fieldID, data + offset, 4);
+    mod->fieldID[4] = 0;
+    offset += 4;
+    
+    // Read data type
+    mod->dataType = read_uint32_le(data + offset);
+    offset += 4;
+    
+    // Read level/variation
+    mod->level = read_uint32_le(data + offset);
+    offset += 4;
+    
+    // Read data pointer
+    mod->dataPointer = read_uint32_le(data + offset);
+    offset += 4;
+    
+    // Read value based on type
+    switch(mod->dataType) {
+        case 0:  // int
+            mod->value = malloc(4);
+            *(uint32*)mod->value = read_uint32_le(data + offset);
+            offset += 4;
+            break;
+            
+        case 1:  // float
+            mod->value = malloc(4);
+            *(float*)mod->value = read_float_le(data + offset);
+            offset += 4;
+            break;
+            
+        case 2:  // unreal (fixed-point stored as int)
+            mod->value = malloc(4);
+            *(float*)mod->value = read_uint32_le(data + offset) / 1000.0f;
+            offset += 4;
+            break;
+            
+        case 3:  // string
+            offset = parseString(data, offset, (char**)&mod->value);
+            break;
+    }
+    
+    // Read end object ID (validation)
+    offset += 4;
+    
+    return offset;
+}
+3.2 War3mapUnits.doo - Unit Placement File
+Header:
+
+text
+Offset  Size  Type     Field Name           Hex Example
+0x00    4     char[4]  FileID               57 33 64 6F      "W3do"
+0x04    4     uint32   FileVersion          08 00 00 00      8
+0x08    4     uint32   Subversion           0B 00 00 00      11
+0x0C    4     uint32   UnitCount            XX XX XX XX
+Unit Entry (Variable Length):
+
+c
+typedef struct {
+    char typeID[5];           // 4 bytes + null
+    uint32 variation;
+    float posX;
+    float posY;
+    float posZ;
+    float rotationAngle;      // Radians
+    float scaleX;
+    float scaleY;
+    float scaleZ;
+    uint8 flags;              // 0=invisible, 1=visible non-solid, 2=normal
+    uint32 playerNumber;      // 0-15, 16=neutral passive
+    uint8 unknown1;
+    uint8 unknown2;
+    int32 hitPoints;          // -1 = default
+    int32 manaPoints;         // -1 = default, 0 = no mana
+    int32 itemTablePointer;   // -1 = none, >=0 = table number
+    uint32 droppedItemSetCount;
+    DroppedItemSet *droppedItemSets;
+    uint32 goldAmount;        // Default 12500
+    float targetAcquisition;  // -1=normal, -2=camp
+    uint32 heroLevel;
+    uint32 heroStrength;
+    uint32 heroAgility;
+    uint32 heroIntelligence;
+    uint32 inventoryItemCount;
+    InventoryItem *inventoryItems;
+    uint32 modifiedAbilityCount;
+    AbilityModification *modifiedAbilities;
+    uint32 randomFlag;        // 0, 1, or 2
+    // Additional data based on randomFlag
+    int32 customColor;        // -1=none, 0=red, 1=blue, etc.
+    int32 waygateDestination; // -1=deactivated, else rect ID
+    uint32 creationNumber;
+} UnitEntry;
+
+uint32 parseUnitEntry(uint8_t *data, uint32 offset, UnitEntry *unit) {
+    // Type ID (first occurrence)
+    memcpy(unit->typeID, data + offset, 4);
+    unit->typeID[4] = 0;
+    offset += 4;
+    
+    // Variation
+    unit->variation = read_uint32_le(data + offset);
+    offset += 4;
+    
+    // Position
+    unit->posX = read_float_le(data + offset);
+    offset += 4;
+    unit->posY = read_float_le(data + offset);
+    offset += 4;
+    unit->posZ = read_float_le(data + offset);
+    offset += 4;
+    
+    // Rotation
+    unit->rotationAngle = read_float_le(data + offset);
+    offset += 4;
+    
+    // Scale
+    unit->scaleX = read_float_le(data + offset);
+    offset += 4;
+    unit->scaleY = read_float_le(data + offset);
+    offset += 4;
+    unit->scaleZ = read_float_le(data + offset);
+    offset += 4;
+    
+    // Type ID (second occurrence - new in some versions)
+    offset += 4;  // Skip duplicate type ID
+    
+    // Flags and owner
+    unit->flags = read_uint8(data + offset);
+    offset += 1;
+    
+    unit->playerNumber = read_uint32_le(data + offset);
+    offset += 4;
+    
+    // Unknown fields
+    unit->unknown1 = read_uint8(data + offset);
+    offset += 1;
+    unit->unknown2 = read_uint8(data + offset);
+    offset += 1;
+    
+    // HP/Mana
+    unit->hitPoints = read_int32_le(data + offset);
+    offset += 4;
+    unit->manaPoints = read_int32_le(data + offset);
+    offset += 4;
+    
+    // Dropped items
+    unit->itemTablePointer = read_int32_le(data + offset);
+    offset += 4;
+    
+    unit->droppedItemSetCount = read_uint32_le(data + offset);
+    offset += 4;
+    
+    unit->droppedItemSets = malloc(sizeof(DroppedItemSet) * unit->droppedItemSetCount);
+    for(uint32 i = 0; i < unit->droppedItemSetCount; i++) {
+        offset = parseDroppedItemSet(data, offset, &unit->droppedItemSets[i]);
+    }
+    
+    // Continue parsing...
+    // (Full implementation continues with all remaining fields)
+    
+    return offset;
+}
+Part 4: BLP Texture Format - Binary Specification
+4.1 BLP Header
+BLP1 Format (Warcraft III):
+
+text
+Offset  Size  Type     Field Name           Hex Example     Notes
+0x00    4     char[4]  Magic                42 4C 50 31     "BLP1"
+0x04    4     uint32   ContentType          00 00 00 00     0=JPEG, 1=Palette
+0x08    4     uint32   AlphaBits            08 00 00 00     0, 1, or 8
+0x0C    4     uint32   Width                00 02 00 00     512
+0x10    4     uint32   Height               00 02 00 00     512
+0x14    4     uint32   Extra                XX XX XX XX     Purpose unknown
+0x18    4     uint32   HasMipmaps           01 00 00 00     0=no, 1=yes
+0x1C    64    uint32[16] MipmapOffsets      XX XX XX XX ... Offset to each mipmap
+0x5C    64    uint32[16] MipmapSizes        XX XX XX XX ... Size of each mipmap
+For JPEG Content (ContentType=0):
+
+text
+Offset  Size  Type     Field Name           Notes
+0x9C    4     uint32   JPEGHeaderSize       Max 624 bytes
+0xA0    ?     byte[]   JPEGHeaderData       Shared JPEG header
+For Palette Content (ContentType=1):
+
+text
+Offset  Size  Type     Field Name           Notes
+0x9C    1024  BGRA[256] Palette             256 colors, 4 bytes each (BGRA)
+BGRA Palette Entry:
+
+c
+typedef struct {
+    uint8 blue;
+    uint8 green;
+    uint8 red;
+    uint8 alpha;  // Usually 0 for palette entries
+} BGRAColor;
+4.2 BLP Parsing Implementation
+c
+typedef struct {
+    char magic[5];
+    uint32 contentType;
+    uint32 alphaBits;
+    uint32 width;
+    uint32 height;
+    uint32 extra;
+    uint32 hasMipmaps;
+    uint32 mipmapOffsets[16];
+    uint32 mipmapSizes[16];
+    union {
+        struct {
+            uint32 jpegHeaderSize;
+            uint8 *jpegHeaderData;
+        } jpeg;
+        BGRAColor palette[256];
+    } content;
+} BLPHeader;
+
+BLPHeader* parseBLPHeader(uint8_t *data) {
+    BLPHeader *blp = malloc(sizeof(BLPHeader));
+    uint32 offset = 0;
+    
+    // Magic
+    memcpy(blp->magic, data + offset, 4);
+    blp->magic[4] = 0;
+    offset += 4;
+    
+    if(strcmp(blp->magic, "BLP1") != 0 && strcmp(blp->magic, "BLP0") != 0) {
+        return NULL;
+    }
+    
+    // Header fields
+    blp->contentType = read_uint32_le(data + offset);
+    offset += 4;
+    blp->alphaBits = read_uint32_le(data + offset);
+    offset += 4;
+    blp->width = read_uint32_le(data + offset);
+    offset += 4;
+    blp->height = read_uint32_le(data + offset);
+    offset += 4;
+    blp->extra = read_uint32_le(data + offset);
+    offset += 4;
+    blp->hasMipmaps = read_uint32_le(data + offset);
+    offset += 4;
+    
+    // Mipmap offsets
+    for(int i = 0; i < 16; i++) {
+        blp->mipmapOffsets[i] = read_uint32_le(data + offset);
+        offset += 4;
+    }
+    
+    // Mipmap sizes
+    for(int i = 0; i < 16; i++) {
+        blp->mipmapSizes[i] = read_uint32_le(data + offset);
+        offset += 4;
+    }
+    
+    // Content-specific data
+    if(blp->contentType == 0) {
+        // JPEG
+        blp->content.jpeg.jpegHeaderSize = read_uint32_le(data + offset);
+        offset += 4;
+        
+        blp->content.jpeg.jpegHeaderData = malloc(blp->content.jpeg.jpegHeaderSize);
+        memcpy(blp->content.jpeg.jpegHeaderData, data + offset, blp->content.jpeg.jpegHeaderSize);
+    } else {
+        // Palette
+        memcpy(blp->content.palette, data + offset, 1024);
+    }
+    
+    return blp;
+}
+Palette Image Extraction:
+
+c
+uint8_t* extractPaletteBLP(BLPHeader *blp, uint8_t *fileData, uint32 mipmapLevel) {
+    if(mipmapLevel >= 16 || blp->mipmapOffsets[mipmapLevel] == 0) {
+        return NULL;
+    }
+    
+    uint32 width = blp->width >> mipmapLevel;
+    uint32 height = blp->height >> mipmapLevel;
+    uint32 offset = blp->mipmapOffsets[mipmapLevel];
+    
+    // Read palette indices
+    uint8_t *indices = fileData + offset;
+    
+    // Convert to RGBA
+    uint8_t *rgba = malloc(width * height * 4);
+    for(uint32 i = 0; i < width * height; i++) {
+        uint8 index = indices[i];
+        rgba[i*4 + 0] = blp->content.palette[index].red;
+        rgba[i*4 + 1] = blp->content.palette[index].green;
+        rgba[i*4 + 2] = blp->content.palette[index].blue;
+        rgba[i*4 + 3] = 255;  // Opaque
+    }
+    
+    // Read alpha if present
+    if(blp->alphaBits > 0) {
+        uint32 alphaOffset = offset + (width * height);
+        
+        if(blp->alphaBits == 1) {
+            // 1-bit alpha (8 pixels per byte)
+            for(uint32 i = 0; i < width * height; i++) {
+                uint8 alphaByte = fileData[alphaOffset + (i / 8)];
+                uint8 alphaBit = (alphaByte >> (i % 8)) & 1;
+                rgba[i*4 + 3] = alphaBit ? 255 : 0;
+            }
+        } else if(blp->alphaBits == 8) {
+            // 8-bit alpha (1 pixel per byte)
+            for(uint32 i = 0; i < width * height; i++) {
+                rgba[i*4 + 3] = fileData[alphaOffset + i];
+            }
+        }
+    }
+    
+    return rgba;
+}
+Part 5: Advanced Techniques
+5.1 Map Protection Detection
+Common Protection Signatures:
+
+c
+bool detectProtection(uint8_t *mapData, uint32 size) {
+    // Check MPQ header corruption
+    if(mapData[0x204] != 0x20 || mapData[0x205] != 0x00 || 
+       mapData[0x206] != 0x00 || mapData[0x207] != 0x00) {
+        return true;  // Header size modified
+    }
+    
+    // Check for fake file list
+    // Check for war3map.j obfuscation
+    // Check for trigger corruption
+    
+    return false;
+}
+5.2 Performance Optimization
+Memory-Mapped File Reading:
+
+c
+#ifdef _WIN32
+#include <windows.h>
+
+typedef struct {
+    HANDLE fileHandle;
+    HANDLE mappingHandle;
+    void *data;
+    size_t size;
+} MemoryMappedFile;
+
+MemoryMappedFile* openMappedFile(const char *filename) {
+    MemoryMappedFile *mmf = malloc(sizeof(MemoryMappedFile));
+    
+    mmf->fileHandle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ,
+                                   NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    
+    if(mmf->fileHandle == INVALID_HANDLE_VALUE) {
+        free(mmf);
+        return NULL;
+    }
+    
+    LARGE_INTEGER fileSize;
+    GetFileSizeEx(mmf->fileHandle, &fileSize);
+    mmf->size = fileSize.QuadPart;
+    
+    mmf->mappingHandle = CreateFileMapping(mmf->fileHandle, NULL, PAGE_READONLY,
+                                           0, 0, NULL);
+    
+    mmf->data = MapViewOfFile(mmf->mappingHandle, FILE_MAP_READ, 0, 0, 0);
+    
+    return mmf;
+}
+
+void closeMappedFile(MemoryMappedFile *mmf) {
+    UnmapViewOfFile(mmf->data);
+    CloseHandle(mmf->mappingHandle);
+    CloseHandle(mmf->fileHandle);
+    free(mmf);
+}
+#endif
+5.3 Endianness Handling
+Portable Read Functions:
+
+c
+static inline uint16_t read_uint16_le(const uint8_t *data) {
+    return (uint16_t)data[0] | ((uint16_t)data[1] << 8);
+}
+
+static inline uint32_t read_uint32_le(const uint8_t *data) {
+    return (uint32_t)data[0] | 
+           ((uint32_t)data[1] << 8) | 
+           ((uint32_t)data[2] << 16) | 
+           ((uint32_t)data[3] << 24);
+}
+
+static inline float read_float_le(const uint8_t *data) {
+    uint32_t bits = read_uint32_le(data);
+    float value;
+    memcpy(&value, &bits, sizeof(float));
+    return value;
+}
+
+static inline int16_t read_int16_le(const uint8_t *data) {
+    return (int16_t)read_uint16_le(data);
+}
+
+static inline int32_t read_int32_le(const uint8_t *data) {
+    return (int32_t)read_uint32_le(data);
+}
+Conclusion
+This deep specification provides hex-level binary format details, parsing algorithms, and implementation guidance for building advanced Warcraft 3 map editing and analysis tools. All structures use little-endian byte ordering, null-terminated UTF-8 strings, and IEEE 754 floating-point representation.
+
+Critical Implementation Notes:
+
+Always validate magic numbers before parsing
+
+Handle version differences (RoC vs TFT)
+
+Decrypt MPQ tables using proper hash algorithms
+
+Preserve exact byte sequences when modifying files
+
+Test extensively - corrupted files can crash the game
+
+Recommended Tools for Development:
+
+Hex Editor: HxD or 010 Editor
+
+Decompression: zlib, bzip2 libraries
+
+Testing: Warcraft 3 v1.26a-1.31.1 (pre-Reforged stable)
+
+For questions, reference the community resources at Hive Workshop, XGM forums, and existing open-source parsers (WC3MapTranslator, wc3lib, w3rs).
+
+Make a more specific  and detailed review on the object editor as a whole, and YDWE changes
+
+18 words | 91 characters
+Now I have comprehensive information about object editor structure and YDWE changes. Let me create an extremely detailed technical specification.
+
+Warcraft 3 Object Editor: Complete Technical Specification & YDWE Extensions
+Part 1: Object Editor Architecture - Core Systems
+1.1 Object Editor Fundamentals
+Purpose and Design Philosophy
+
+The Object Editor is a type-safe module within the World Editor that allows modification of game object templates (units, abilities, items, destructibles, doodads, upgrades, buffs). These templates define default values used when runtime objects are instantiated during gameplay.
+
+Core Principles:
+
+Template-based instantiation - Object Editor creates templates; runtime creates instances
+
+Type safety - Integer fields reject string values; prevents data corruption
+
+Inheritance model - Custom objects inherit from base game objects
+
+Binary storage - Modifications stored in compact binary format (w3u/w3a/w3t/etc.)
+
+SLK fallback - Can use text-based SLK format for easier editing
+
+1.2 Object Categories and File Mapping
+Complete Object Type Taxonomy:
+
+text
+Object Type          Binary File       SLK Source           MetaData File
+───────────────────  ────────────────  ───────────────────  ──────────────────
+Units                war3map.w3u       UnitData.slk         UnitMetaData.slk
+                                       UnitBalance.slk
+                                       UnitAbilities.slk
+                                       UnitUI.slk
+                                       UnitWeapons.slk
+
+Items                war3map.w3t       ItemData.slk         ItemMetaData.slk
+
+Abilities            war3map.w3a       AbilityData.slk      AbilityMetaData.slk
+
+Destructibles        war3map.w3b       DestructableData.slk DestructableMetaData.slk
+
+Doodads              war3map.w3d       DoodadData.slk       DoodadMetaData.slk
+
+Upgrades             war3map.w3q       UpgradeData.slk      UpgradeMetaData.slk
+
+Buffs/Effects        war3map.w3h       AbilityBuffData.slk  AbilityBuffMetaData.slk
+File Location Hierarchy:
+
+text
+War3.mpq/War3x.mpq (Game Data)
+└── Units/
+    ├── UnitData.slk          - Core unit properties
+    ├── UnitBalance.slk       - Combat/stats
+    ├── UnitAbilities.slk     - Default abilities
+    ├── UnitUI.slk            - Interface properties
+    ├── UnitWeapons.slk       - Attack data
+    └── UnitMetaData.slk      - Field definitions (controls Object Editor UI)
+1.3 Field ID System - Complete Specification
+Field ID Structure (4-Character Codes):
+
+Field IDs use a 4-byte ASCII identifier system. Each character encodes meaning about the field's purpose.
+
+Format Pattern:
+
+text
+[Category][Subcategory][Index][Variation]
+Example Decoding:
+
+text
+Field ID: "unam"
+├── u = Unit category
+├── nam = "name" (field purpose)
+└── Result: Unit Name field
+
+Field ID: "ua1t"
+├── u = Unit category
+├── a = Attack
+├── 1 = Attack #1
+└── t = Type (attack type)
+Result: Unit Attack 1 Type field
+
+Field ID: "Hbz1"
+├── H = Hero ability
+├── bz = Blizzard spell code
+├── 1 = Level 1 data
+└── Result: Blizzard ability level 1 data
+Common Category Prefixes:
+
+c
+// Unit fields
+'u' - General unit properties
+'g' - Graphics/art properties
+'t' - Techtree properties
+'h' - Hero-specific properties
+'a' - Ability assignments
+
+// Ability fields  
+'a' - General ability properties
+'A' - Level-independent ability data
+'H' - Hero ability
+'I' - Item ability
+'U' - Unit ability
+'B' - Buff/effect properties
+
+// Item fields
+'i' - Item properties
+'g' - Item graphics
+
+// Common subcategory codes
+'nam' - Name
+'ico' - Icon
+'art' - Art/model file
+'tip' - Tooltip
+'ubi' - Ubertip (extended tooltip)
+'hot' - Hotkey
+'des' - Description
+'dmg' - Damage
+'def' - Defense
+'abi' - Abilities
+1.4 MetaData SLK Files - Object Editor Control System
+UnitMetaData.slk Structure
+
+MetaData files control which fields appear in the Object Editor and their properties. This is the "schema" for the object system.
+
+Column Structure:
+
+text
+Column  Field        Purpose                           Example Value
+──────  ───────────  ────────────────────────────────  ─────────────────
+A       ID           4-char field identifier           "unam"
+B       field        Internal field name               "Name"
+C       category     Tab grouping in Object Editor     "Stats"
+D       displayName  UI label shown to user            "Name"
+E       type         Data type for this field          "string"
+F       minVal       Minimum allowed value (numeric)   "0"
+G       maxVal       Maximum allowed value (numeric)   "999999"
+H       data         Data column index                 "0"
+I       repeat       How many data columns             "1"
+J       index        Sorting order in category         "0"
+K       version      TFT/RoC compatibility flag        "1"
+L       useHero      Hero-specific field flag          "0"
+M       useUnit      Unit-specific field flag          "1"
+N       useBuilding  Building-specific field flag      "1"
+O       useCreep     Creep-specific field flag         "1"
+P       notPr human  Hide for specific race            "0"
+...     (more flags for each race)
+Type Field Values:
+
+text
+string          - Null-terminated text
+int             - 32-bit signed integer
+real            - 32-bit IEEE float
+unreal          - Fixed-point decimal (stored as int, divided by 1000)
+bool            - Boolean (0/1)
+char            - Single character
+techAvail       - Tech tree requirement list
+unitList        - List of unit IDs
+abilityList     - List of ability IDs
+heroAbilityList - List of hero abilities
+itemList        - List of item IDs
+upgradeList     - List of upgrade IDs
+stringList      - List of strings
+modelList       - List of model files
+attackBits      - Bitfield for attack properties
+defenseType     - Defense type enumeration
+attackType      - Attack type enumeration
+weaponType      - Weapon type enumeration
+targetType      - Target classification bitfield
+moveType        - Movement type enumeration
+pathingType     - Pathing classification
+armorType       - Armor sound type
+combatSound     - Combat sound set
+unitRace        - Race enumeration
+unitClass       - Unit classification bitfield
+Data Column System:
+
+The data and repeat fields control level-based or multi-value fields.
+
+Example - Ability with 3 Levels:
+
+text
+Field: "Cool1" (Cooldown Level 1)
+data=0, repeat=3
+
+Binary storage:
+Level 1: data column 0
+Level 2: data column 1
+Level 3: data column 2
+
+Object file modification record:
+{
+  fieldID: "Cool"
+  dataType: real
+  level: 1      ← Data column index
+  dataPointer: 0
+  value: 5.0
+}
+1.5 Complete Field Specifications - Units
+Stats Category Fields:
+
+text
+Field ID  Type      Display Name                    Default      Range
+────────  ────────  ─────────────────────────────  ───────────  ──────────
+unam      string    Name                           (varies)     -
+uhp       int       Hit Points (Max)               100          1-999999
+umpi      int       Mana (Initial)                 0            0-99999
+uman      int       Mana (Max)                     0            0-99999
+uhpr      real      HP Regeneration Rate           0.25         0.0-999.0
+umpr      real      Mana Regeneration              0.01         0.0-999.0
+udef      int       Defense (Base)                 0            -128-127
+uarm      armorType Armor Type                     Metal        (enum)
+udty      defType   Defense Type                   Normal       (enum)
+umvs      int       Speed (Base)                   270          0-522
+umvt      moveType  Movement Type                  Foot         (enum)
+utur      real      Turn Rate                      0.60         0.0-1.0
+ugol      int       Gold Cost                      0            0-999999
+ulum      int       Lumber Cost                    0            0-999999
+ubui      int       Build Time                     1            1-999999
+ufoo      int       Food Cost                      1            0-100
+uhom      int       Food Produced                  0            0-100
+ulev      int       Level                          1            1-10
+upri      int       Priority                       0            0-20
+usid      int       Sight Radius (Day)             1800         0-9999
+usin      int       Sight Radius (Night)           800          0-9999
+ucbs      real      Collision Size                 32.0         0.0-999.0
+Combat Category Fields:
+
+text
+Field ID  Type        Display Name                  Default    Range
+────────  ──────────  ────────────────────────────  ─────────  ──────────
+ua1t      attackType  Attack 1 - Type               Normal     (enum)
+ua1w      weaponType  Attack 1 - Weapon Type        Normal     (enum)
+ua1b      int         Attack 1 - Base Damage        12         1-999999
+ua1d      int         Attack 1 - Dice (Number)      1          1-99
+ua1s      int         Attack 1 - Dice (Sides)       2          1-99
+ua1c      real        Attack 1 - Cooldown           2.0        0.01-99.0
+ua1r      int         Attack 1 - Range              128        0-9999
+ua1p      int         Attack 1 - Projectile Speed   900        1-9999
+ua1z      int         Attack 1 - Projectile Arc     0          -9999-9999
+ua1g      targetType  Attack 1 - Targets Allowed    Ground     (bitfield)
+uaen      attacks     Attacks Enabled               Attack1    (bitfield)
+uacq      real        Acquisition Range             600.0      0.0-9999.0
+udro      bool        Can Drop Items                false      0/1
+Art Category Fields:
+
+text
+Field ID  Type      Display Name                  Default              Range
+────────  ────────  ────────────────────────────  ───────────────────  ─────
+umdl      model     Model File                    (varies)             -
+usca      real      Scaling Value                 1.00                 0.01-5.0
+uico      icon      Icon                          (varies)             -
+usca      real      Selection Scale               1.00                 0.0-5.0
+ushu      shadow    Shadow Image (Unit)           Shadow               -
+ushx      real      Shadow Image - Center X       0.0                  -999-999
+ushy      real      Shadow Image - Center Y       0.0                  -999-999
+ushw      real      Shadow Image - Width          64.0                 0-999
+ushh      real      Shadow Image - Height         64.0                 0-999
+uwal      real      Animation - Walk Speed        270.0                1-9999
+uani      real      Animation - Blend Time        0.15                 0.0-5.0
+ucs1      combatSnd Attack 1 - Weapon Sound       MetalMediumSlice     -
+Techtree Category Fields:
+
+text
+Field ID  Type           Display Name               Default     Range
+────────  ─────────────  ─────────────────────────  ──────────  ─────
+ureq      techList       Requirements               (none)      -
+utra      unitList       Units Trained              (none)      -
+utyp      unitList       Structures Built           (none)      -
+urev      bool           Revives Dead Heroes        false       0/1
+usro      unitList       Sells Units                (none)      -
+usew      itemList       Sells Items                (none)      -
+umki      itemList       Items Made                 (none)      -
+ures      upgradeList    Researches Available       (none)      -
+uupg      upgradeList    Upgrades Used              (none)      -
+uup1      unitList       Upgrades To                (none)      -
+1.6 Field Data Types - Binary Encoding
+Integer Fields:
+
+c
+typedef struct {
+    char fieldID[4];      // "uhp\0" 
+    uint32 dataType;      // 0 = int
+    uint32 level;         // Data column (0 for non-leveled)
+    uint32 dataPointer;   // Usually 0
+    int32 value;          // The actual integer value
+} IntModification;
+
+// Example hex:
+// Field: uhp (Hit Points)
+// Value: 500
+75 68 70 00    // "uhp\0"
+00 00 00 00    // dataType = 0 (int)
+00 00 00 00    // level = 0
+00 00 00 00    // dataPointer = 0
+F4 01 00 00    // value = 500 (little-endian)
+Real (Float) Fields:
+
+c
+typedef struct {
+    char fieldID[4];
+    uint32 dataType;      // 1 = real (float)
+    uint32 level;
+    uint32 dataPointer;
+    float value;          // IEEE 754 float
+} RealModification;
+
+// Example hex:
+// Field: usca (Scale)
+// Value: 1.5
+75 73 63 61    // "usca"
+01 00 00 00    // dataType = 1 (real)
+00 00 00 00    // level = 0
+00 00 00 00    // dataPointer = 0
+00 00 C0 3F    // value = 1.5 (IEEE 754 LE: 0x3FC00000)
+Unreal (Fixed-Point) Fields:
+
+c
+typedef struct {
+    char fieldID[4];
+    uint32 dataType;      // 2 = unreal
+    uint32 level;
+    uint32 dataPointer;
+    uint32 value;         // Stored as int, divide by 1000.0
+} UnrealModification;
+
+// Example hex:
+// Field: uhpr (HP Regen)
+// Value: 2.5 (stored as 2500)
+75 68 70 72    // "uhpr"
+02 00 00 00    // dataType = 2 (unreal)
+00 00 00 00    // level = 0
+00 00 00 00    // dataPointer = 0
+C4 09 00 00    // value = 2500 → 2.5 when divided by 1000
+String Fields:
+
+c
+typedef struct {
+    char fieldID[4];
+    uint32 dataType;      // 3 = string
+    uint32 level;
+    uint32 dataPointer;
+    char value[];         // Null-terminated UTF-8 string
+} StringModification;
+
+// Example hex:
+// Field: unam (Name)
+// Value: "Custom Footman"
+75 6E 61 6D    // "unam"
+03 00 00 00    // dataType = 3 (string)
+00 00 00 00    // level = 0
+00 00 00 00    // dataPointer = 0
+43 75 73 74 6F 6D 20 46 6F 6F 74 6D 61 6E 00  // "Custom Footman\0"
+1.7 Target Type Bitfield System
+Complex Bitfield Encoding:
+
+Target types use bit flags that combine multiple classification types.
+
+Target Type Flags (32-bit):
+
+c
+#define TARGET_GROUND        0x00000001  // Bit 0
+#define TARGET_AIR           0x00000002  // Bit 1
+#define TARGET_STRUCTURE     0x00000004  // Bit 2
+#define TARGET_WARD          0x00000008  // Bit 3
+#define TARGET_ITEM          0x00000010  // Bit 4
+#define TARGET_TREE          0x00000020  // Bit 5
+#define TARGET_WALL          0x00000040  // Bit 6
+#define TARGET_DEBRIS        0x00000080  // Bit 7
+#define TARGET_DECORATION    0x00000100  // Bit 8
+#define TARGET_BRIDGE        0x00000200  // Bit 9
+#define TARGET_HERO          0x00000400  // Bit 10
+#define TARGET_ALIVE         0x00000800  // Bit 11
+#define TARGET_DEAD          0x00001000  // Bit 12
+#define TARGET_ORGANIC       0x00002000  // Bit 13
+#define TARGET_MECHANICAL    0x00004000  // Bit 14
+#define TARGET_NONHERO       0x00008000  // Bit 15
+#define TARGET_NEUTRAL       0x00010000  // Bit 16
+#define TARGET_ENEMIES       0x00020000  // Bit 17
+#define TARGET_VULNERABLE    0x00040000  // Bit 18
+#define TARGET_INVULNERABLE  0x00080000  // Bit 19
+#define TARGET_MAGIC_IMMUNE  0x00100000  // Bit 20
+#define TARGET_ANCIENT       0x00200000  // Bit 21
+#define TARGET_NOTSELF       0x00400000  // Bit 22
+#define TARGET_PLAYER_UNITS  0x00800000  // Bit 23
+#define TARGET_ALLIED        0x01000000  // Bit 24
+#define TARGET_FRIEND        0x02000000  // Bit 25
+#define TARGET_NEUTRAL_UNIT  0x04000000  // Bit 26
+Example Combination:
+
+c
+// Can target: ground enemies that are alive and organic
+uint32 targets = TARGET_GROUND | TARGET_ENEMIES | TARGET_ALIVE | TARGET_ORGANIC;
+// = 0x00000001 | 0x00020000 | 0x00000800 | 0x00002000
+// = 0x00022801
+
+// Hex representation in object file:
+01 28 02 00    // Little-endian: 0x00022801
+Parsing Algorithm:
+
+c
+bool canTarget(uint32 attackerTargets, uint32 unitClassification) {
+    // Unit must have ALL bits set that attacker requires
+    return (unitClassification & attackerTargets) == attackerTargets;
+}
+
+// Example:
+// Attacker targets: ground+alive+organic (0x00002801)
+// Unit is classified as: ground+alive+organic+hero (0x00002C01)
+// Result: (0x00002C01 & 0x00002801) == 0x00002801 → TRUE, can target
+Part 2: YDWE Object Editor Extensions
+2.1 Lua-Based Object Definition System
+YDWE's Revolutionary Approach
+
+YDWE allows creating/modifying objects via Lua scripts embedded in map files, bypassing binary format entirely during development.
+
+SLK Module Architecture:
+
+lua
+-- YDWE provides 'slk' module
+local slk = require 'slk'
+
+-- Access object categories
+slk.unit      -- Unit definitions
+slk.ability   -- Ability definitions
+slk.item      -- Item definitions
+slk.buff      -- Buff/effect definitions
+slk.upgrade   -- Upgrade definitions
+slk.doodad    -- Doodad definitions
+slk.destructable  -- Destructible definitions
+Object Creation Syntax:
+
+lua
+-- Create new object by cloning existing one
+local new_object = slk.category.baseID:new('newID')
+
+-- baseID: Original object to inherit from (4-char code)
+-- newID: New custom object ID (4-char code, should start with lowercase for custom)
+2.2 Complete YDWE Lua Object API
+Unit Object Creation:
+
+lua
+local slk = require 'slk'
+
+-- Clone Human Footman (hfoo) to create custom unit
+local o = slk.unit.hfoo:new('x000')
+
+-- Modify fields using field name properties
+o.Name = 'Super Footman'           -- unam field
+o.hp = 999                         -- uhp field (Hit Points)
+o.mana = 500                       -- uman field (Mana Max)
+o.spd = 450                        -- umvs field (Movement Speed)
+o.def = 10                         -- udef field (Defense)
+o.dmgplus1 = 100                   -- ua1b field (Attack 1 Base Damage)
+o.dice1 = 1                        -- ua1d field (Attack Dice Number)
+o.sides1 = 10                      -- ua1s field (Attack Dice Sides)
+o.cool1 = 1.0                      -- ua1c field (Attack Cooldown)
+o.range1 = 600                     -- ua1r field (Attack Range)
+o.abilList = 'AHds,AHbn'          -- uabi field (Abilities - comma separated)
+o.modelFile = 'units\\human\\Knight\\Knight.mdl'  -- umdl field
+o.unitSound = 'Knight'             -- usnd field
+o.fused = 0                        -- ufoo field (Food Cost)
+o.goldcost = 500                   -- ugol field (Gold Cost)
+o.lumbercost = 100                 -- ulum field (Lumber Cost)
+o.tilesetSpecific = 0              -- utis field
+Ability Object Creation:
+
+lua
+local slk = require 'slk'
+
+-- Clone Blink ability (AIbk) to create custom spell
+local o = slk.ability.AIbk:new('A000')
+
+-- Basic properties
+o.Name = 'Super Blink'
+o.Tip = 'Super Blink'
+o.Ubertip = 'Teleports the caster to target location instantly.'
+o.Hotkey = 'B'
+o.Art = 'ReplaceableTextures\\CommandButtons\\BTNBlink.blp'  -- aart field
+
+-- Level-based data (suffix 1, 2, 3 for levels)
+o.Cool1 = 0.0                      -- Cooldown level 1
+o.Cool2 = 0.0                      -- Cooldown level 2
+o.Cool3 = 0.0                      -- Cooldown level 3
+o.Cost1 = 0                        -- Mana cost level 1
+o.Cost2 = 0                        -- Mana cost level 2
+o.Cost3 = 0                        -- Mana cost level 3
+o.Rng1 = 9999.0                    -- Cast range level 1
+o.Rng2 = 9999.0                    -- Cast range level 2
+o.Rng3 = 9999.0                    -- Cast range level 3
+o.DataA1 = 9999999.0               -- Data field A level 1 (max distance)
+o.DataB1 = 1.0                     -- Data field B level 1 (min distance)
+o.DataA2 = 9999999.0
+o.DataB2 = 1.0
+o.DataA3 = 9999999.0
+o.DataB3 = 1.0
+
+-- Targeting
+o.targs1 = 'ground,enemy,neutral,debris'  -- Targets allowed
+o.Levels = 3                       -- Number of levels
+o.hero = 1                         -- Is hero ability (1=yes, 0=no)
+o.item = 0                         -- Is item ability
+Item Object Creation:
+
+lua
+local slk = require 'slk'
+
+-- Clone Claws of Attack (afac) to create custom item
+local o = slk.item.afac:new('I000')
+
+o.Name = 'Legendary Claws'
+o.Tip = 'Purchase |cffffcc00Legendary Claws|r'
+o.Ubertip = 'Increases attack damage by 100.'
+o.Description = 'Epic weapon'
+o.Art = 'ReplaceableTextures\\CommandButtons\\BTNClawsOfAttack.blp'
+o.file = 'Objects\\InventoryItems\\jewelSkull\\jewelSkull.mdl'  -- ifil field
+o.scale = 1.2                      -- isca field (Model scale)
+o.goldcost = 10000                 -- igol field
+o.sellable = 1                     -- ipaw field (Pawnable)
+o.droppable = 1                    -- idro field
+o.powerup = 0                      -- ipow field (Is powerup)
+o.prio = 1                         -- ipri field (Priority)
+o.uses = 0                         -- iuse field (Number of uses, 0=infinite)
+o.perishable = 0                   -- iper field
+o.Level = 10                       -- ilev field (Item level)
+o.class = 'Artifact'               -- icla field (Item class)
+o.abilList = 'AIat'                -- iabi field (Abilities)
+2.3 Field Name to Field ID Mapping
+YDWE Lua Property Names:
+
+YDWE uses simplified property names instead of raw field IDs. Mappings:
+
+Units (slk.unit):
+
+lua
+-- Stats
+Name           → unam
+ProperName     → upro
+hp             → uhp    (Hit Points Max)
+mana           → uman   (Mana Max)
+manai          → umpi   (Mana Initial)
+realHP         → uhpr   (HP Regeneration)
+regenMana      → umpr   (Mana Regeneration)
+def            → udef   (Defense Base)
+defType        → udty   (Defense Type)
+defUp          → udup   (Defense Upgrade Bonus)
+spd            → umvs   (Speed Base)
+turnRate       → utur   (Turn Rate)
+movetp         → umvt   (Movement Type)
+moveheight     → umvh   (Movement Height)
+
+-- Combat
+atkType1       → ua1t   (Attack 1 Type)
+weapType1      → ua1w   (Attack 1 Weapon Type)
+dmgplus1       → ua1b   (Attack 1 Base Damage)
+dice1          → ua1d   (Attack 1 Dice Number)
+sides1         → ua1s   (Attack 1 Dice Sides)
+cool1          → ua1c   (Attack 1 Cooldown)
+rangeN1        → ua1r   (Attack 1 Range)
+targType       → utaa   (Targets Allowed)
+targets1       → ua1g   (Attack 1 Targets)
+
+-- Resources
+fused          → ufoo   (Food Cost)
+fmade          → ufma   (Food Produced)
+goldcost       → ugol   (Gold Cost)
+lumbercost     → ulum   (Lumber Cost)
+bountydice     → ubdi   (Bounty Dice)
+bountyplus     → ubba   (Bounty Base)
+bountysides    → ubsi   (Bounty Sides)
+
+-- Art
+file           → umdl   (Model File)
+fileVerFlags   → uver   (Model Extra Versions)
+scale          → usca   (Scaling Value)
+Art            → uico   (Icon - Game Interface)
+btnpos_1       → ubpx   (Button Position X)
+btnpos_2       → ubpy   (Button Position Y)
+unitSound      → usnd   (Unit Sound Set)
+
+-- Techtree
+abilList       → uabi   (Abilities - Normal, comma-separated)
+heroAbilList   → uhab   (Abilities - Hero, comma-separated)
+depends        → ureq   (Requirements)
+trains         → utra   (Units Trained)
+builds         → utyp   (Structures Built)
+upgrade        → uupt   (Upgrades To)
+revivesAt      → urev   (Revives Dead Heroes)
+
+-- Editor/Misc
+race           → urac   (Race)
+prio           → upri   (Priority)
+threat         → uthr   (Threat)
+type           → utyp   (Unit Type - same as builds?)
+Level          → ulev   (Level)
+Abilities (slk.ability):
+
+lua
+-- Basic
+Name           → anam   (Name)
+Tip            → aat1   (Tooltip - Normal Level 1)
+Ubertip        → aub1   (Ubertip - Normal Level 1)
+Hotkey         → ahky   (Hotkey)
+Art            → aart   (Icon - Normal)
+Effectsound    → aefs   (Effect Sound)
+EditorSuffix   → ansf   (Editor Suffix)
+
+-- Per-level data (append 1, 2, 3... for each level)
+Cool1          → acdn   (Cooldown - level 1)
+Cost1          → amcs   (Mana Cost - level 1)
+Rng1           → aran   (Cast Range - level 1)
+Area1          → aare   (Area of Effect - level 1)
+Dur1           → adur   (Duration - Normal - level 1)
+HeroDur1       → ahdu   (Duration - Hero - level 1)
+DataA1         → Adan   (Data A - level 1, ability-specific)
+DataB1         → Adb1   (Data B - level 1, ability-specific)
+DataC1         → Adc1   (Data C - level 1)
+DataD1         → Add1   (Data D - level 1)
+DataE1         → Adf1   (Data E - level 1)
+DataF1         → Aae1   (Data F - level 1)
+
+-- Config
+Levels         → alev   (Levels)
+hero           → aher   (Hero Ability, 0/1)
+item           → aite   (Item Ability, 0/1)
+race           → arac   (Race)
+Requires       → areq   (Requirements)
+Requiresamount → arqa   (Requirement Amount)
+targs1         → atar   (Targets Allowed - level 1, comma-separated)
+Items (slk.item):
+
+lua
+-- Basic
+Name           → unam   (Name)
+Tip            → utip   (Tooltip - Basic)
+Ubertip        → utub   (Tooltip - Extended)
+Hotkey         → uhot   (Hotkey)
+Description    → udes   (Description)
+
+-- Art
+Art            → uico   (Icon)
+file           → ifil   (Model File)
+scale          → isca   (Scaling Value)
+
+-- Stats
+Level          → ilev   (Level)
+class          → icla   (Class)
+oldLevel       → ilvo   (Old Level - pre-1.07)
+goldcost       → igol   (Gold Cost)
+lumbercost     → ilum   (Lumber Cost)
+stockMax       → isto   (Stock Maximum)
+stockRegen     → istr   (Stock Replenish Interval)
+stockStart     → isst   (Stock Start Delay)
+
+-- Flags
+prio           → ipri   (Priority)
+usable         → iusa   (Usable)
+perishable     → iper   (Perishable)
+powerup        → ipow   (Powerup)
+pawnable       → ipaw   (Pawnable/Sellable)
+droppable      → idro   (Dropped When Carrier Dies)
+pickRandom     → iprn   (Can Be Dropped)
+
+-- Abilities
+abilList       → iabi   (Abilities, comma-separated)
+2.4 YDWE Preprocessor Directives
+Embedded Lua Block Syntax:
+
+lua
+-- Lua code between <? and ?> executed during map save
+<?
+local slk = require 'slk'
+local o = slk.unit.hfoo:new('x001')
+o.Name = 'Generated Unit'
+o.hp = 500
+?>
+C-Style Macro Definitions:
+
+text
+// Define reusable constants
+#define Max_Players 9
+#define HERO_COUNT 5
+
+// Define Lua snippets
+#define _Lua_Base local slk = require 'slk'
+#define _Lua_Unit_Damage o.dmgplus1
+#define _Lua_Unit_Name o.Name
+
+// Use macros in embedded Lua
+<?
+_Lua_Base
+local o = slk.unit.hpea:new('x002')
+_Lua_Unit_Damage = 999
+_Lua_Unit_Name = 'YDWE - Peasant'
+?>
+Conditional Compilation:
+
+text
+#ifdef TestMode
+    // Test-only code
+    call BJDebugMsg("Test Mode Active")
+    set someGlobal = 999
+#else
+    // Production code
+    set someGlobal = 1
+#endif
+
+#ifndef PRODUCTION
+    globals
+        integer DEBUG_LEVEL = 3
+    endglobals
+#endif
+2.5 YDWE Extended Field Access
+Accessing Hidden/Restricted Fields:
+
+YDWE removes restrictions on certain fields that vanilla World Editor hides or locks.
+
+Example - Unit Classification Editing:
+
+lua
+-- Vanilla WE: Cannot modify 'unitClass' field
+-- YDWE: Full access via Lua
+
+local o = slk.unit.hfoo:new('x003')
+o.unitClass = 'mechanical,ancient'  -- Set classification bits
+
+-- Allows setting:
+-- - 'giant' - Giant classification
+-- - 'tauren' - Tauren classification
+-- - 'mechanical' - Mechanical
+-- - 'peon' - Worker classification
+-- - 'sapper' - Explodes on death
+-- - 'summoned' - Summoned unit
+-- - 'ancient' - Ancient protector
+-- - 'undead' - Undead classification
+-- - 'neutral' - Neutral passive
+Extended SLK Manipulation:
+
+lua
+-- Direct SLK table access for advanced users
+local slk = require 'slk'
+
+-- Access internal SLK data structure
+local unit_table = slk.unit
+
+-- Iterate all base units
+for id, data in pairs(unit_table) do
+    print(id, data.Name)
+end
+
+-- Clone and modify multiple units programmatically
+for i = 1, 10 do
+    local id = string.format('x%03d', i)
+    local o = slk.unit.hfoo:new(id)
+    o.Name = 'Clone ' .. i
+    o.hp = 100 * i
+    o.dmgplus1 = 10 * i
+end
+2.6 YDWE Object Editor UI Enhancements
+Features Not in Vanilla WE:
+
+Batch Field Modification
+
+Select multiple objects
+
+Change field values for all simultaneously
+
+Lua script-based mass updates
+
+Advanced Search/Filter
+
+Filter by field value ranges
+
+Regex pattern matching on field names
+
+Complex boolean queries
+
+Field Value Templates
+
+Save common field configurations
+
+Apply templates to new objects
+
+Template inheritance system
+
+Real-Time Lua Evaluation
+
+Lua console within Object Editor
+
+Test Lua object creation code live
+
+Immediate feedback on syntax errors
+
+Extended Field Visibility
+
+Show normally hidden fields
+
+Edit metadata-restricted fields
+
+Override field type constraints
+
+2.7 YDWE Lua SLK Library - Advanced Features
+Dynamic Object Generation:
+
+lua
+local slk = require 'slk'
+
+-- Function to create hero ability progression
+function createHeroAbilityChain(baseAbility, prefix, levels)
+    for i = 1, levels do
+        local id = prefix .. string.format('%03d', i)
+        local o = slk.ability[baseAbility]:new(id)
+        
+        o.Name = string.format('%s (Level %d)', o.Name, i)
+        o.Levels = 1
+        o.hero = 1
+        
+        -- Scale by level
+        o.Cool1 = 10.0 - (i * 0.5)  -- Cooldown decreases
+        o.Cost1 = 50 + (i * 25)     -- Mana cost increases
+        o.DataA1 = 100 * i          -- Damage scales
+        
+        -- Chain requirement: previous level
+        if i > 1 then
+            local prevID = prefix .. string.format('%03d', i-1)
+            o.Requires = prevID
+            o.Requiresamount = 1
+        end
+    end
+end
+
+-- Generate 10-level progression
+createHeroAbilityChain('AHtc', 'A', 10)  -- Thunder Clap variants
+Conditional Object Creation:
+
+lua
+local slk = require 'slk'
+
+-- Create faction-specific units
+local factions = {
+    {race = 'human', base = 'hfoo', prefix = 'h'},
+    {race = 'orc',   base = 'ogru', prefix = 'o'},
+    {race = 'nightelf', base = 'earc', prefix = 'e'},
+    {race = 'undead', base = 'ugho', prefix = 'u'}
+}
+
+for _, faction in ipairs(factions) do
+    for tier = 1, 3 do
+        local id = faction.prefix .. string.format('%02d%d', 10, tier)
+        local o = slk.unit[faction.base]:new(id)
+        
+        o.Name = string.format('%s Elite (Tier %d)', faction.race, tier)
+        o.hp = 500 * tier
+        o.dmgplus1 = 20 * tier
+        o.goldcost = 150 * tier
+        o.race = faction.race
+        
+        -- Tier requirements
+        if tier > 1 then
+            o.depends = string.format('%s%02d%d', 
+                faction.prefix, 10, tier - 1)
+        end
+    end
+end
+2.8 YDWE vs Vanilla Comparison Table
+Feature	Vanilla WE	YDWE
+Object Creation	Binary w3u/w3a manual editing	Lua script-based generation
+Batch Operations	Not supported	Full batch modification via Lua
+Field Access	Restricted by MetaData.slk	All fields accessible
+Hidden Fields	Cannot edit	Full access (unitClass, etc.)
+Custom Constraints	Hard-coded limits	Removable via Lua
+Programmatic Generation	Not possible	Full Lua programming
+Template System	None	Lua-based templates
+Field Validation	Type-enforced	Can override in Lua
+MetaData Editing	Requires MPQ modification	Direct SLK manipulation
+Multi-Level Abilities	Manual per-level entry	Loop-based generation
+Object Inheritance	Single-level clone	Multi-level via code
+Version Control	Binary diff (poor)	Lua text (excellent)
+Collaboration	Difficult (binary conflicts)	Easy (text merging)
+Documentation	Manual comments in triggers	Self-documenting Lua code
+2.9 Complete YDWE Object Workflow Example
+Scenario: Create a custom hero with progressive ability unlocking system
+
+lua
+<?
+local slk = require 'slk'
+
+-- ========================================
+-- HERO DEFINITION
+-- ========================================
+local hero = slk.unit.Hamg:new('H001')  -- Clone Archmage
+hero.Name = 'Battle Mage'
+hero.ProperName = 'Magnus,Aldric,Theron'
+hero.properNames = 3
+hero.hp = 600
+hero.mana = 400
+hero.STR = 18
+hero.AGI = 16
+hero.INT = 24
+hero.StrPlus = 2.2
+hero.AgiPlus = 1.8
+hero.IntPlus = 3.0
+hero.modelFile = 'units\\human\\Sorceror\\Sorceror.mdl'
+hero.Art = 'ReplaceableTextures\\CommandButtons\\BTNSorceress.blp'
+hero.goldcost = 425
+hero.lumbercost = 100
+
+-- Assign abilities (will create below)
+hero.heroAbilList = 'A001,A002,A003,A004'  -- 3 basic + 1 ultimate
+
+-- ========================================
+-- ABILITY 1: Fireball (3 Levels)
+-- ========================================
+for level = 1, 3 do
+    local id = string.format('A%03d', level)
+    local a = slk.ability.ACcl:new(id)  -- Clone Chain Lightning
+    
+    a.Name = string.format('Fireball (Level %d)', level)
+    a.Tip = 'Fireball'
+    a.Ubertip = string.format(
+        'Launches a fireball dealing %d damage.',
+        50 * level
+    )
+    a.Hotkey = 'Q'
+    a.Art = 'ReplaceableTextures\\CommandButtons\\BTNFireBolt.blp'
+    a.Levels = 1
+    a.hero = 1
+    a.race = 'human'
+    
+    -- Stats
+    a.Cool1 = 8.0 - (level * 0.5)
+    a.Cost1 = 75 + (level * 25)
+    a.Rng1 = 600 + (level * 50)
+    a.DataA1 = 50 * level  -- Damage
+    a.DataB1 = 0           -- No damage reduction
+    a.Dur1 = 0             -- Instant
+    a.targs1 = 'air,ground,enemy,neutral,organic'
+    
+    -- Level requirement
+    if level > 1 then
+        a.Requires = string.format('A%03d', level - 1)
+        a.Requiresamount = 1
+    end
+end
+
+-- ========================================
+-- ABILITY 2: Mana Shield (3 Levels)
+-- ========================================
+for level = 1, 3 do
+    local id = string.format('A%03d', 3 + level)
+    local a = slk.ability.ACmg:new(id)  -- Clone Mana Shield
+    
+    a.Name = string.format('Mana Shield (Level %d)', level)
+    a.Tip = 'Mana Shield'
+    a.Ubertip = string.format(
+        'Absorbs %d damage using mana.',
+        100 * level
+    )
+    a.Hotkey = 'W'
+    a.Art = 'ReplaceableTextures\\CommandButtons\\BTNManaShield.blp'
+    a.Levels = 1
+    a.hero = 1
+    
+    a.Cool1 = 0.01
+    a.Cost1 = 0
+    a.Dur1 = 999999
+    a.DataA1 = 100 * level  -- Damage absorbed
+    a.DataB1 = 1.0          -- Mana per damage
+    a.targs1 = 'self'
+    
+    if level > 1 then
+        a.Requires = string.format('A%03d', 3 + level - 1)
+        a.Requiresamount = 1
+    end
+end
+
+-- ========================================
+-- ABILITY 3: Teleport (3 Levels)
+-- ========================================
+for level = 1, 3 do
+    local id = string.format('A%03d', 6 + level)
+    local a = slk.ability.AIbk:new(id)  -- Clone Blink
+    
+    a.Name = string.format('Teleport (Level %d)', level)
+    a.Tip = 'Teleport'
+    a.Ubertip = 'Instantly teleport to target location.'
+    a.Hotkey = 'E'
+    a.Art = 'ReplaceableTextures\\CommandButtons\\BTNBlink.blp'
+    a.Levels = 1
+    a.hero = 1
+    
+    a.Cool1 = 15.0 - (level * 2.0)
+    a.Cost1 = 100 + (level * 50)
+    a.Rng1 = 500 + (level * 250)
+    a.DataA1 = 500 + (level * 250)  -- Max distance
+    a.DataB1 = 50                    -- Min distance
+    a.targs1 = 'ground'
+    
+    if level > 1 then
+        a.Requires = string.format('A%03d', 6 + level - 1)
+        a.Requiresamount = 1
+    end
+end
+
+-- ========================================
+-- ULTIMATE: Meteor Storm (1 Level, Requires Level 6)
+-- ========================================
+local ult = slk.ability.ACbl:new('A010')  -- Clone Blizzard
+ult.Name = 'Meteor Storm'
+ult.Tip = 'Meteor Storm'
+ult.Ubertip = 'Rain meteors on target area, dealing massive damage.'
+ult.Hotkey = 'R'
+ult.Art = 'ReplaceableTextures\\CommandButtons\\BTNInferno.blp'
+ult.Levels = 1
+ult.hero = 1
+ult.race = 'human'
+
+ult.Cool1 = 120.0
+ult.Cost1 = 300
+ult.Rng1 = 800
+ult.Area1 = 400
+ult.Dur1 = 10.0
+ult.DataA1 = 100  -- Building damage
+ult.DataB1 = 150  -- Unit damage
+ult.DataC1 = 10   -- Waves
+ult.targs1 = 'air,ground,enemy,neutral'
+ult.Requires = 'A009'  -- Requires Teleport level 3
+ult.Requiresamount = 1
+
+-- ========================================
+-- ITEM: Spellpower Staff
+-- ========================================
+local staff = slk.item.ratc:new('I001')  -- Clone +damage item
+staff.Name = 'Staff of Arcane Power'
+staff.Tip = 'Purchase |cff00ff00Staff of Arcane Power|r'
+staff.Ubertip = 'Increases spell damage by 25%.'
+staff.Art = 'ReplaceableTextures\\CommandButtons\\BTNWandOfNeutralization.blp'
+staff.file = 'Objects\\InventoryItems\\tomes\\tome\\tome.mdl'
+staff.scale = 1.0
+staff.goldcost = 5000
+staff.Level = 8
+staff.class = 'Artifact'
+staff.prio = 10
+staff.usable = 0
+staff.pawnable = 1
+staff.droppable = 1
+staff.abilList = 'AIsd'  -- Spell damage increase ability (create separately)
+?>
+Conclusion
+This specification covers:
+
+Object Editor Architecture - Complete field system, binary format, MetaData control
+
+Field ID System - 4-character encoding, category prefixes, data column indexing
+
+Binary Storage - Exact hex-level encoding for int/real/unreal/string/bitfield types
+
+YDWE Extensions - Lua SLK module, programmatic object generation, batch operations
+
+Advanced Workflows - Progressive ability systems, faction-based generation, templates
+
+Key Advantages of YDWE:
+
+Text-based version control (Lua scripts vs binary files)
+
+Programmatic generation (loops, conditionals, functions)
+
+Batch operations (modify hundreds of objects with one script)
+
+Field access (no MetaData restrictions)
+
+Maintainability (self-documenting code, easy refactoring)
+
+This enables creation of sophisticated object systems impossible with vanilla World Editor's GUI-based approach.
