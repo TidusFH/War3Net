@@ -22,6 +22,7 @@ namespace ObjectMerger.Services
         public Dictionary<string, ObjectInfo> Upgrades { get; } = new();
 
         private Map? sourceMap;
+        private StringTableReader? stringTable;
 
         /// <summary>
         /// Load all custom objects from a map
@@ -35,6 +36,9 @@ namespace ObjectMerger.Services
             try
             {
                 registry.sourceMap = Map.Open(mapPath);
+
+                // Load string table for resolving TRIGSTR references
+                registry.stringTable = StringTableReader.LoadFromMap(registry.sourceMap, mapPath);
             }
             catch (Exception ex)
             {
@@ -69,13 +73,15 @@ namespace ObjectMerger.Services
             {
                 string code = unit.NewId.ToRawcode();
                 string baseCode = unit.OldId.ToRawcode();
+                string rawName = GetModificationValue(unit, "unam") ?? code;
+                string displayName = stringTable?.Resolve(rawName) ?? rawName;
 
                 Units[code] = new ObjectInfo
                 {
                     Code = code,
                     BaseCode = baseCode,
                     Type = ObjectType.Unit,
-                    Name = GetModificationValue(unit, "unam") ?? code,
+                    Name = displayName,
                     IsCustom = true,
                     SourceObject = unit
                 };
@@ -92,13 +98,15 @@ namespace ObjectMerger.Services
             {
                 string code = item.NewId.ToRawcode();
                 string baseCode = item.OldId.ToRawcode();
+                string rawName = GetModificationValue(item, "unam") ?? code;
+                string displayName = stringTable?.Resolve(rawName) ?? rawName;
 
                 Items[code] = new ObjectInfo
                 {
                     Code = code,
                     BaseCode = baseCode,
                     Type = ObjectType.Item,
-                    Name = GetModificationValue(item, "unam") ?? code,
+                    Name = displayName,
                     IsCustom = true,
                     SourceObject = item
                 };
@@ -115,13 +123,15 @@ namespace ObjectMerger.Services
             {
                 string code = ability.NewId.ToRawcode();
                 string baseCode = ability.OldId.ToRawcode();
+                string rawName = GetModificationValue(ability, "anam") ?? code;
+                string displayName = stringTable?.Resolve(rawName) ?? rawName;
 
                 Abilities[code] = new ObjectInfo
                 {
                     Code = code,
                     BaseCode = baseCode,
                     Type = ObjectType.Ability,
-                    Name = GetModificationValue(ability, "anam") ?? code,
+                    Name = displayName,
                     IsCustom = true,
                     SourceObject = ability
                 };
@@ -138,13 +148,15 @@ namespace ObjectMerger.Services
             {
                 string code = dest.NewId.ToRawcode();
                 string baseCode = dest.OldId.ToRawcode();
+                string rawName = GetModificationValue(dest, "bnam") ?? code;
+                string displayName = stringTable?.Resolve(rawName) ?? rawName;
 
                 Destructables[code] = new ObjectInfo
                 {
                     Code = code,
                     BaseCode = baseCode,
                     Type = ObjectType.Destructable,
-                    Name = GetModificationValue(dest, "bnam") ?? code,
+                    Name = displayName,
                     IsCustom = true,
                     SourceObject = dest
                 };
@@ -161,13 +173,15 @@ namespace ObjectMerger.Services
             {
                 string code = doodad.NewId.ToRawcode();
                 string baseCode = doodad.OldId.ToRawcode();
+                string rawName = GetModificationValue(doodad, "dnam") ?? code;
+                string displayName = stringTable?.Resolve(rawName) ?? rawName;
 
                 Doodads[code] = new ObjectInfo
                 {
                     Code = code,
                     BaseCode = baseCode,
                     Type = ObjectType.Doodad,
-                    Name = GetModificationValue(doodad, "dnam") ?? code,
+                    Name = displayName,
                     IsCustom = true,
                     SourceObject = doodad
                 };
@@ -184,13 +198,15 @@ namespace ObjectMerger.Services
             {
                 string code = buff.NewId.ToRawcode();
                 string baseCode = buff.OldId.ToRawcode();
+                string rawName = GetModificationValue(buff, "fnam") ?? code;
+                string displayName = stringTable?.Resolve(rawName) ?? rawName;
 
                 Buffs[code] = new ObjectInfo
                 {
                     Code = code,
                     BaseCode = baseCode,
                     Type = ObjectType.Buff,
-                    Name = GetModificationValue(buff, "fnam") ?? code,
+                    Name = displayName,
                     IsCustom = true,
                     SourceObject = buff
                 };
@@ -207,13 +223,15 @@ namespace ObjectMerger.Services
             {
                 string code = upgrade.NewId.ToRawcode();
                 string baseCode = upgrade.OldId.ToRawcode();
+                string rawName = GetModificationValue(upgrade, "gnam") ?? code;
+                string displayName = stringTable?.Resolve(rawName) ?? rawName;
 
                 Upgrades[code] = new ObjectInfo
                 {
                     Code = code,
                     BaseCode = baseCode,
                     Type = ObjectType.Upgrade,
-                    Name = GetModificationValue(upgrade, "gnam") ?? code,
+                    Name = displayName,
                     IsCustom = true,
                     SourceObject = upgrade
                 };

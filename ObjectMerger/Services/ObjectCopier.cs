@@ -137,6 +137,9 @@ namespace ObjectMerger.Services
             var sourceUnit = obj.SourceObject as SimpleObjectModification;
             if (sourceUnit == null) return false;
 
+            // Show debug information
+            DebugHelper.ShowObjectDetails(sourceUnit, $"Unit: {obj.Name}");
+
             // Ensure target has UnitObjectData
             if (targetMap.UnitObjectData == null)
             {
@@ -170,6 +173,9 @@ namespace ObjectMerger.Services
         {
             var sourceAbility = obj.SourceObject as War3Net.Build.Object.LevelObjectModification;
             if (sourceAbility == null) return false;
+
+            // Show debug information
+            DebugHelper.ShowLevelObjectDetails(sourceAbility, $"Ability: {obj.Name}");
 
             if (targetMap.AbilityObjectData == null)
             {

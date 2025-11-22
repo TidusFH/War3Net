@@ -16,6 +16,7 @@ namespace ObjectMerger
         private static string sourcePath = string.Empty;
         private static string targetPath = string.Empty;
         private static string outputPath = string.Empty;
+        public static bool DebugMode { get; set; } = false;
 
         static void Main(string[] args)
         {
@@ -258,6 +259,9 @@ namespace ObjectMerger
                 Console.WriteLine("  4. List objects from TARGET");
                 Console.WriteLine("  5. Show statistics");
                 Console.WriteLine();
+                Console.WriteLine("DEBUG OPTIONS:");
+                Console.WriteLine($"  7. Toggle debug mode (currently: {(DebugMode ? "ON" : "OFF")})");
+                Console.WriteLine();
                 Console.WriteLine("  6. Save and exit");
                 Console.WriteLine("  0. Exit without saving");
 
@@ -282,6 +286,18 @@ namespace ObjectMerger
                             break;
                         case "5":
                             ShowStatistics();
+                            break;
+                        case "7":
+                            DebugMode = !DebugMode;
+                            Console.ForegroundColor = ConsoleColor.Green;
+                            Console.WriteLine($"\nDebug mode is now {(DebugMode ? "ON" : "OFF")}");
+                            if (DebugMode)
+                            {
+                                Console.WriteLine("  - Object modifications will be shown in detail");
+                                Console.WriteLine("  - Hex values will be displayed for debugging");
+                                Console.WriteLine("  - Save operations will show detailed file information");
+                            }
+                            Console.ResetColor();
                             break;
                         case "6":
                             SaveAndExit();
