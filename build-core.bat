@@ -90,17 +90,28 @@ if %FAILED%==0 (
     echo BUILD SUCCESSFUL!
     echo ========================================
     echo.
-    echo Your DLLs are ready at:
-    echo   src\War3Net.Build.Core\bin\Debug\net5.0\
-    echo   src\War3Net.Build\bin\Debug\net5.0\
+    echo Copying DLLs to Dlls folder...
+
+    REM Create Dlls folder
+    if not exist "Dlls" mkdir Dlls
+
+    REM Copy all War3Net DLLs and their dependencies
+    xcopy /Y /Q src\War3Net.Build.Core\bin\Debug\net5.0\*.dll Dlls\ >nul
+    xcopy /Y /Q src\War3Net.Build\bin\Debug\net5.0\*.dll Dlls\ >nul
+
     echo.
-    echo Key Files:
-    dir /b src\War3Net.Build.Core\bin\Debug\net5.0\War3Net.Build.Core.dll 2>nul
-    dir /b src\War3Net.Build\bin\Debug\net5.0\War3Net.Build.dll 2>nul
+    echo ========================================
+    echo DLLs copied to: .\Dlls\
+    echo ========================================
+    echo.
+    echo Copied files:
+    dir /b Dlls\War3Net.*.dll
     echo.
     echo These DLLs include:
     echo   - Patches 1.20, 1.24, 1.26, 1.27 through 2.0.3
     echo   - Custom APIs: YDWE, dzapi, dzapi2, kkapi, YDTrigger, bzapi
+    echo.
+    echo All files are in the Dlls folder and ready to use!
 ) else (
     echo BUILD FAILED!
     echo ========================================
