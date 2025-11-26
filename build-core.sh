@@ -27,14 +27,16 @@ build_project() {
     fi
 }
 
-build_project 1 8 "War3Net.Common" "src/War3Net.Common/War3Net.Common.csproj" || exit 1
-build_project 2 8 "War3Net.IO.Compression" "src/War3Net.IO.Compression/War3Net.IO.Compression.csproj" || exit 1
-build_project 3 8 "War3Net.IO.Mpq" "src/War3Net.IO.Mpq/War3Net.IO.Mpq.csproj" || exit 1
-build_project 4 8 "War3Net.IO.Slk" "src/War3Net.IO.Slk/War3Net.IO.Slk.csproj" || exit 1
-build_project 5 8 "War3Net.CodeAnalysis" "src/War3Net.CodeAnalysis/War3Net.CodeAnalysis.csproj" || exit 1
-build_project 6 8 "War3Net.CodeAnalysis.Jass" "src/War3Net.CodeAnalysis.Jass/War3Net.CodeAnalysis.Jass.csproj" || exit 1
-build_project 7 8 "War3Net.Build.Core" "src/War3Net.Build.Core/War3Net.Build.Core.csproj" "Contains YDWE, dzapi, dzapi2, kkapi, YDTrigger, bzapi" || exit 1
-build_project 8 8 "War3Net.Build" "src/War3Net.Build/War3Net.Build.csproj" || exit 1
+build_project 1 10 "CSharp.lua submodule" "submodules/CSharp.lua/CSharp.lua/CSharp.lua.csproj" || exit 1
+build_project 2 10 "War3Net.Common" "src/War3Net.Common/War3Net.Common.csproj" || exit 1
+build_project 3 10 "War3Net.IO.Compression" "src/War3Net.IO.Compression/War3Net.IO.Compression.csproj" || exit 1
+build_project 4 10 "War3Net.IO.Mpq" "src/War3Net.IO.Mpq/War3Net.IO.Mpq.csproj" || exit 1
+build_project 5 10 "War3Net.IO.Slk" "src/War3Net.IO.Slk/War3Net.IO.Slk.csproj" || exit 1
+build_project 6 10 "War3Net.CodeAnalysis" "src/War3Net.CodeAnalysis/War3Net.CodeAnalysis.csproj" || exit 1
+build_project 7 10 "War3Net.CodeAnalysis.Jass" "src/War3Net.CodeAnalysis.Jass/War3Net.CodeAnalysis.Jass.csproj" || exit 1
+build_project 8 10 "War3Net.CodeAnalysis.Transpilers" "src/War3Net.CodeAnalysis.Transpilers/War3Net.CodeAnalysis.Transpilers.csproj" || exit 1
+build_project 9 10 "War3Net.Build.Core" "src/War3Net.Build.Core/War3Net.Build.Core.csproj" "Contains YDWE, dzapi, dzapi2, kkapi, YDTrigger, bzapi" || exit 1
+build_project 10 10 "War3Net.Build" "src/War3Net.Build/War3Net.Build.csproj" || exit 1
 
 echo ""
 echo "========================================"

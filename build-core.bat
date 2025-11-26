@@ -11,7 +11,16 @@ cd /d "%~dp0"
 
 set FAILED=0
 
-echo [1/8] Building War3Net.Common...
+echo [1/10] Building CSharp.lua submodule...
+dotnet build submodules\CSharp.lua\CSharp.lua\CSharp.lua.csproj -c Debug -v quiet
+if errorlevel 1 (
+    echo FAILED: CSharp.lua submodule
+    set FAILED=1
+    goto :end
+)
+echo       SUCCESS
+
+echo [2/10] Building War3Net.Common...
 dotnet build src\War3Net.Common\War3Net.Common.csproj -c Debug -v quiet
 if errorlevel 1 (
     echo FAILED: War3Net.Common
@@ -20,7 +29,7 @@ if errorlevel 1 (
 )
 echo       SUCCESS
 
-echo [2/8] Building War3Net.IO.Compression...
+echo [3/10] Building War3Net.IO.Compression...
 dotnet build src\War3Net.IO.Compression\War3Net.IO.Compression.csproj -c Debug -v quiet
 if errorlevel 1 (
     echo FAILED: War3Net.IO.Compression
@@ -29,7 +38,7 @@ if errorlevel 1 (
 )
 echo       SUCCESS
 
-echo [3/8] Building War3Net.IO.Mpq...
+echo [4/10] Building War3Net.IO.Mpq...
 dotnet build src\War3Net.IO.Mpq\War3Net.IO.Mpq.csproj -c Debug -v quiet
 if errorlevel 1 (
     echo FAILED: War3Net.IO.Mpq
@@ -38,7 +47,7 @@ if errorlevel 1 (
 )
 echo       SUCCESS
 
-echo [4/8] Building War3Net.IO.Slk...
+echo [5/10] Building War3Net.IO.Slk...
 dotnet build src\War3Net.IO.Slk\War3Net.IO.Slk.csproj -c Debug -v quiet
 if errorlevel 1 (
     echo FAILED: War3Net.IO.Slk
@@ -47,7 +56,7 @@ if errorlevel 1 (
 )
 echo       SUCCESS
 
-echo [5/8] Building War3Net.CodeAnalysis...
+echo [6/10] Building War3Net.CodeAnalysis...
 dotnet build src\War3Net.CodeAnalysis\War3Net.CodeAnalysis.csproj -c Debug -v quiet
 if errorlevel 1 (
     echo FAILED: War3Net.CodeAnalysis
@@ -56,7 +65,7 @@ if errorlevel 1 (
 )
 echo       SUCCESS
 
-echo [6/8] Building War3Net.CodeAnalysis.Jass...
+echo [7/10] Building War3Net.CodeAnalysis.Jass...
 dotnet build src\War3Net.CodeAnalysis.Jass\War3Net.CodeAnalysis.Jass.csproj -c Debug -v quiet
 if errorlevel 1 (
     echo FAILED: War3Net.CodeAnalysis.Jass
@@ -65,7 +74,16 @@ if errorlevel 1 (
 )
 echo       SUCCESS
 
-echo [7/8] Building War3Net.Build.Core (contains TriggerData.txt with custom APIs)...
+echo [8/10] Building War3Net.CodeAnalysis.Transpilers...
+dotnet build src\War3Net.CodeAnalysis.Transpilers\War3Net.CodeAnalysis.Transpilers.csproj -c Debug -v quiet
+if errorlevel 1 (
+    echo FAILED: War3Net.CodeAnalysis.Transpilers
+    set FAILED=1
+    goto :end
+)
+echo       SUCCESS
+
+echo [9/10] Building War3Net.Build.Core (contains TriggerData.txt with custom APIs)...
 dotnet build src\War3Net.Build.Core\War3Net.Build.Core.csproj -c Debug -v quiet
 if errorlevel 1 (
     echo FAILED: War3Net.Build.Core
@@ -74,7 +92,7 @@ if errorlevel 1 (
 )
 echo       SUCCESS - Contains YDWE, dzapi, dzapi2, kkapi, YDTrigger, bzapi
 
-echo [8/8] Building War3Net.Build...
+echo [10/10] Building War3Net.Build...
 dotnet build src\War3Net.Build\War3Net.Build.csproj -c Debug -v quiet
 if errorlevel 1 (
     echo FAILED: War3Net.Build
