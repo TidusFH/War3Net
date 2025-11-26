@@ -18,7 +18,7 @@ build_project() {
     local description=$5
 
     echo "[$step/$total] Building $name..."
-    if dotnet build "$project" -c Release -v quiet; then
+    if dotnet build "$project" -c Debug -v quiet; then
         echo "       SUCCESS${description:+ - $description}"
     else
         echo "FAILED: $name"
@@ -43,12 +43,12 @@ if [ $FAILED -eq 0 ]; then
     echo "========================================"
     echo ""
     echo "Your DLLs are ready at:"
-    echo "  src/War3Net.Build.Core/bin/Release/net5.0/"
-    echo "  src/War3Net.Build/bin/Release/net5.0/"
+    echo "  src/War3Net.Build.Core/bin/Debug/net5.0/"
+    echo "  src/War3Net.Build/bin/Debug/net5.0/"
     echo ""
     echo "Key Files:"
-    ls -lh src/War3Net.Build.Core/bin/Release/net5.0/War3Net.Build.Core.dll 2>/dev/null
-    ls -lh src/War3Net.Build/bin/Release/net5.0/War3Net.Build.dll 2>/dev/null
+    ls -lh src/War3Net.Build.Core/bin/Debug/net5.0/War3Net.Build.Core.dll 2>/dev/null
+    ls -lh src/War3Net.Build/bin/Debug/net5.0/War3Net.Build.dll 2>/dev/null
     echo ""
     echo "These DLLs include:"
     echo "  - Patches 1.20, 1.24, 1.26, 1.27 through 2.0.3"

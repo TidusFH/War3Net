@@ -31,9 +31,11 @@ dotnet --version
 
 After successful build, DLLs will be located at:
 ```
-src/War3Net.Build.Core/bin/Release/net5.0/War3Net.Build.Core.dll
-src/War3Net.Build/bin/Release/net5.0/War3Net.Build.dll
+src/War3Net.Build.Core/bin/Debug/net5.0/War3Net.Build.Core.dll
+src/War3Net.Build/bin/Debug/net5.0/War3Net.Build.dll
 ```
+
+**Note:** The build scripts use Debug configuration to ensure all dependencies use local project references instead of NuGet packages.
 
 ## What's Included
 
@@ -55,17 +57,19 @@ If you prefer to build manually:
 
 ```bash
 # Build dependencies first
-dotnet build src/War3Net.Common/War3Net.Common.csproj -c Release
-dotnet build src/War3Net.IO.Compression/War3Net.IO.Compression.csproj -c Release
-dotnet build src/War3Net.IO.Mpq/War3Net.IO.Mpq.csproj -c Release
-dotnet build src/War3Net.IO.Slk/War3Net.IO.Slk.csproj -c Release
-dotnet build src/War3Net.CodeAnalysis/War3Net.CodeAnalysis.csproj -c Release
-dotnet build src/War3Net.CodeAnalysis.Jass/War3Net.CodeAnalysis.Jass.csproj -c Release
+dotnet build src/War3Net.Common/War3Net.Common.csproj -c Debug
+dotnet build src/War3Net.IO.Compression/War3Net.IO.Compression.csproj -c Debug
+dotnet build src/War3Net.IO.Mpq/War3Net.IO.Mpq.csproj -c Debug
+dotnet build src/War3Net.IO.Slk/War3Net.IO.Slk.csproj -c Debug
+dotnet build src/War3Net.CodeAnalysis/War3Net.CodeAnalysis.csproj -c Debug
+dotnet build src/War3Net.CodeAnalysis.Jass/War3Net.CodeAnalysis.Jass.csproj -c Debug
 
 # Build main libraries
-dotnet build src/War3Net.Build.Core/War3Net.Build.Core.csproj -c Release
-dotnet build src/War3Net.Build/War3Net.Build.csproj -c Release
+dotnet build src/War3Net.Build.Core/War3Net.Build.Core.csproj -c Debug
+dotnet build src/War3Net.Build/War3Net.Build.csproj -c Debug
 ```
+
+**Why Debug?** Debug configuration uses local project references, avoiding NuGet package version conflicts. The DLLs are functionally identical to Release builds for library usage.
 
 ## Troubleshooting
 
