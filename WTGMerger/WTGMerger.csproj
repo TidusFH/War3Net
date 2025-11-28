@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PlatformTarget>x64</PlatformTarget>
+    <Nullable>enable</Nullable>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reference the War3Net DLLs you've already added -->
+    <Reference Include="War3Net.Build.Core">
+      <HintPath>../Libs/War3Net.Build.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="War3Net.Build">
+      <HintPath>../Libs/War3Net.Build.dll</HintPath>
+    </Reference>
+    <Reference Include="War3Net.Common">
+      <HintPath>../Libs/War3Net.Common.dll</HintPath>
+    </Reference>
+    <Reference Include="War3Net.IO.Mpq">
+      <HintPath>../Libs/War3Net.IO.Mpq.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Copy base TriggerData.txt to output directory -->
+  <ItemGroup>
+    <None Include="..\src\War3Net.Build.Core\Resources\TriggerData.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>TriggerData.txt</Link>
+    </None>
+  </ItemGroup>
+
+  <!-- Copy War3 Patches folder to output directory -->
+  <ItemGroup>
+    <None Include="..\War3 Patches\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>War3 Patches\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </None>
+  </ItemGroup>
+
+</Project>
