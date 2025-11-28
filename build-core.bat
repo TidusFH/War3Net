@@ -130,6 +130,17 @@ if %FAILED%==0 (
     echo   - Custom APIs: YDWE, dzapi, dzapi2, kkapi, YDTrigger, bzapi
     echo.
     echo All files are in the Dlls folder and ready to use!
+    echo.
+
+    REM Also copy to Libs folder if it exists (for WTGMerger and other tools)
+    if exist "Libs" (
+        echo ========================================
+        echo Updating Libs folder for WTGMerger...
+        echo ========================================
+        xcopy /Y /Q Dlls\*.dll Libs\ >nul
+        echo ✓ Libs folder updated
+        echo.
+    )
 ) else (
     echo BUILD FAILED!
     echo ========================================
